@@ -195,3 +195,33 @@ ON equity_news_feed(symbol, published_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_news_article_url
 ON equity_news_feed(article_url);
+
+-- ====================================================================
+-- Milestone B8.0: Multi-Factor Strategy Backtesting & Portfolio Rebalancing Engine
+-- ====================================================================
+
+-- 8. Backtest Runs Ledger
+CREATE TABLE IF NOT EXISTS backtest_runs (
+    run_id TEXT PRIMARY KEY,
+    strategy_name TEXT NOT NULL,
+    parameters TEXT NOT NULL,          -- JSON serialized dict
+    cagr_pct REAL NOT NULL,
+    sharpe_ratio REAL NOT NULL,
+    max_drawdown_pct REAL NOT NULL,
+    win_rate_pct REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+-- 9. Backtest Equity Curve Series
+CREATE TABLE IF NOT EXISTS backtest_equity_curve (
+    run_id TEXT NOT NULL,
+    trading_date TEXT NOT NULL,
+    portfolio_value REAL NOT NULL,
+    benchmark_value REAL NOT NULL,
+    drawdown_pct REAL NOT NULL,
+    PRIMARY KEY (run_id, trading_date),
+    FOREIGN KEY (run_id) REFERENCES backtest_runs(run_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_backtest_curve_run_date
+ON backtest_equity_curve(run_id, trading_date ASC);

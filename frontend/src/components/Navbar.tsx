@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, LayoutDashboard, BookmarkCheck, Search, ArrowRight } from "lucide-react";
+import { Activity, LayoutDashboard, BookmarkCheck, Search, ArrowRight, LineChart } from "lucide-react";
 
 export default function Navbar() {
   const router = useRouter();
@@ -66,6 +66,13 @@ export default function Navbar() {
           >
             <LayoutDashboard className="w-4 h-4 text-cyan-400" />
             <span className="hidden sm:inline">Dashboard</span>
+          </Link>
+          <Link
+            href="/backtest"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+          >
+            <LineChart className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">Backtester</span>
           </Link>
           <Link
             href="/stocks/SUZLON"

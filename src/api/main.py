@@ -282,5 +282,7 @@ __all__ = [
     "get_stock_history",
     "get_stock_forecast",
     "get_stock_news",
+    "run_backtest_endpoint",
+    "get_latest_backtest",
     "run_dynamic_ingestion",
 ]

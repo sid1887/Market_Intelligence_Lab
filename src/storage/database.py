@@ -1593,5 +1593,100 @@ class DatabaseManager:
                     return True
         return False
 
+    # ====================================================================
+    # Milestone B8.0: Multi-Factor Strategy Backtest Storage
+    # ====================================================================
+
+    def save_backtest_run(
+        self,
+        run_data: Dict[str, Any],
+        equity_curve: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Saves a completed backtest run summary and daily equity curve series.
+        """
+        run_id = run_data["run_id"]
+        params_str = run_data.get("parameters", "{}")
+        if isinstance(params_str, dict):
+            params_str = json.dumps(params_str)
+
+        sql_run = """
+        INSERT OR REPLACE INTO backtest_runs (
+            run_id, strategy_name, parameters, cagr_pct,
+            sharpe_ratio, max_drawdown_pct, win_rate_pct, created_at
+        ) VALUES (
+            :run_id, :strategy_name, :parameters, :cagr_pct,
+            :sharpe_ratio, :max_drawdown_pct, :win_rate_pct, :created_at
+        );
+        """
+        sql_curve = """
+        INSERT OR REPLACE INTO backtest_equity_curve (
+            run_id, trading_date, portfolio_value, benchmark_value, drawdown_pct
+        ) VALUES (
+            :run_id, :trading_date, :portfolio_value, :benchmark_value, :drawdown_pct
+        );
+        """
+        curve_records = [
+            {
+                "run_id": run_id,
+                "trading_date": pt["trading_date"],
+                "portfolio_value": float(pt["portfolio_value"]),
+                "benchmark_value": float(pt["benchmark_value"]),
+                "drawdown_pct": float(pt.get("drawdown_pct", 0.0))
+            }
+            for pt in equity_curve
+        ]
+
+        with self.get_connection() as conn:
+            conn.execute(sql_run, {
+                "run_id": run_id,
+                "strategy_name": run_data.get("strategy_name", "Quality_Momentum_Top10"),
+                "parameters": params_str,
+                "cagr_pct": float(run_data.get("cagr_pct", 0.0)),
+                "sharpe_ratio": float(run_data.get("sharpe_ratio", 0.0)),
+                "max_drawdown_pct": float(run_data.get("max_drawdown_pct", 0.0)),
+                "win_rate_pct": float(run_data.get("win_rate_pct", 0.0)),
+                "created_at": run_data.get("created_at", datetime.datetime.now(datetime.timezone.utc).isoformat())
+            })
+            if curve_records:
+                conn.executemany(sql_curve, curve_records)
+
+        return run_id
+
+    def get_backtest_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves a backtest run summary and its equity curve."""
+        query_run = "SELECT * FROM backtest_runs WHERE run_id = ?;"
+        query_curve = """
+        SELECT trading_date, portfolio_value, benchmark_value, drawdown_pct
+        FROM backtest_equity_curve
+        WHERE run_id = ?
+        ORDER BY trading_date ASC;
+        """
+        with self.get_connection() as conn:
+            cur = conn.execute(query_run, (run_id,))
+            run_row = cur.fetchone()
+            if not run_row:
+                return None
+            res = dict(run_row)
+            if isinstance(res.get("parameters"), str):
+                try:
+                    res["parameters"] = json.loads(res["parameters"])
+                except Exception:
+                    pass
+            cur_c = conn.execute(query_curve, (run_id,))
+            res["equity_curve"] = [dict(r) for r in cur_c.fetchall()]
+            return res
+
+    def get_latest_backtest_run(self) -> Optional[Dict[str, Any]]:
+        """Retrieves the most recent backtest run and its equity curve."""
+        query = "SELECT run_id FROM backtest_runs ORDER BY created_at DESC LIMIT 1;"
+        with self.get_connection() as conn:
+            cur = conn.execute(query)
+            row = cur.fetchone()
+            if not row:
+                return None
+            return self.get_backtest_run(row["run_id"])
+
+
 
 

@@ -12,6 +12,7 @@ import gc
 import sqlite3
 import logging
 from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
 
@@ -496,6 +497,69 @@ def get_stock_news(
         raise HTTPException(status_code=500, detail=f"Failed to fetch news feed: {str(e)}")
 
 
+# ====================================================================
+# Milestone B8.0: Multi-Factor Strategy Backtest Endpoints
+# ====================================================================
+
+class BacktestRequest(BaseModel):
+    strategy_name: str = Field("Quality_Momentum_Top10", description="Strategy identifier")
+    start_date: str = Field("2024-01-01", description="Simulation start date (YYYY-MM-DD)")
+    end_date: str = Field("2026-10-28", description="Simulation end date (YYYY-MM-DD)")
+    initial_capital: float = Field(500000.0, ge=10000.0, description="Initial capital in INR")
+    rebalance_frequency: str = Field("MONTHLY", description="'MONTHLY' or 'QUARTERLY'")
+    top_n: int = Field(10, ge=5, le=20, description="Number of top securities to hold")
+    weighting: str = Field("EQUAL_WEIGHT", description="'EQUAL_WEIGHT' or 'INVERSE_VOLATILITY'")
+    slippage_bps: float = Field(5.0, ge=0.0, le=100.0, description="Slippage in basis points")
+
+
+@router.post("/backtest/run")
+@router.post("/api/v1/backtest/run")
+def run_backtest_endpoint(request: BacktestRequest):
+    """
+    Executes a multi-factor systematic backtest with full frictional drag and NIFTY 50 TRI benchmarking.
+    """
+    try:
+        from src.quant.backtest_engine import BacktestEngine
+        engine = BacktestEngine(DatabaseManager(DATABASE_PATH))
+        result = engine.run_backtest(
+            strategy_name=request.strategy_name,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            initial_capital=request.initial_capital,
+            rebalance_frequency=request.rebalance_frequency,
+            top_n=request.top_n,
+            weighting=request.weighting,
+            slippage_bps=request.slippage_bps,
+            save_to_db=True
+        )
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.error(f"Backtest execution error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Backtest execution failed: {str(e)}")
+
+
+@router.get("/backtest/latest")
+@router.get("/api/v1/backtest/latest")
+def get_latest_backtest():
+    """
+    Returns the most recent backtest run and equity curve from the ledger.
+    If none exists, executes a default simulation.
+    """
+    try:
+        db = DatabaseManager(DATABASE_PATH)
+        latest = db.get_latest_backtest_run()
+        if latest:
+            return sanitize_for_json(latest)
+
+        from src.quant.backtest_engine import BacktestEngine
+        engine = BacktestEngine(db)
+        result = engine.run_backtest(save_to_db=True)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.error(f"Latest backtest retrieval error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve latest backtest: {str(e)}")
+
+
 __all__ = [
     "router",
     "market_router",
@@ -504,5 +568,7 @@ __all__ = [
     "get_stock_history",
     "get_stock_forecast",
     "get_stock_news",
+    "run_backtest_endpoint",
+    "get_latest_backtest",
     "run_dynamic_ingestion",
 ]
