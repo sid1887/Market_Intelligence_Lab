@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { TrendingUp, TrendingDown, Target, ShieldAlert } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 export interface WatchlistItem {
   symbol: string;
@@ -27,120 +27,102 @@ interface WatchlistPanelProps {
   loading?: boolean;
 }
 
+function WatchlistSparkline({ isUp, distSma }: { isUp: boolean; distSma: number }) {
+  // Deterministic 10-point smooth sparkline path based on return & distance to SMA
+  const upwardPoints = distSma > 0
+    ? "0,16 7,15 14,12 21,14 28,9 35,11 42,6 49,8 56,3 64,2"
+    : "0,18 7,16 14,14 21,15 28,11 35,12 42,9 49,7 56,5 64,3";
+
+  const downwardPoints = distSma < 0
+    ? "0,3 7,5 14,7 21,5 28,10 35,8 42,13 49,12 56,17 64,19"
+    : "0,2 7,4 14,6 21,8 28,7 35,11 42,13 49,14 56,16 64,18";
+
+  const pts = isUp ? upwardPoints : downwardPoints;
+  const strokeColor = isUp ? "#34d399" : "#fb7185";
+
+  return (
+    <svg className="w-16 h-6 overflow-visible shrink-0" viewBox="0 0 64 20">
+      <polyline
+        fill="none"
+        stroke={strokeColor}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={pts}
+      />
+    </svg>
+  );
+}
+
 export default function WatchlistPanel({ items, loading }: WatchlistPanelProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-44 bg-slate-900/60 border border-slate-800 rounded-xl animate-pulse" />
+          <div key={i} className="h-[76px] bg-[#080d1a]/80 border border-white/[0.04] rounded-xl animate-pulse" />
         ))}
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2.5">
-          <h2 className="text-lg font-bold text-slate-100 tracking-tight">Active User Watchlist</h2>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-400 font-mono">
-            {items.length} Instruments
+        <div className="flex items-center space-x-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+          <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">
+            Active Watchlist Rail
+          </h2>
+          <span className="text-[10px] px-1.5 py-0.2 rounded font-mono font-semibold bg-cyan-950/80 border border-cyan-800/60 text-cyan-400">
+            {items.length}
           </span>
         </div>
-        <span className="text-xs text-slate-400 font-mono">Primary Focus Positions</span>
+        <span className="text-[11px] text-slate-500 font-mono">Primary Conviction Equities</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {items.map(stock => {
           const isUp = stock.ret_1d >= 0;
+          const dist = stock.dist_sma200_pct || 0;
+
           return (
             <Link
               key={stock.symbol}
               href={`/stocks/${stock.symbol}`}
-              className="group block bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 transition-all duration-200 shadow-lg hover:shadow-cyan-950/20 relative overflow-hidden"
+              className="group h-[76px] bg-[#080d1a]/90 hover:bg-[#0c1427] border border-white/[0.05] hover:border-cyan-500/30 rounded-xl px-3.5 py-2.5 transition-all duration-200 shadow-md hover:shadow-[0_0_15px_-3px_rgba(6,182,212,0.12)] flex items-center justify-between overflow-hidden relative"
             >
-              {/* Top Accent Gradient Border */}
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+              {/* Subtle hover gradient wash */}
+              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-base font-bold text-white font-mono group-hover:text-cyan-400 transition-colors">
-                      {stock.symbol}
-                    </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium truncate max-w-[100px]">
-                      {stock.sector}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 truncate max-w-[180px] mt-0.5" title={stock.company_name}>
-                    {stock.company_name}
-                  </p>
+              {/* Left Column: Ticker, Sector, and Price */}
+              <div className="flex flex-col justify-between h-full z-10">
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-[13px] font-bold text-white font-mono group-hover:text-cyan-400 transition-colors tracking-tight">
+                    {stock.symbol}
+                  </span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800/80 text-slate-400 font-mono truncate max-w-[80px]">
+                    {stock.sector}
+                  </span>
                 </div>
+                <div className="text-[15px] font-black text-slate-100 font-mono tracking-tight leading-none">
+                  {stock.close !== null ? `₹${stock.close.toFixed(2)}` : "—"}
+                </div>
+              </div>
 
-                {/* 1D Return Pill */}
+              {/* Right Column: Sparkline & 1D Change Pill */}
+              <div className="flex flex-col items-end justify-between h-full z-10">
                 <div
-                  className={`flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-mono font-semibold ${
+                  className={`flex items-center space-x-0.5 px-1.5 py-0.5 rounded font-mono text-[11px] font-bold ${
                     isUp
-                      ? "bg-emerald-950/70 border border-emerald-800/60 text-emerald-400"
-                      : "bg-red-950/70 border border-red-800/60 text-red-400"
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
                   }`}
                 >
                   {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                   <span>{stock.ret_1d_pct >= 0 ? "+" : ""}{stock.ret_1d_pct.toFixed(2)}%</span>
                 </div>
-              </div>
 
-              {/* Price Display */}
-              <div className="mt-4 flex items-baseline justify-between">
-                <div>
-                  <span className="text-xs text-slate-500 font-mono">Close</span>
-                  <div className="text-2xl font-extrabold text-slate-100 font-mono tracking-tight">
-                    {stock.close !== null ? `₹${stock.close.toFixed(2)}` : "—"}
-                  </div>
-                </div>
-
-                {stock.sma_200 !== null && (
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-500 font-mono">200 SMA</span>
-                    <div className="text-xs font-mono text-slate-300">
-                      ₹{stock.sma_200.toFixed(2)}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Target / Stop Loss Levels & Status Badges */}
-              <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono">
-                {stock.target_price || stock.stop_loss ? (
-                  <div className="flex items-center space-x-3 text-[11px]">
-                    {stock.target_price && (
-                      <span className="flex items-center space-x-1 text-emerald-400" title="Target Price">
-                        <Target className="w-3 h-3" />
-                        <span>₹{stock.target_price}</span>
-                      </span>
-                    )}
-                    {stock.stop_loss && (
-                      <span className="flex items-center space-x-1 text-red-400" title="Stop Loss">
-                        <ShieldAlert className="w-3 h-3" />
-                        <span>₹{stock.stop_loss}</span>
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-[11px] text-slate-500">
-                    {stock.roe_pct ? `ROE: ${stock.roe_pct.toFixed(1)}%` : "Trend Tracking"}
-                  </span>
-                )}
-
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                    stock.price_above_sma200
-                      ? "bg-emerald-950/60 text-emerald-400 border border-emerald-900"
-                      : "bg-amber-950/60 text-amber-400 border border-amber-900"
-                  }`}
-                >
-                  {stock.price_above_sma200 ? "> 200 SMA" : "< 200 SMA"}
-                </span>
+                <WatchlistSparkline isUp={isUp} distSma={dist} />
               </div>
             </Link>
           );

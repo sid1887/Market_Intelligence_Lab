@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Search, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { Search, ChevronRight, SlidersHorizontal, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScreenerScoreCell } from "./ScreenerScoreCell";
+import QuickInspectDrawer from "./QuickInspectDrawer";
 
 export interface ScreenerCandidate {
   rank: number;
@@ -28,13 +29,33 @@ interface ScreenerTableProps {
   loading?: boolean;
 }
 
+type SectorFilter = "All" | "IT" | "Energy" | "Pharma" | "Auto" | "Financials";
+
 export default function ScreenerTable({ candidates, asOfDate, loading }: ScreenerTableProps) {
   const [search, setSearch] = useState("");
+  const [selectedSector, setSelectedSector] = useState<SectorFilter>("All");
   const [minRoe, setMinRoe] = useState<number>(0);
   const [maxDe, setMaxDe] = useState<number>(999);
   const [onlyAbove200Sma, setOnlyAbove200Sma] = useState<boolean>(false);
   const [excludeFinancials, setExcludeFinancials] = useState<boolean>(false);
   const [onlyWatchlist, setOnlyWatchlist] = useState<boolean>(false);
+
+  // Quick-Inspect Drawer state
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard shortcut listener (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Filter logic
   const filteredCandidates = useMemo(() => {
@@ -46,6 +67,16 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
         const matchesName = item.company_name.toLowerCase().includes(q);
         const matchesSec = item.sector.toLowerCase().includes(q);
         if (!matchesSym && !matchesName && !matchesSec) return false;
+      }
+
+      // Sector Segmented filter
+      if (selectedSector !== "All") {
+        const sec = item.sector.toLowerCase();
+        if (selectedSector === "IT" && !sec.includes("it") && !sec.includes("tech") && !sec.includes("software")) return false;
+        if (selectedSector === "Energy" && !sec.includes("energy") && !sec.includes("power") && !sec.includes("oil") && !sec.includes("gas") && !sec.includes("petro")) return false;
+        if (selectedSector === "Pharma" && !sec.includes("pharma") && !sec.includes("health") && !sec.includes("bio")) return false;
+        if (selectedSector === "Auto" && !sec.includes("auto") && !sec.includes("motor") && !sec.includes("vehicle")) return false;
+        if (selectedSector === "Financials" && !sec.includes("financial") && !sec.includes("bank") && !sec.includes("insurance")) return false;
       }
 
       // ROE filter
@@ -75,271 +106,334 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
 
       return true;
     });
-  }, [candidates, search, minRoe, maxDe, onlyAbove200Sma, excludeFinancials, onlyWatchlist]);
+  }, [candidates, search, selectedSector, minRoe, maxDe, onlyAbove200Sma, excludeFinancials, onlyWatchlist]);
 
   return (
-    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl backdrop-blur-sm space-y-4">
-      {/* Header & Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-        <div>
-          <div className="flex items-center space-x-2.5">
-            <h2 className="text-lg font-bold text-slate-100 tracking-tight">Top Screener Results</h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-950 border border-indigo-800/60 text-indigo-400 font-mono">
-              Composite Quality-Momentum
-            </span>
-            {asOfDate && (
-              <span className="text-xs text-slate-400 font-mono hidden sm:inline">
-                Session: {asOfDate}
+    <>
+      <div className="bg-[#080d1a]/90 border border-white/[0.06] rounded-xl p-4 shadow-2xl backdrop-blur-md space-y-3.5">
+        {/* Header & Command Search Bar */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-white/[0.05]">
+          <div>
+            <div className="flex items-center space-x-2.5">
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+              <h2 className="text-base font-bold text-white font-mono tracking-tight">Institutional Factor Screener</h2>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-400 font-mono font-semibold">
+                NIFTY Liquid Universe
               </span>
+              {asOfDate && (
+                <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                  &middot; Session: {asOfDate}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+              Percentile weighted: ROE % (30%), Low D/E (25%), 20D Excess Return (25%), OPM % (20%). Click row for Quick Inspect.
+            </p>
+          </div>
+
+          {/* Command-Bar Style Search */}
+          <div className="relative w-full lg:w-80">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search 180+ universe symbols, sector..."
+              className="w-full bg-[#050811] border border-white/[0.08] focus:border-cyan-500 rounded-lg pl-8 pr-12 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none transition-colors"
+            />
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center space-x-0.5 pointer-events-none">
+              <kbd className="text-[9px] font-mono px-1 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                ⌘K
+              </kbd>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Toolbar: Sector Switches & Ratio Presets */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-0.5 text-xs font-mono">
+          {/* Segmented Sector Pill Switches */}
+          <div className="flex items-center space-x-1 p-1 bg-[#050811] rounded-lg border border-white/[0.06]">
+            {(["All", "IT", "Energy", "Pharma", "Auto", "Financials"] as const).map(sec => (
+              <button
+                key={sec}
+                onClick={() => setSelectedSector(sec)}
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-all ${
+                  selectedSector === sec
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-950"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent"
+                }`}
+              >
+                {sec}
+              </button>
+            ))}
+          </div>
+
+          {/* Quick Quantitative Criteria Pills */}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+            <span className="text-slate-500 flex items-center space-x-1 mr-1 text-[11px]">
+              <SlidersHorizontal className="w-3 h-3 text-cyan-400" />
+              <span>Filters:</span>
+            </span>
+
+            <button
+              onClick={() => {
+                setMinRoe(15.0);
+                setMaxDe(0.5);
+                setOnlyAbove200Sma(true);
+                setExcludeFinancials(true);
+                setOnlyWatchlist(false);
+              }}
+              className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+                minRoe === 15.0 && maxDe === 0.5 && onlyAbove200Sma && excludeFinancials
+                  ? "bg-cyan-950 border-cyan-500 text-cyan-300 font-semibold"
+                  : "bg-[#050811] border-white/[0.06] text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              ⚡ High Conviction Quality Screen
+            </button>
+
+            <button
+              onClick={() => setOnlyAbove200Sma(!onlyAbove200Sma)}
+              className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+                onlyAbove200Sma
+                  ? "bg-emerald-950 border-emerald-500 text-emerald-300 font-semibold"
+                  : "bg-[#050811] border-white/[0.06] text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {onlyAbove200Sma ? "✓ Price > 200 SMA" : "Price > 200 SMA"}
+            </button>
+
+            <button
+              onClick={() => setExcludeFinancials(!excludeFinancials)}
+              className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+                excludeFinancials
+                  ? "bg-amber-950 border-amber-500 text-amber-300 font-semibold"
+                  : "bg-[#050811] border-white/[0.06] text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {excludeFinancials ? "✓ Excl. Financials" : "Excl. Financials"}
+            </button>
+
+            <button
+              onClick={() => setMinRoe(minRoe === 15.0 ? 0 : 15.0)}
+              className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+                minRoe === 15.0
+                  ? "bg-indigo-950 border-indigo-500 text-indigo-300 font-semibold"
+                  : "bg-[#050811] border-white/[0.06] text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {minRoe === 15.0 ? "✓ ROE > 15%" : "ROE > 15%"}
+            </button>
+
+            <button
+              onClick={() => setMaxDe(maxDe === 0.5 ? 999 : 0.5)}
+              className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+                maxDe === 0.5
+                  ? "bg-purple-950 border-purple-500 text-purple-300 font-semibold"
+                  : "bg-[#050811] border-white/[0.06] text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {maxDe === 0.5 ? "✓ D/E < 0.5" : "D/E < 0.5"}
+            </button>
+
+            {(minRoe > 0 || maxDe < 999 || onlyAbove200Sma || excludeFinancials || onlyWatchlist || search || selectedSector !== "All") && (
+              <button
+                onClick={() => {
+                  setMinRoe(0);
+                  setMaxDe(999);
+                  setOnlyAbove200Sma(false);
+                  setExcludeFinancials(false);
+                  setOnlyWatchlist(false);
+                  setSelectedSector("All");
+                  setSearch("");
+                }}
+                className="px-2 py-0.5 text-[11px] text-rose-400 hover:text-rose-300 underline underline-offset-2 ml-auto"
+              >
+                Reset
+              </button>
             )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Ranked percentile aggregation across ROE % (30%), Low D/E (25%), 20-Day Excess Return (25%), and OPM % (20%).
-          </p>
         </div>
 
-        {/* Search Input */}
-        <div className="relative w-full lg:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Filter symbol, name, or sector..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
-          />
-        </div>
-      </div>
-
-      {/* Filter Quick Pills */}
-      <div className="flex flex-wrap items-center gap-2 pt-1 text-xs font-mono">
-        <span className="text-slate-400 flex items-center space-x-1 mr-1">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Filters:</span>
-        </span>
-
-        {/* High Conviction Preset Button */}
-        <button
-          onClick={() => {
-            setMinRoe(15.0);
-            setMaxDe(0.5);
-            setOnlyAbove200Sma(true);
-            setExcludeFinancials(true);
-            setOnlyWatchlist(false);
-          }}
-          className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
-            minRoe === 15.0 && maxDe === 0.5 && onlyAbove200Sma && excludeFinancials
-              ? "bg-cyan-950 border-cyan-500 text-cyan-300 font-semibold"
-              : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-          }`}
-        >
-          ⚡ High Conviction Quality Screen
-        </button>
-
-        <button
-          onClick={() => setOnlyAbove200Sma(!onlyAbove200Sma)}
-          className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
-            onlyAbove200Sma
-              ? "bg-emerald-950 border-emerald-500 text-emerald-300 font-semibold"
-              : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          {onlyAbove200Sma ? "✓ Price > 200 SMA" : "Price > 200 SMA"}
-        </button>
-
-        <button
-          onClick={() => setExcludeFinancials(!excludeFinancials)}
-          className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
-            excludeFinancials
-              ? "bg-amber-950 border-amber-500 text-amber-300 font-semibold"
-              : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          {excludeFinancials ? "✓ Excl. Financials" : "Excl. Financials"}
-        </button>
-
-        <button
-          onClick={() => setMinRoe(minRoe === 15.0 ? 0 : 15.0)}
-          className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
-            minRoe === 15.0
-              ? "bg-indigo-950 border-indigo-500 text-indigo-300 font-semibold"
-              : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          {minRoe === 15.0 ? "✓ ROE > 15%" : "ROE > 15%"}
-        </button>
-
-        <button
-          onClick={() => setMaxDe(maxDe === 0.5 ? 999 : 0.5)}
-          className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
-            maxDe === 0.5
-              ? "bg-purple-950 border-purple-500 text-purple-300 font-semibold"
-              : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          {maxDe === 0.5 ? "✓ D/E < 0.5" : "D/E < 0.5"}
-        </button>
-
-        {(minRoe > 0 || maxDe < 999 || onlyAbove200Sma || excludeFinancials || onlyWatchlist || search) && (
-          <button
-            onClick={() => {
-              setMinRoe(0);
-              setMaxDe(999);
-              setOnlyAbove200Sma(false);
-              setExcludeFinancials(false);
-              setOnlyWatchlist(false);
-              setSearch("");
-            }}
-            className="px-2 py-1 text-xs text-rose-400 hover:text-rose-300 underline underline-offset-2 ml-auto"
-          >
-            Reset Filters
-          </button>
-        )}
-      </div>
-
-      {/* Candidates Table */}
-      <div className="overflow-x-auto rounded-lg border border-slate-800 relative shadow-inner">
-        <table className="w-full text-left text-xs font-mono border-collapse">
-          <thead className="bg-[#070c18] text-slate-400 uppercase text-[11px] tracking-wider border-b border-slate-800">
-            <tr>
-              <th scope="col" className="sticky left-0 bg-[#070c18]/95 backdrop-blur-md z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-3 w-12 text-center">#</th>
-              <th scope="col" className="sticky left-12 bg-[#070c18]/95 backdrop-blur-md z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-4 min-w-[200px]">Symbol / Name</th>
-              <th scope="col" className="py-3 px-3">Sector</th>
-              <th scope="col" className="py-3 px-3 text-right">Close (₹)</th>
-              <th scope="col" className="py-3 px-3 text-right">200 SMA</th>
-              <th scope="col" className="py-3 px-3 text-right">D/E</th>
-              <th scope="col" className="py-3 px-3 text-right">ROE %</th>
-              <th scope="col" className="py-3 px-3 text-right">OPM %</th>
-              <th scope="col" className="py-3 px-3 text-right">Excess (20D)</th>
-              <th scope="col" className="py-3 px-4 text-right min-w-[140px]">Score</th>
-              <th scope="col" className="py-3 px-3 text-center">Type</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60 bg-slate-950/40">
-            {loading ? (
-              [1, 2, 3, 4, 5].map(i => (
-                <tr key={i} className="animate-pulse">
-                  <td colSpan={11} className="py-4 px-4 bg-slate-900/40" />
-                </tr>
-              ))
-            ) : filteredCandidates.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-slate-500">
-                  No securities match the selected screening criteria.
-                </td>
+        {/* High-Density Candidates Table with Frozen Columns */}
+        <div className="overflow-x-auto rounded-lg border border-white/[0.06] relative shadow-inner">
+          <table className="w-full text-left text-xs font-mono border-collapse">
+            <thead className="bg-[#050811] text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/[0.06]">
+              <tr className="h-9">
+                <th scope="col" className="sticky left-0 bg-[#050811] z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-2 px-2.5 w-10 text-center">#</th>
+                <th scope="col" className="sticky left-10 bg-[#050811] z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-2 px-3.5 min-w-[180px]">Symbol / Name</th>
+                <th scope="col" className="py-2 px-3">Sector</th>
+                <th scope="col" className="py-2 px-3 text-right">Close (₹)</th>
+                <th scope="col" className="py-2 px-3 text-right">200 SMA</th>
+                <th scope="col" className="py-2 px-3 text-right">D/E</th>
+                <th scope="col" className="py-2 px-3 text-right">ROE %</th>
+                <th scope="col" className="py-2 px-3 text-right">OPM %</th>
+                <th scope="col" className="py-2 px-3 text-right">Excess (20D)</th>
+                <th scope="col" className="py-2 px-3 text-right min-w-[130px]">Score</th>
+                <th scope="col" className="py-2 px-2.5 text-center">Inspect</th>
               </tr>
-            ) : (
-              <AnimatePresence mode="popLayout">
-                {filteredCandidates.map((c, idx) => {
-                  const isWatchlist = c.is_watchlist;
-                  const score = c.composite_score || 0;
-                  return (
-                    <motion.tr
-                      key={c.symbol}
-                      layout
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 260, damping: 24 }}
-                      className="hover:bg-slate-800/40 transition-colors group"
-                    >
-                      <td className="sticky left-0 bg-[#070c18]/95 backdrop-blur-md z-10 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-3 text-center font-bold text-slate-500">
-                        {idx + 1}
-                      </td>
+            </thead>
+            <tbody className="divide-y divide-white/[0.04]">
+              {loading ? (
+                [1, 2, 3, 4, 5, 6, 7].map(i => (
+                  <tr key={i} className="h-10 animate-pulse bg-[#080d1a]">
+                    <td colSpan={11} className="py-2 px-4 bg-white/[0.02]" />
+                  </tr>
+                ))
+              ) : filteredCandidates.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="py-8 text-center text-slate-500 font-mono">
+                    No securities match the selected screening criteria.
+                  </td>
+                </tr>
+              ) : (
+                <AnimatePresence mode="popLayout">
+                  {filteredCandidates.map((c, idx) => {
+                    const score = c.composite_score || 0;
+                    const rowBg = idx % 2 === 0 ? "bg-[#080d1a]" : "bg-[#050811]";
 
-                      <td className="sticky left-12 bg-[#070c18]/95 backdrop-blur-md z-10 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-4">
-                        <Link
-                          href={`/stocks/${c.symbol}`}
-                          className="flex flex-col group-hover:text-cyan-400 transition-colors"
-                        >
-                          <span className="font-bold text-slate-100 flex items-center space-x-1">
-                            <span>{c.symbol}</span>
-                            <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    return (
+                      <motion.tr
+                        key={c.symbol}
+                        layout
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 260, damping: 24 }}
+                        onClick={() => setSelectedSymbol(c.symbol)}
+                        className={`h-10 ${rowBg} hover:bg-cyan-950/20 cursor-pointer transition-colors group border-b border-white/[0.04]`}
+                      >
+                        {/* Frozen Column 1: Rank */}
+                        <td className={`sticky left-0 ${rowBg} group-hover:bg-cyan-950/20 z-10 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-1.5 px-2.5 text-center font-bold text-slate-500 text-[11px]`}>
+                          {idx + 1}
+                        </td>
+
+                        {/* Frozen Column 2: Symbol & Name */}
+                        <td className={`sticky left-10 ${rowBg} group-hover:bg-cyan-950/20 z-10 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-1.5 px-3.5`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="font-bold text-white text-[12px] group-hover:text-cyan-400 transition-colors flex items-center space-x-1">
+                                <span>{c.symbol}</span>
+                                <ChevronRight className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate max-w-[150px] leading-tight" title={c.company_name}>
+                                {c.company_name}
+                              </span>
+                            </div>
+
+                            {/* Direct link icon to full tearsheet */}
+                            <Link
+                              href={`/stocks/${c.symbol}`}
+                              onClick={(e) => e.stopPropagation()}
+                              title="Open Full Tearsheet directly"
+                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-cyan-400 transition-opacity"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </div>
+                        </td>
+
+                        {/* Sector */}
+                        <td className="py-1.5 px-3 text-slate-300 text-[11px]">
+                          <span className="truncate max-w-[120px] block" title={c.sector}>
+                            {c.sector}
                           </span>
-                          <span className="text-[11px] text-slate-400 truncate max-w-[170px]" title={c.company_name}>
-                            {c.company_name}
+                        </td>
+
+                        {/* Close Price */}
+                        <td className="py-1.5 px-3 text-right font-bold text-slate-100 font-mono tabular-nums text-[13px]">
+                          {c.close !== null ? `₹${c.close.toFixed(2)}` : "—"}
+                        </td>
+
+                        {/* 200 SMA */}
+                        <td className="py-1.5 px-3 text-right text-slate-400 font-mono tabular-nums text-[12px]">
+                          {c.sma_200 !== null ? `₹${c.sma_200.toFixed(2)}` : "—"}
+                        </td>
+
+                        {/* Debt / Equity */}
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums text-[12px]">
+                          <span className={c.debt_to_equity !== null && c.debt_to_equity < 0.5 ? "text-emerald-400" : "text-amber-400"}>
+                            {c.debt_to_equity !== null ? c.debt_to_equity.toFixed(3) : "—"}
                           </span>
-                        </Link>
-                      </td>
+                        </td>
 
-                      <td className="py-3 px-3 text-slate-300">
-                        <span className="truncate max-w-[130px] block" title={c.sector}>
-                          {c.sector}
-                        </span>
-                      </td>
+                        {/* ROE % */}
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums text-[12px]">
+                          {c.roe_pct !== null ? (
+                            <span
+                              className={
+                                c.roe_pct > 25.0
+                                  ? "bg-emerald-500/10 text-emerald-300 font-semibold px-1.5 py-0.2 rounded border border-emerald-500/20 text-[11px]"
+                                  : c.roe_pct > 15.0
+                                  ? "text-emerald-400 font-semibold"
+                                  : "text-slate-300"
+                              }
+                            >
+                              {c.roe_pct.toFixed(1)}%
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
 
-                      <td className="py-3 px-3 text-right font-bold text-slate-100">
-                        {c.close !== null ? `₹${c.close.toFixed(2)}` : "—"}
-                      </td>
+                        {/* OPM % */}
+                        <td className="py-1.5 px-3 text-right text-slate-300 font-mono tabular-nums text-[12px]">
+                          {c.opm_pct !== null ? `${c.opm_pct.toFixed(1)}%` : "—"}
+                        </td>
 
-                      <td className="py-3 px-3 text-right text-slate-400">
-                        {c.sma_200 !== null ? `₹${c.sma_200.toFixed(2)}` : "—"}
-                      </td>
+                        {/* 20-Day Excess Return */}
+                        <td className="py-1.5 px-3 text-right font-mono tabular-nums text-[12px]">
+                          {c.excess_ret_20d !== null ? (
+                            <span className={c.excess_ret_20d >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                              {c.excess_ret_20d >= 0 ? "+" : ""}{(c.excess_ret_20d * 100).toFixed(1)}%
+                            </span>
+                          ) : "—"}
+                        </td>
 
-                      <td className="py-3 px-3 text-right">
-                        <span className={c.debt_to_equity !== null && c.debt_to_equity < 0.5 ? "text-emerald-400" : "text-amber-400"}>
-                          {c.debt_to_equity !== null ? c.debt_to_equity.toFixed(4) : "—"}
-                        </span>
-                      </td>
+                        {/* Quality-Momentum Composite Score */}
+                        <td className="py-1.5 px-3 text-right">
+                          <ScreenerScoreCell score={score} />
+                        </td>
 
-                      <td className="py-3 px-3 text-right">
-                        {c.roe_pct !== null ? (
-                          <span
-                            className={
-                              c.roe_pct > 25.0
-                                ? "bg-emerald-500/10 text-emerald-300 font-semibold px-2 py-0.5 rounded border border-emerald-500/20"
-                                : c.roe_pct > 15.0
-                                ? "text-emerald-400 font-semibold"
-                                : "text-slate-300"
-                            }
+                        {/* Quick Inspect Trigger Pill */}
+                        <td className="py-1.5 px-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedSymbol(c.symbol);
+                            }}
+                            className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 hover:bg-cyan-900/60 transition-colors"
                           >
-                            {c.roe_pct.toFixed(2)}%
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
+                            Inspect
+                          </button>
+                        </td>
+                      </motion.tr>
+                    );
+                  })}
+                </AnimatePresence>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                      <td className="py-3 px-3 text-right text-slate-300">
-                        {c.opm_pct !== null ? `${c.opm_pct.toFixed(2)}%` : "—"}
-                      </td>
-
-                      <td className="py-3 px-3 text-right">
-                        {c.excess_ret_20d !== null ? (
-                          <span className={c.excess_ret_20d >= 0 ? "text-emerald-400" : "text-red-400"}>
-                            {c.excess_ret_20d >= 0 ? "+" : ""}{(c.excess_ret_20d * 100).toFixed(2)}%
-                          </span>
-                        ) : "—"}
-                      </td>
-
-                      <td className="py-3 px-4 text-right">
-                        <ScreenerScoreCell score={score} />
-                      </td>
-
-                      <td className="py-3 px-3 text-center">
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                            isWatchlist
-                              ? "bg-cyan-950 text-cyan-300 border border-cyan-800/80"
-                              : "bg-slate-800 text-slate-400"
-                          }`}
-                        >
-                          {isWatchlist ? "WATCHLIST" : "NIFTY 50"}
-                        </span>
-                      </td>
-                    </motion.tr>
-                  );
-                })}
-              </AnimatePresence>
-            )}
-          </tbody>
-        </table>
+        {/* Footer Summary */}
+        <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono pt-0.5">
+          <span>Displaying {filteredCandidates.length} of {candidates.length} universe securities</span>
+          <span className="hidden sm:inline">Sorted: Composite Quality-Momentum Score (Desc) &middot; Click any row to Inspect</span>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between text-xs text-slate-500 font-mono pt-1">
-        <span>Showing {filteredCandidates.length} of {candidates.length} securities</span>
-        <span className="hidden sm:inline">Sorting: Descending Composite Quality-Momentum Score</span>
-      </div>
-    </div>
+      {/* Quick-Inspect Slide-Over Drawer */}
+      <AnimatePresence>
+        {selectedSymbol && (
+          <QuickInspectDrawer
+            symbol={selectedSymbol}
+            onClose={() => setSelectedSymbol(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }

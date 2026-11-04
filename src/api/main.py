@@ -109,7 +109,7 @@ def get_screener(
     price_above_sma200: Optional[bool] = Query(None, description="Filter for Price > 200-day SMA"),
     exclude_financials: bool = Query(False, description="Exclude Financial Services sector"),
     include_watchlists: bool = Query(True, description="Include onboarded user watchlists"),
-    limit: int = Query(50, ge=1, le=100, description="Max results to return")
+    limit: int = Query(200, ge=1, le=500, description="Max results to return")
 ):
     """
     Returns top-ranked stocks from the latest trading session in quant_factors_daily
