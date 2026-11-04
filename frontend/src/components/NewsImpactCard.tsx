@@ -86,7 +86,7 @@ export default function NewsImpactCard({ symbol, articles = [], loading = false 
             Real-Time News & Directional Impact Engine
           </h2>
           <span className="text-xs px-2 py-0.5 rounded-full font-mono bg-cyan-950/60 text-cyan-400 border border-cyan-800/50">
-            B7.5 Live RSS
+            Exchange Regulatory Wire (RSS)
           </span>
         </div>
 

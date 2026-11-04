@@ -3,6 +3,8 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { Search, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ScreenerScoreCell } from "./ScreenerScoreCell";
 
 export interface ScreenerCandidate {
   rank: number;
@@ -116,7 +118,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
           <span>Filters:</span>
         </span>
 
-        {/* Milestone B4.2 Preset Button */}
+        {/* High Conviction Preset Button */}
         <button
           onClick={() => {
             setMinRoe(15.0);
@@ -131,7 +133,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
               : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
           }`}
         >
-          ⚡ Milestone B4.2 Strict Screen
+          ⚡ High Conviction Quality Screen
         </button>
 
         <button
@@ -196,12 +198,12 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
       </div>
 
       {/* Candidates Table */}
-      <div className="overflow-x-auto rounded-lg border border-slate-800">
-        <table className="w-full text-left text-xs font-mono">
-          <thead className="bg-slate-950 text-slate-400 uppercase text-[11px] tracking-wider border-b border-slate-800">
+      <div className="overflow-x-auto rounded-lg border border-slate-800 relative shadow-inner">
+        <table className="w-full text-left text-xs font-mono border-collapse">
+          <thead className="bg-[#070c18] text-slate-400 uppercase text-[11px] tracking-wider border-b border-slate-800">
             <tr>
-              <th scope="col" className="py-3 px-3 w-12 text-center">#</th>
-              <th scope="col" className="py-3 px-4">Symbol / Name</th>
+              <th scope="col" className="sticky left-0 bg-[#070c18]/95 backdrop-blur-md z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-3 w-12 text-center">#</th>
+              <th scope="col" className="sticky left-12 bg-[#070c18]/95 backdrop-blur-md z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-4 min-w-[200px]">Symbol / Name</th>
               <th scope="col" className="py-3 px-3">Sector</th>
               <th scope="col" className="py-3 px-3 text-right">Close (₹)</th>
               <th scope="col" className="py-3 px-3 text-right">200 SMA</th>
@@ -209,7 +211,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
               <th scope="col" className="py-3 px-3 text-right">ROE %</th>
               <th scope="col" className="py-3 px-3 text-right">OPM %</th>
               <th scope="col" className="py-3 px-3 text-right">Excess (20D)</th>
-              <th scope="col" className="py-3 px-4 text-center">Score</th>
+              <th scope="col" className="py-3 px-4 text-right min-w-[140px]">Score</th>
               <th scope="col" className="py-3 px-3 text-center">Type</th>
             </tr>
           </thead>
@@ -227,99 +229,108 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
                 </td>
               </tr>
             ) : (
-              filteredCandidates.map((c, idx) => {
-                const isWatchlist = c.is_watchlist;
-                const score = c.composite_score || 0;
-                return (
-                  <tr
-                    key={c.symbol}
-                    className="hover:bg-slate-800/40 transition-colors group"
-                  >
-                    <td className="py-3 px-3 text-center font-bold text-slate-500">
-                      {idx + 1}
-                    </td>
+              <AnimatePresence mode="popLayout">
+                {filteredCandidates.map((c, idx) => {
+                  const isWatchlist = c.is_watchlist;
+                  const score = c.composite_score || 0;
+                  return (
+                    <motion.tr
+                      key={c.symbol}
+                      layout
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ type: "spring", stiffness: 260, damping: 24 }}
+                      className="hover:bg-slate-800/40 transition-colors group"
+                    >
+                      <td className="sticky left-0 bg-[#070c18]/95 backdrop-blur-md z-10 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-3 text-center font-bold text-slate-500">
+                        {idx + 1}
+                      </td>
 
-                    <td className="py-3 px-4">
-                      <Link
-                        href={`/stocks/${c.symbol}`}
-                        className="flex flex-col group-hover:text-cyan-400 transition-colors"
-                      >
-                        <span className="font-bold text-slate-100 flex items-center space-x-1">
-                          <span>{c.symbol}</span>
-                          <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <td className="sticky left-12 bg-[#070c18]/95 backdrop-blur-md z-10 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-3 px-4">
+                        <Link
+                          href={`/stocks/${c.symbol}`}
+                          className="flex flex-col group-hover:text-cyan-400 transition-colors"
+                        >
+                          <span className="font-bold text-slate-100 flex items-center space-x-1">
+                            <span>{c.symbol}</span>
+                            <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </span>
+                          <span className="text-[11px] text-slate-400 truncate max-w-[170px]" title={c.company_name}>
+                            {c.company_name}
+                          </span>
+                        </Link>
+                      </td>
+
+                      <td className="py-3 px-3 text-slate-300">
+                        <span className="truncate max-w-[130px] block" title={c.sector}>
+                          {c.sector}
                         </span>
-                        <span className="text-[11px] text-slate-400 truncate max-w-[170px]" title={c.company_name}>
-                          {c.company_name}
+                      </td>
+
+                      <td className="py-3 px-3 text-right font-bold text-slate-100">
+                        {c.close !== null ? `₹${c.close.toFixed(2)}` : "—"}
+                      </td>
+
+                      <td className="py-3 px-3 text-right text-slate-400">
+                        {c.sma_200 !== null ? `₹${c.sma_200.toFixed(2)}` : "—"}
+                      </td>
+
+                      <td className="py-3 px-3 text-right">
+                        <span className={c.debt_to_equity !== null && c.debt_to_equity < 0.5 ? "text-emerald-400" : "text-amber-400"}>
+                          {c.debt_to_equity !== null ? c.debt_to_equity.toFixed(4) : "—"}
                         </span>
-                      </Link>
-                    </td>
+                      </td>
 
-                    <td className="py-3 px-3 text-slate-300">
-                      <span className="truncate max-w-[130px] block" title={c.sector}>
-                        {c.sector}
-                      </span>
-                    </td>
+                      <td className="py-3 px-3 text-right">
+                        {c.roe_pct !== null ? (
+                          <span
+                            className={
+                              c.roe_pct > 25.0
+                                ? "bg-emerald-500/10 text-emerald-300 font-semibold px-2 py-0.5 rounded border border-emerald-500/20"
+                                : c.roe_pct > 15.0
+                                ? "text-emerald-400 font-semibold"
+                                : "text-slate-300"
+                            }
+                          >
+                            {c.roe_pct.toFixed(2)}%
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
 
-                    <td className="py-3 px-3 text-right font-bold text-slate-100">
-                      {c.close !== null ? `₹${c.close.toFixed(2)}` : "—"}
-                    </td>
+                      <td className="py-3 px-3 text-right text-slate-300">
+                        {c.opm_pct !== null ? `${c.opm_pct.toFixed(2)}%` : "—"}
+                      </td>
 
-                    <td className="py-3 px-3 text-right text-slate-400">
-                      {c.sma_200 !== null ? `₹${c.sma_200.toFixed(2)}` : "—"}
-                    </td>
+                      <td className="py-3 px-3 text-right">
+                        {c.excess_ret_20d !== null ? (
+                          <span className={c.excess_ret_20d >= 0 ? "text-emerald-400" : "text-red-400"}>
+                            {c.excess_ret_20d >= 0 ? "+" : ""}{(c.excess_ret_20d * 100).toFixed(2)}%
+                          </span>
+                        ) : "—"}
+                      </td>
 
-                    <td className="py-3 px-3 text-right">
-                      <span className={c.debt_to_equity !== null && c.debt_to_equity < 0.5 ? "text-emerald-400" : "text-amber-400"}>
-                        {c.debt_to_equity !== null ? c.debt_to_equity.toFixed(4) : "—"}
-                      </span>
-                    </td>
+                      <td className="py-3 px-4 text-right">
+                        <ScreenerScoreCell score={score} />
+                      </td>
 
-                    <td className="py-3 px-3 text-right">
-                      <span className={c.roe_pct !== null && c.roe_pct > 15.0 ? "text-emerald-400 font-semibold" : "text-slate-300"}>
-                        {c.roe_pct !== null ? `${c.roe_pct.toFixed(2)}%` : "—"}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-3 text-right text-slate-300">
-                      {c.opm_pct !== null ? `${c.opm_pct.toFixed(2)}%` : "—"}
-                    </td>
-
-                    <td className="py-3 px-3 text-right">
-                      {c.excess_ret_20d !== null ? (
-                        <span className={c.excess_ret_20d >= 0 ? "text-emerald-400" : "text-red-400"}>
-                          {c.excess_ret_20d >= 0 ? "+" : ""}{(c.excess_ret_20d * 100).toFixed(2)}%
+                      <td className="py-3 px-3 text-center">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                            isWatchlist
+                              ? "bg-cyan-950 text-cyan-300 border border-cyan-800/80"
+                              : "bg-slate-800 text-slate-400"
+                          }`}
+                        >
+                          {isWatchlist ? "WATCHLIST" : "NIFTY 50"}
                         </span>
-                      ) : "—"}
-                    </td>
-
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden hidden sm:block">
-                          <div
-                            className="bg-gradient-to-r from-cyan-500 to-indigo-500 h-full rounded-full"
-                            style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
-                          />
-                        </div>
-                        <span className="font-extrabold text-cyan-400 font-mono">
-                          {score.toFixed(1)}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-3 text-center">
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                          isWatchlist
-                            ? "bg-cyan-950 text-cyan-300 border border-cyan-800/80"
-                            : "bg-slate-800 text-slate-400"
-                        }`}
-                      >
-                        {isWatchlist ? "WATCHLIST" : "NIFTY 50"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })
+                      </td>
+                    </motion.tr>
+                  );
+                })}
+              </AnimatePresence>
             )}
           </tbody>
         </table>

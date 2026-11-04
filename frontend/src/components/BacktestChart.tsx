@@ -114,7 +114,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
       title: "NIFTY 50 TRI",
     });
 
-    // 2. Drawdown Chart
+    // 2. Drawdown Chart with dark rose area gradient fill
     const ddWidth = drawdownChartContainerRef.current.clientWidth || 800;
     const ddChart = createChart(drawdownChartContainerRef.current, {
       ...commonOptions,
@@ -129,8 +129,8 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
 
     const ddStrategySeries = ddChart.addSeries(AreaSeries, {
       lineColor: "#f43f5e",
-      topColor: "rgba(244, 63, 94, 0.4)",
-      bottomColor: "rgba(244, 63, 94, 0.02)",
+      topColor: "rgba(244, 63, 94, 0.45)",
+      bottomColor: "rgba(136, 19, 55, 0.02)",
       lineWidth: 2,
       title: "Strategy DD %",
     });
@@ -163,6 +163,14 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
     eqChart.timeScale().fitContent();
     ddChart.timeScale().fitContent();
 
+    // Two-way logical range synchronization
+    eqChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (range) ddChart.timeScale().setVisibleLogicalRange(range);
+    });
+    ddChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (range) eqChart.timeScale().setVisibleLogicalRange(range);
+    });
+
     // Crosshair hover sync
     eqChart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) {
@@ -181,6 +189,21 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
           benchmark: bVal.value,
           drawdown: matched?.drawdown_pct || 0.0,
           benchmarkDrawdown: matched?.benchmark_drawdown_pct || 0.0,
+        });
+      }
+    });
+
+    ddChart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.seriesData) return;
+      const timeStr = String(param.time);
+      const matched = data.find((d) => d.trading_date === timeStr);
+      if (matched) {
+        setHoveredPoint({
+          date: timeStr,
+          portfolio: matched.portfolio_value,
+          benchmark: matched.benchmark_value,
+          drawdown: matched.drawdown_pct || 0.0,
+          benchmarkDrawdown: matched.benchmark_drawdown_pct || 0.0,
         });
       }
     });

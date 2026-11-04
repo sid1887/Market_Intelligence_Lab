@@ -210,7 +210,7 @@ export default function BacktestPage() {
                 Systematic Strategy Backtest Terminal
               </h1>
               <span className="text-xs px-2.5 py-0.5 rounded-full font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 font-semibold">
-                Milestone B8.0
+                Engine v2.4 · Point-in-Time Model
               </span>
             </div>
             <p className="text-sm text-slate-400 mt-1">
@@ -224,14 +224,14 @@ export default function BacktestPage() {
               disabled={running}
               className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg text-sm font-semibold font-mono transition-all shadow-lg ${
                 running
-                  ? "bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700"
+                  ? "bg-slate-900 border border-cyan-500/50 text-cyan-300 cursor-not-allowed shadow-cyan-950/50 animate-pulse"
                   : "bg-gradient-to-r from-cyan-500 to-blue-600 text-black hover:from-cyan-400 hover:to-blue-500 shadow-cyan-900/30"
               }`}
             >
               {running ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Simulating...</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                  <span className="animate-pulse">Simulating Trading Days...</span>
                 </>
               ) : (
                 <>

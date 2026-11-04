@@ -10,9 +10,10 @@ import {
   Sparkles,
   Globe,
   Building2,
-  Loader2,
-  Award
+  Loader2
 } from "lucide-react";
+import { motion } from "framer-motion";
+import { RadialConvictionGauge } from "./RadialConvictionGauge";
 
 export interface DiagnosticItem {
   id: string;
@@ -183,23 +184,6 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
   };
 
   const score = memo.institutional_conviction_score;
-  const scoreColor =
-    score >= 75
-      ? "text-emerald-400"
-      : score >= 60
-      ? "text-cyan-400"
-      : score >= 40
-      ? "text-amber-400"
-      : "text-rose-400";
-
-  const scoreBarColor =
-    score >= 75
-      ? "bg-emerald-500"
-      : score >= 60
-      ? "bg-cyan-500"
-      : score >= 40
-      ? "bg-amber-500"
-      : "bg-rose-500";
 
   return (
     <div className={`bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl backdrop-blur-md space-y-6 ${verdictConfig.glow}`}>
@@ -224,22 +208,15 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
         {/* Verdict Badge & Conviction Score */}
         <div className="flex flex-wrap items-center gap-4">
           {/* Institutional Conviction Meter */}
-          <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 flex items-center space-x-3 font-mono">
-            <Award className={`w-6 h-6 ${scoreColor}`} />
+          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex items-center space-x-3.5 font-mono shadow-inner">
+            <RadialConvictionGauge score={score} />
             <div>
-              <div className="flex items-baseline space-x-1">
-                <span className={`text-2xl font-black ${scoreColor}`}>{score}</span>
-                <span className="text-xs text-slate-500">/100</span>
-              </div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-white uppercase tracking-wider block">
                 Conviction Score
               </span>
-            </div>
-            <div className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden ml-2 hidden sm:block">
-              <div
-                className={`h-full ${scoreBarColor} rounded-full transition-all duration-500`}
-                style={{ width: `${score}%` }}
-              />
+              <span className="text-[10px] text-slate-400 block max-w-[120px] leading-tight">
+                Empirically weighted multi-factor gauge
+              </span>
             </div>
           </div>
 
@@ -338,35 +315,65 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
       {/* 4. Two-Column Synthesis: Bull Case vs Bear Risks */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 font-mono">
         {/* Bull Case */}
-        <div className="bg-emerald-950/20 border border-emerald-900/50 rounded-xl p-4.5 space-y-3">
+        <div className="bg-emerald-950/20 border-l-4 border-l-emerald-500 border border-emerald-900/50 rounded-xl p-4.5 space-y-3">
           <div className="flex items-center space-x-2 text-emerald-400 font-bold text-xs pb-2 border-b border-emerald-900/40">
             <TrendingUp className="w-4 h-4" />
-            <span>Bull Case: 3 Quantified Growth Catalysts</span>
+            <span>Bull Case: Quantified Growth Catalysts</span>
           </div>
-          <ul className="space-y-2 text-[11px] text-slate-300">
+          <motion.ul
+            initial="hidden"
+            animate="visible"
+            variants={{
+              hidden: { opacity: 0 },
+              visible: { opacity: 1, transition: { staggerChildren: 0.12 } },
+            }}
+            className="space-y-2 text-[11px] text-slate-300"
+          >
             {memo.bull_case.map((point, idx) => (
-              <li key={idx} className="flex items-start space-x-2.5">
+              <motion.li
+                key={idx}
+                variants={{
+                  hidden: { opacity: 0, x: -10 },
+                  visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
+                }}
+                className="flex items-start space-x-2.5"
+              >
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <span className="leading-relaxed">{point}</span>
-              </li>
+              </motion.li>
             ))}
-          </ul>
+          </motion.ul>
         </div>
 
         {/* Bear Case */}
-        <div className="bg-rose-950/20 border border-rose-900/50 rounded-xl p-4.5 space-y-3">
+        <div className="bg-rose-950/20 border-l-4 border-l-rose-500 border border-rose-900/50 rounded-xl p-4.5 space-y-3">
           <div className="flex items-center space-x-2 text-rose-400 font-bold text-xs pb-2 border-b border-rose-900/40">
             <TrendingDown className="w-4 h-4" />
-            <span>Bear Case: 3 Structural Headwinds &amp; Tail Risks</span>
+            <span>Bear Case: Structural Headwinds &amp; Tail Risks</span>
           </div>
-          <ul className="space-y-2 text-[11px] text-slate-300">
+          <motion.ul
+            initial="hidden"
+            animate="visible"
+            variants={{
+              hidden: { opacity: 0 },
+              visible: { opacity: 1, transition: { staggerChildren: 0.12 } },
+            }}
+            className="space-y-2 text-[11px] text-slate-300"
+          >
             {memo.bear_case.map((point, idx) => (
-              <li key={idx} className="flex items-start space-x-2.5">
+              <motion.li
+                key={idx}
+                variants={{
+                  hidden: { opacity: 0, x: 10 },
+                  visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
+                }}
+                className="flex items-start space-x-2.5"
+              >
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <span className="leading-relaxed">{point}</span>
-              </li>
+              </motion.li>
             ))}
-          </ul>
+          </motion.ul>
         </div>
       </div>
 

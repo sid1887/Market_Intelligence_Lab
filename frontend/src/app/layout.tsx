@@ -20,7 +20,7 @@ export default function RootLayout({
           {children}
         </main>
         <footer className="border-t border-slate-900 bg-slate-950/90 py-6 text-center text-xs text-slate-500 font-mono">
-          Market Intelligence Lab · Local SQLite WAL Architecture · Quantitative Research Engine · No Execution Capabilities
+          Market Intelligence Lab · Deterministic Quantitative Attribution Engine · Non-Custodial Research Terminal
         </footer>
       </body>
     </html>

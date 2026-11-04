@@ -6,9 +6,9 @@ import {
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
+  AreaSeries,
   ColorType,
   CrosshairMode,
-  LineStyle,
   IChartApi,
   ISeriesApi
 } from "lightweight-charts";
@@ -185,40 +185,43 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
     candlestickSeries.setData(candlePayload);
     volumeSeries.setData(volumePayload);
 
-    // 3. Econometric Forecast Cones (B7.0 Walk-Forward Projection)
+    // 3. Econometric Forecast Cones (B7.0 / B10.0 Walk-Forward Shaded Area Projection)
     const lastBar = sortedData[sortedData.length - 1];
 
     if (showForecast && forecast && forecast.projections && forecast.projections.length > 0 && lastBar) {
       const anchorPoint = { time: lastBar.time, value: lastBar.close };
 
-      // (A) Expected Trajectory (Dashed Cyan Line)
-      const expectedSeries = chart.addSeries(LineSeries, {
-        color: "#06b6d4",
-        lineWidth: 2,
-        lineStyle: LineStyle.Dashed,
-        title: "Expected Path"
+      // (A) 95% Confidence Cone (0.06 opacity shaded area)
+      const cone95Series = chart.addSeries(AreaSeries, {
+        topColor: "rgba(6, 182, 212, 0.06)",
+        bottomColor: "rgba(6, 182, 212, 0.06)",
+        lineColor: "rgba(6, 182, 212, 0.3)",
+        lineWidth: 1,
+        title: "95% Cone"
       });
-      expectedSeries.setData([
+      cone95Series.setData([
         anchorPoint,
-        ...forecast.projections.map(p => ({ time: p.target_date, value: p.expected }))
+        ...forecast.projections.map(p => ({ time: p.target_date, value: p.upper_95 }))
       ]);
 
-      // (B) 80% Confidence Interval Envelope (Semi-Transparent Cyan Lines)
-      const upper80Series = chart.addSeries(LineSeries, {
-        color: "rgba(6, 182, 212, 0.75)",
+      // (B) 80% Confidence Cone (0.16 opacity shaded area)
+      const cone80Series = chart.addSeries(AreaSeries, {
+        topColor: "rgba(6, 182, 212, 0.16)",
+        bottomColor: "rgba(6, 182, 212, 0.16)",
+        lineColor: "rgba(6, 182, 212, 0.6)",
         lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
-        title: "Upper 80%"
+        title: "80% Cone"
       });
-      upper80Series.setData([
+      cone80Series.setData([
         anchorPoint,
         ...forecast.projections.map(p => ({ time: p.target_date, value: p.upper_80 }))
       ]);
 
+      // (C) Lower Envelope Boundaries
       const lower80Series = chart.addSeries(LineSeries, {
-        color: "rgba(6, 182, 212, 0.75)",
+        color: "rgba(6, 182, 212, 0.6)",
         lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
+        lineStyle: 2, // Dashed
         title: "Lower 80%"
       });
       lower80Series.setData([
@@ -226,27 +229,27 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
         ...forecast.projections.map(p => ({ time: p.target_date, value: p.lower_80 }))
       ]);
 
-      // (C) 95% Confidence Interval Envelope (Faint Blue Outer Bounds)
-      const upper95Series = chart.addSeries(LineSeries, {
-        color: "rgba(96, 165, 250, 0.45)",
-        lineWidth: 1,
-        lineStyle: LineStyle.Solid,
-        title: "Upper 95%"
-      });
-      upper95Series.setData([
-        anchorPoint,
-        ...forecast.projections.map(p => ({ time: p.target_date, value: p.upper_95 }))
-      ]);
-
       const lower95Series = chart.addSeries(LineSeries, {
-        color: "rgba(96, 165, 250, 0.45)",
+        color: "rgba(6, 182, 212, 0.3)",
         lineWidth: 1,
-        lineStyle: LineStyle.Solid,
+        lineStyle: 2, // Dashed
         title: "Lower 95%"
       });
       lower95Series.setData([
         anchorPoint,
         ...forecast.projections.map(p => ({ time: p.target_date, value: p.lower_95 }))
+      ]);
+
+      // (D) Central Expected Trajectory (Dashed Cyan Line)
+      const expectedSeries = chart.addSeries(LineSeries, {
+        color: "#06b6d4",
+        lineWidth: 2,
+        lineStyle: 2, // LineStyle.Dashed
+        title: "Expected Path"
+      });
+      expectedSeries.setData([
+        anchorPoint,
+        ...forecast.projections.map(p => ({ time: p.target_date, value: p.expected }))
       ]);
     }
 
