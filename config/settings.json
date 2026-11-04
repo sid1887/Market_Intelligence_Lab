@@ -1,0 +1,38 @@
+{
+  "project_name": "Market Intelligence Lab",
+  "version": "0.2.0",
+  "offline_mode": true,
+  "network_access_enabled": false,
+  "database_path": "data/market_lab.db",
+  "raw_data_dir": "data/raw",
+  "reports_dir": "reports",
+  "nse_mcp": {
+    "bhavcopy_endpoint": "https://mcp.nseindia.in/bhavcopy/cm/mcp",
+    "cm_market_endpoint": "https://mcp.nseindia.in/cmmkt/mcp",
+    "timeout_seconds": 12,
+    "max_affinity_retries": 6,
+    "max_reinit_attempts": 3
+  },
+  "nsearchives": {
+    "udiff_bhavcopy_url_template": "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date_str}_F_0000.csv.zip",
+    "nifty50_constituents_url": "https://nsearchives.nseindia.com/content/indices/ind_nifty50list.csv"
+  },
+  "nifty_indices": {
+    "pri_historical_endpoint": "https://www.niftyindices.com/BackPage/getHistoricaldatatabletoString",
+    "tri_historical_endpoint": "https://www.niftyindices.com/BackPage/getTotalReturnIndexString",
+    "default_benchmark": "NIFTY 50",
+    "default_mode": "PRI",
+    "secondary_mode": "TRI"
+  },
+  "scheduler": {
+    "eod_poll_start_ist": "16:30",
+    "eod_poll_end_ist": "20:30",
+    "poll_interval_minutes": 15,
+    "max_retries": 16,
+    "total_attempts": 17
+  },
+  "compliance": {
+    "execution_enabled": false,
+    "environment": "research_only"
+  }
+}

@@ -1,0 +1,22 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Database backups & local scratch files
+data/market_lab_pre_b3_backup*.db
+backups/
+data/raw/
+*.log
+.system_generated/
+
+# OS artifacts
+.DS_Store
+Thumbs.db

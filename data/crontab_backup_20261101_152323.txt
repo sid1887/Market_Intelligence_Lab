@@ -1,0 +1,14 @@
+# BEGIN MARKET_INTELLIGENCE_LAB_CRON
+# ==============================================================================
+# Market Intelligence Lab — Production Scheduling (Asia/Kolkata)
+# ==============================================================================
+# 1. Primary Daily Post-Market Workflow (Monday through Friday at 16:30 IST)
+# Bounded polling for CM-UDiFF Final Bhavcopy (17 attempts, 15m intervals to 20:30 IST),
+# trading calendar preflight, quant factors, breadth, volume anomalies, and reports.
+30 16 * * 1-5 /home/siddharth/Desktop/Market_Intelligence_Lab/scripts/cron_market_lab.sh >> /home/siddharth/Desktop/Market_Intelligence_Lab/data/cron.log 2>&1
+
+# 2. Daily Morning Recovery Scan (Daily at 08:30 IST, including Monday catch-up)
+# Scans lookback window for uningested trading days or pending releases; exits
+# cleanly in milliseconds without unnecessary requests if data is up to date.
+30 08 * * * /home/siddharth/Desktop/Market_Intelligence_Lab/scripts/cron_market_lab.sh --recovery >> /home/siddharth/Desktop/Market_Intelligence_Lab/data/cron_recovery.log 2>&1
+# END MARKET_INTELLIGENCE_LAB_CRON

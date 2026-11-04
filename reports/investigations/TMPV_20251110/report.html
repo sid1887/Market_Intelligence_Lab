@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Investigation Report: Tata Motors Passenger Vehicles Ltd. (TMPV) - 2025-11-10</title>
+<style>
+  :root {
+    --primary: #0f172a;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --card-bg: #ffffff;
+    --bg: #f8fafc;
+    --accent: #2563eb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background-color: var(--bg);
+    line-height: 1.5;
+    padding: 32px 16px;
+  }
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    padding: 36px 44px;
+  }
+  header {
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 28px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  h1 { font-size: 26px; color: var(--primary); margin-top: 12px; margin-bottom: 6px; }
+  .meta-sub { color: var(--text-muted); font-size: 14px; font-weight: 500; }
+  section { margin-bottom: 32px; }
+  h2 {
+    font-size: 18px;
+    color: var(--primary);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  h3 { font-size: 15px; color: #334155; margin: 16px 0 8px 0; }
+  p { margin-bottom: 12px; font-size: 14.5px; color: #334155; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+    font-size: 13.5px;
+  }
+  th, td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th { background-color: #f1f5f9; color: #334155; font-weight: 600; }
+  tr:hover { background-color: #f8fafc; }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .callout {
+    background-color: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    color: #1e3a8a;
+  }
+  .warning-callout {
+    background-color: #fef2f2;
+    border-left: 4px solid #ef4444;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    color: #991b1b;
+  }
+  .hash-box {
+    background: #f1f5f9;
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    word-break: break-all;
+    color: #475569;
+  }
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="badge" style="color:#2563eb; background-color:#dbeafe;">MODERATE_CONFIDENCE</span>
+      <span style="font-size:12px; color:var(--text-muted); font-family:monospace;">ID: EXP_TMPV_20251110</span>
+    </div>
+    <h1>Tata Motors Passenger Vehicles Ltd. (TMPV)</h1>
+    <div class="meta-sub">
+      Trading Date: <strong>2025-11-10</strong> | Sector: <strong>Automobile and Auto Components</strong> | Primary Classification: <strong>INSUFFICIENT_DATA</strong>
+    </div>
+  </header>
+
+  <!-- Section A & B: Executive Summary -->
+  <section>
+    <h2>Executive Summary</h2>
+    <p>On 2025-11-10, Tata Motors Passenger Vehicles Ltd. (TMPV) rose 1.17% (Close: ₹410.45) with an unadjusted raw return of +1.17%. The movement was classified as 'INSUFFICIENT_DATA'.</p>
+    <p><strong>Relative Performance:</strong> Against broad-market benchmark NIFTY 50 (+0.32%), the stock exhibited an excess return of +0.85%. Compared to sector benchmark NIFTY AUTO (+0.30%), the sector-adjusted return (SAR) was +0.87%.</p>
+    <p><strong>Systematic Coupling:</strong> The price action did not exhibit strong systematic coupling; classified as idiosyncratic or routine drift.</p>
+    <p><strong>Strongest Hypothesis:</strong> The highest-ranked explanatory candidate is 'EV_FS_TMPV_Q2_FY26_CONS_V1' with an evidence strength score of 65.0/100.0 (MODERATE_CONFIDENCE).</p>
+    <div class="callout">
+      <strong>Methodological Note:</strong> Methodological Note: The evidence strength score (0.0 to 100.0) is a deterministic heuristic measuring evidence quality, temporal proximity, and directional consistency. It is NOT a statistical probability or a calibrated confidence interval.
+    </div>
+  </section>
+
+  <!-- Visual Evidence Charts -->
+  <section>
+    <h2>Visual Movement Decomposition</h2>
+    <div class="chart-grid">
+      <div><svg width="560" height="180" viewBox="0 0 560 180" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="180" fill="#f8fafc" rx="6" />
+  <text x="20" y="24" font-size="12" font-weight="700" fill="#334155">1-DAY PERFORMANCE DECOMPOSITION (PRI BASIS)</text>
+  <line x1="280" y1="30" x2="280" y2="165" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 3" />
+  <text x="280" y="176" font-size="10" fill="#64748b" text-anchor="middle">0.0% Baseline</text>
+  <text x="20" y="51" font-size="11" font-weight="600" fill="#1e293b">TMPV</text>
+  <rect x="280" y="35" width="93" height="24" fill="#16a34a" rx="3" />
+  <text x="379" y="51" font-size="11" font-weight="700" fill="#16a34a" text-anchor="start">+1.17%</text>
+  <text x="20" y="89" font-size="11" font-weight="600" fill="#1e293b">NIFTY 50 (PRI)</text>
+  <rect x="280" y="73" width="25" height="24" fill="#16a34a" rx="3" />
+  <text x="311" y="89" font-size="11" font-weight="700" fill="#16a34a" text-anchor="start">+0.32%</text>
+  <text x="20" y="127" font-size="11" font-weight="600" fill="#1e293b">NIFTY AUTO</text>
+  <rect x="280" y="111" width="23" height="24" fill="#16a34a" rx="3" />
+  <text x="309" y="127" font-size="11" font-weight="700" fill="#16a34a" text-anchor="start">+0.30%</text>
+</svg></div>
+      <div><svg width="560" height="150" viewBox="0 0 560 150" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="150" fill="#f8fafc" rx="6" />
+  <text x="20" y="22" font-size="12" font-weight="700" fill="#334155">INTRADAY PRICE DRIFT &amp; GAP DECOMPOSITION</text>
+  <line x1="280" y1="30" x2="280" y2="138" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 3" />
+  <text x="20" y="50" font-size="11" font-weight="600" fill="#1e293b">Overnight Gap</text>
+  <rect x="280" y="35" width="5" height="20" fill="#0284c7" rx="3" />
+  <text x="291" y="50" font-size="11" font-weight="700" fill="#0284c7" text-anchor="start">+0.07%</text>
+  <text x="20" y="82" font-size="11" font-weight="600" fill="#1e293b">Intraday Drift</text>
+  <rect x="280" y="67" width="87" height="20" fill="#8b5cf6" rx="3" />
+  <text x="373" y="82" font-size="11" font-weight="700" fill="#8b5cf6" text-anchor="start">+1.10%</text>
+  <text x="20" y="114" font-size="11" font-weight="600" fill="#1e293b">Net Return (Adj)</text>
+  <rect x="280" y="99" width="93" height="20" fill="#0d9488" rx="3" />
+  <text x="379" y="114" font-size="11" font-weight="700" fill="#0d9488" text-anchor="start">+1.17%</text>
+</svg></div>
+      <div><svg width="560" height="110" viewBox="0 0 560 110" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="110" fill="#f8fafc" rx="6" />
+  <text x="20" y="24" font-size="12" font-weight="700" fill="#334155">VOLUME &amp; LIQUIDITY ANOMALY INDICATOR</text>
+  <text x="540" y="24" font-size="11" font-weight="700" fill="#64748b" text-anchor="end">NORMAL / MUTED ACTIVITY (1.00x 20d SMA, Z=N/A)</text>
+  
+  <!-- Background Track -->
+  <rect x="20" y="45" width="440" height="20" fill="#e2e8f0" rx="4" />
+  
+  <!-- Active Bar -->
+  <rect x="20" y="45" width="110" height="20" fill="#64748b" rx="4" />
+  
+  <!-- Benchmark Markers -->
+  <line x1="130" y1="40" x2="130" y2="70" stroke="#0f172a" stroke-width="2" />
+  <text x="130" y="84" font-size="10" fill="#475569" text-anchor="middle">1.0x (Norm)</text>
+
+  <line x1="240" y1="40" x2="240" y2="70" stroke="#0f172a" stroke-width="2" />
+  <text x="240" y="84" font-size="10" fill="#475569" text-anchor="middle">2.0x (High)</text>
+
+  <line x1="350" y1="40" x2="350" y2="70" stroke="#0f172a" stroke-width="2" />
+  <text x="350" y="84" font-size="10" fill="#475569" text-anchor="middle">3.0x (Extreme)</text>
+</svg></div>
+      <div><svg width="560" height="210" viewBox="0 0 560 210" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="210" fill="#f8fafc" rx="6" />
+  <text x="20" y="24" font-size="12" font-weight="700" fill="#334155">EVIDENCE STRENGTH SCORE DECOMPOSITION</text>
+  <text x="540" y="24" font-size="13" font-weight="800" fill="#0f172a" text-anchor="end">Final Score: 65.0 / 100.0</text>
+  <text x="20" y="49" font-size="11" font-weight="500" fill="#475569">Base Tier Score</text>
+  <rect x="180" y="38" width="228" height="14" fill="#3b82f6" rx="2" />
+  <text x="414" y="49" font-size="10" font-weight="700" fill="#3b82f6">+50.0</text>
+  <text x="20" y="71" font-size="11" font-weight="500" fill="#475569">Temporal Timing</text>
+  <rect x="180" y="60" width="68" height="14" fill="#06b6d4" rx="2" />
+  <text x="254" y="71" font-size="10" font-weight="700" fill="#06b6d4">+15.0</text>
+</svg></div>
+    </div>
+  </section>
+
+  <!-- Section C: Quantitative Metrics -->
+  <section>
+    <h2>Market Movement Details</h2>
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Value</th><th>Context</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Adjusted Return</strong></td><td><strong>+1.17%</strong></td><td>Corporate action adjusted</td></tr>
+        <tr><td><strong>Raw Price Return</strong></td><td>+1.17%</td><td>Close: ₹410.45 vs Prev: ₹405.70</td></tr>
+        <tr><td><strong>NIFTY 50 PRI Return</strong></td><td>+0.32%</td><td>Official Market Benchmark</td></tr>
+        <tr><td><strong>Sector Return</strong></td><td>+0.30%</td><td>NIFTY AUTO (OFFICIAL_SECTOR_PRI)</td></tr>
+        <tr><td><strong>Abnormal Return (AR)</strong></td><td>Unavailable</td><td>OLS Model status: INSUFFICIENT_HISTORY (t = N/A)</td></tr>
+        <tr><td><strong>Sector-Adjusted Return (SAR)</strong></td><td>+0.87%</td><td>Net excess over sector</td></tr>
+        <tr><td><strong>Volume Ratio (20d)</strong></td><td>N/A</td><td>Spike Flag: No (Z=N/A)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Section D: Evidence Timeline -->
+  <section>
+    <h2>Chronological Evidence Timeline</h2>
+    <table>
+      <thead>
+        <tr><th>Session Date</th><th>Evidence ID</th><th>Category</th><th>Direction</th><th>Tier</th><th>Headline</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>2025-11-10</code></td>
+          <td><code>EV_FS_TMPV_Q2_FY26_CONS_V1</code></td>
+          <td>EARNINGS_RELEASE</td>
+          <td><strong>AMBIGUOUS</strong></td>
+          <td>T2</td>
+          <td>Quarterly Financial Statement (CONSOLIDATED V1): TMPV DISCRETE_QUARTER 2025-09-30</td>
+        </tr>
+        <tr>
+          <td><code>2025-11-10</code></td>
+          <td><code>EV_FS_TMPV_Q1_FY26_CONS_V2_RECAST</code></td>
+          <td>EARNINGS_REVISION</td>
+          <td><strong>AMBIGUOUS</strong></td>
+          <td>T2</td>
+          <td>Restated Financial Statement (CONSOLIDATED V2): TMPV DISCRETE_QUARTER 2025-06-30</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Excluded Evidence Records (Audit Trail)</h3>
+    <table>
+      <thead><tr><th>Evidence ID</th><th>Tier</th><th>Headline</th><th>Exclusion Reason</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260120_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.48%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-01-20 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_FS_TMPV_Q3_FY26_CONS_V1</code></td>
+          <td>T2</td>
+          <td>Quarterly Financial Statement (CONSOLIDATED V1): TMPV DISCRETE_QUARTER 2025-12-31</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-01-30 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260201_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.96%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260201_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.09%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260202_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.13%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-02 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260203_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+2.55%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-03 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260203_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.81%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-03 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260219_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.10%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-19 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260225_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.85%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-25 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260227_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.86%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-27 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260302_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.20%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-02 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260304_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.55%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260304_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.44%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260305_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.86%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-05 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260309_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.73%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260309_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-4.10%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260310_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+3.10%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-10 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260311_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-11 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260311_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-3.15%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-11 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260312_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-3.19%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-12 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260313_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.06%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-13 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260313_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-3.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-13 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260316_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.67%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-16 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260317_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.11%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-17 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260318_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.92%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-18 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260319_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-3.26%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260319_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-4.25%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260323_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260323_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-3.16%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260324_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.78%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-24 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260324_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.43%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-24 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260325_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.72%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260325_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.22%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260327_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.09%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260327_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.82%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260330_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.14%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260330_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.39%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260401_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.56%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-01 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260401_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.97%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-01 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260408_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+3.78%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260408_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+6.69%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260410_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.85%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-10 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260413_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.09%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-13 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260415_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-15 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260415_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.53%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-15 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260423_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.35%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-23 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260427_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.56%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-27 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260506_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.41%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-06 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260507_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.93%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-07 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_FS_TMPV_Q4_FY26_CONS_V1</code></td>
+          <td>T2</td>
+          <td>Quarterly Financial Statement (CONSOLIDATED V1): TMPV DISCRETE_QUARTER 2026-03-31</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-11 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260511_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.86%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-11 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260512_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.83%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-12 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260512_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.28%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-12 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260518_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.71%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-18 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260525_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.71%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-25 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260529_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.50%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-29 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260529_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.96%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-29 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260601_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.70%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-01 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260608_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.85%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-08 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260612_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.99%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-12 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260612_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.95%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-12 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260615_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-15 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_CA_TMPV_DIVIDEND_20260619_DIVIDEND_RS_3_PER_SHARE</code></td>
+          <td>T2</td>
+          <td>Corporate Action Ex-Date: TMPV Dividend - Rs 3 Per Share (Factor: 1.0)</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-19 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260625_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+2.25%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-25 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260629_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.08%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-29 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260708_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.12%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260708_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.23%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260714_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.61%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-14 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260727_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-27 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260730_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-30 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260731_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.64%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-31 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260803_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-08-03 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260807_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.84%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-08-07 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260902_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.79%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-02 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260915_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.01%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-15 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260924_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-24 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260924_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.57%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-24 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260928_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.56%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-28 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20260928_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.64%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-28 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20261001_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-3.46%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-01 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20261007_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.58%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-07 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20261008_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-08 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20261008_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-2.49%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-08 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20261013_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-13 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20261015_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.66%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-15 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20261015_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Surge (+1.67%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-15 > 2025-11-10)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_AUTO_20261021_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY AUTO Selloff (-1.54%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-21 > 2025-11-10)</span></td>
+        </tr></tbody></table>
+  </section>
+
+  <!-- Section E: Ranked Explanations -->
+  <section>
+    <h2>Ranked Explanatory Hypotheses</h2>
+    <table>
+      <thead>
+        <tr><th>Rank</th><th>Primary Evidence</th><th>Category / Role</th><th>Score</th><th>Confidence</th><th>Type</th><th>Contradicted</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td><code>EV_FS_TMPV_Q2_FY26_CONS_V1</code></td>
+          <td>INSUFFICIENT_DATA</td>
+          <td><strong>65.0</strong></td>
+          <td><span class="badge" style="font-size:11px; padding:2px 8px;">MODERATE_CONFIDENCE</span></td>
+          <td>Company-Specific</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td><code>EV_FS_TMPV_Q1_FY26_CONS_V2_RECAST</code></td>
+          <td>INSUFFICIENT_DATA</td>
+          <td><strong>65.0</strong></td>
+          <td><span class="badge" style="font-size:11px; padding:2px 8px;">MODERATE_CONFIDENCE</span></td>
+          <td>Company-Specific</td>
+          <td>No</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout" style="background:#f8fafc; border-left-color:#64748b; color:#334155;">
+      <strong>Attribution Rationale:</strong> Tier 2 base score: 50.0; Same-session announcement: +15.0; Financial statement evaluated with ExpectationSurprise.UNKNOWN; PAT sign does NOT award directional points.; Abnormal return unavailable (insufficient history): +0.0
+    </div>
+  </section>
+  <!-- Section G & H: Limitations & Assessment -->
+  <section>
+    <h2>Limitations &amp; Final Assessment</h2>
+    <div style="margin-bottom:16px;">
+      <strong>Final Outcome:</strong> <span style="font-size:16px; font-weight:700; color:#2563eb;">MODERATELY_SUPPORTED_EXPLANATION</span>
+    </div>
+    <p>The observed price action is MODERATELY SUPPORTED by candidate catalyst 'EV_FS_TMPV_Q2_FY26_CONS_V1'. While temporally coincident, unverified expectations or absence of independent corroboration preclude a definitive high-confidence conclusion.</p>
+    
+    <div style="margin-top:16px;">
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">AUDIT PROVENANCE HASH (SHA-256):</p>
+      <div class="hash-box">aa28d1395d599a612391fdfd5108a4f37876fb2f01e2d069429b6e127c7ec8ee</div>
+      <p style="font-size:11px; color:var(--text-muted); margin-top:4px;">Cryptographically protects canonical analytical payload (symbol, date, classifications, price action, ranked scores). Independent of presentation formatting.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>DATA GOVERNANCE NOTICE: Market Intelligence Lab operates on a frozen historical research benchmark (October 2024 – October 2026). Automated web scraping is paused in compliance with exchange terms. Commercial deployment or live simulation requires authorized data licensing or academic agreements.</p>
+    <p style="margin-top:4px;">Schema Version: 1.0.0 | Dataset: MIL_FROZEN_BENCHMARK_2024_2026_V1</p>
+  </footer>
+</div>
+</body>
+</html>

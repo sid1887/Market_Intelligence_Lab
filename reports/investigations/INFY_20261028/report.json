@@ -1,0 +1,309 @@
+{
+  "overview": {
+    "investigation_id": "EXP_INFY_20261028",
+    "symbol": "INFY",
+    "company_name": "Infosys Ltd.",
+    "isin": "INE009A01021",
+    "trading_date": "2026-10-28",
+    "sector": "Information Technology",
+    "industry": "Information Technology",
+    "reporting_basis": "CONSOLIDATED",
+    "is_standalone_isolated": false,
+    "primary_classification": "INSUFFICIENT_DATA",
+    "secondary_classifications": [],
+    "confidence_level": "MODERATE_CONFIDENCE",
+    "final_attribution_outcome": "MODERATELY_SUPPORTED_EXPLANATION",
+    "dataset_identifier": "MIL_FROZEN_BENCHMARK_2024_2026_V1",
+    "schema_version": "1.0.0",
+    "analyzer_version": "1.0.0",
+    "attribution_engine_version": "1.0.0",
+    "scoring_config_version": "1.0.0",
+    "generation_timestamp": "2026-11-01T11:15:30.893313+00:00"
+  },
+  "executive_summary": {
+    "narrative": "On 2026-10-28, Infosys Ltd. (INFY) declined 3.43% (Close: \u20b91,123.15) with an unadjusted raw return of -3.43%. The movement was classified as 'INSUFFICIENT_DATA'.",
+    "relative_performance_summary": "SAR was unavailable.",
+    "systematic_vs_idiosyncratic": "The price action did not exhibit strong systematic coupling; classified as idiosyncratic or routine drift.",
+    "strongest_hypothesis_summary": "The highest-ranked explanatory candidate is 'EV_DISC_INFY_DISC_20261023_Q2' with an evidence strength score of 55.0/100.0 (MODERATE_CONFIDENCE).",
+    "evidence_sufficiency": "Available evidence provides sufficient corroboration for the candidate explanation.",
+    "key_uncertainties": [
+      "Analyst consensus expectations unavailable in offline archive; quarterly financial statements evaluated under ExpectationSurprise.UNKNOWN.",
+      "Econometric Market Model status is 'BENCHMARK_UNAVAILABLE' (229 valid sessions). Abnormal return (AR) and Sector-Adjusted Return (SAR) are unestimated."
+    ],
+    "score_is_heuristic_disclaimer": "Methodological Note: The evidence strength score (0.0 to 100.0) is a deterministic heuristic measuring evidence quality, temporal proximity, and directional consistency. It is NOT a statistical probability or a calibrated confidence interval."
+  },
+  "movement_analysis": {
+    "price_action": {
+      "open": 1130.0,
+      "high": 1133.8,
+      "low": 1103.4,
+      "close": 1123.15,
+      "prev_close": 1163.0,
+      "volume": 15636449,
+      "ret_1d_raw": -0.03426483233018049,
+      "ret_1d_adj": -0.03426483233018049,
+      "gap_open": -0.028374892519346516,
+      "intraday_drift": -0.006061946902654787,
+      "intraday_range": 0.02613929492691304,
+      "ret_5d": -0.006677279561333647,
+      "ret_20d": 0.12292541491701664,
+      "has_calendar_gap": false,
+      "prev_stored_date": "2026-10-27",
+      "prev_stored_close": 1163.0,
+      "source_prev_close": 1163.0,
+      "source_prev_close_provenance": "database_consecutive_session",
+      "missing_intermediate_sessions": [],
+      "interval_return_raw": null,
+      "interval_return_adj": null,
+      "interval_sessions_count": 1,
+      "interval_start_date": null
+    },
+    "benchmark_comparison": {
+      "benchmark_name": "NIFTY 50 (PRI)",
+      "benchmark_return": null,
+      "sector_benchmark_type": "OFFICIAL_SECTOR_PRI",
+      "sector_benchmark_name": "NIFTY IT",
+      "sector_return": null,
+      "excess_over_market": null,
+      "excess_over_sector": null,
+      "is_survivorship_biased_proxy": false
+    },
+    "market_model": {
+      "model_status": "BENCHMARK_UNAVAILABLE",
+      "alpha": -0.001429575599829052,
+      "beta": 0.6813314498419768,
+      "r_squared": 0.09325263854745358,
+      "residual_std_err": 0.01845950932876433,
+      "estimation_sessions_count": 229,
+      "expected_return": null,
+      "abnormal_return": null,
+      "t_statistic": null,
+      "sector_adjusted_return": null
+    },
+    "volume_liquidity": {
+      "volume_ratio_20d": 0.9984306934885068,
+      "volume_log_zscore_50d": 0.9417868568575334,
+      "is_volume_spike": false,
+      "is_zero_volume": false
+    },
+    "mechanical_adjustment": null
+  },
+  "timeline": {
+    "eligible_timeline": [
+      {
+        "evidence_id": "EV_MKT_NIFTY_IT_20261021_PRI",
+        "event_date": "2026-10-21",
+        "broadcast_timestamp": null,
+        "effective_session_date": "2026-10-21",
+        "tier": 3,
+        "tier_label": "Tier 3: Sector / Market Movement",
+        "category": "SECTOR_MOMENTUM",
+        "direction": "POSITIVE",
+        "headline": "Significant Index Move: NIFTY IT Surge (+2.88%) [PRI]",
+        "source_identity": "index_daily",
+        "source_reference": "NIFTY IT_PRI_2026-10-21",
+        "verification_status": "VERIFIED",
+        "is_pit_eligible": true,
+        "relevance_note": "Systematic benchmark reference for NIFTY IT."
+      },
+      {
+        "evidence_id": "EV_VOL_INFY_20261023",
+        "event_date": "2026-10-23",
+        "broadcast_timestamp": null,
+        "effective_session_date": "2026-10-23",
+        "tier": 3,
+        "tier_label": "Tier 3: Sector / Market Movement",
+        "category": "VOLUME_LIQUIDITY_SURGE",
+        "direction": "NEUTRAL",
+        "headline": "Volume Anomaly: INFY Volume Ratio=2.43x, Log Z=2.89",
+        "source_identity": "quant_factors_daily",
+        "source_reference": "INFY_VOL_2026-10-23",
+        "verification_status": "VERIFIED",
+        "is_pit_eligible": true,
+        "relevance_note": "Secondary market activity observation (anomalous volume indicator)."
+      },
+      {
+        "evidence_id": "EV_DISC_INFY_DISC_20261023_Q2",
+        "event_date": "2026-10-23",
+        "broadcast_timestamp": "2026-10-23T16:30:00+05:30",
+        "effective_session_date": "2026-10-26",
+        "tier": 1,
+        "tier_label": "Tier 1: Official Exchange Filing",
+        "category": "EARNINGS_RELEASE",
+        "direction": "NEUTRAL",
+        "headline": "Exchange Disclosure: Outcome of Board Meeting: Audited Standalone & Consolidated Financial Results for Q2 FY2027 and Declaration of Interim Dividend",
+        "source_identity": "corporate_disclosures",
+        "source_reference": "https://www.infosys.com/investors/documents/exchange-filings/2026/outcome-board-meeting23oct2026.pdf",
+        "verification_status": "VERIFIED",
+        "is_pit_eligible": true,
+        "relevance_note": "Primary explanatory catalyst selected by attribution engine."
+      },
+      {
+        "evidence_id": "EV_FS_INFY_Q2_FY27_CONS_V1",
+        "event_date": "2026-10-23",
+        "broadcast_timestamp": "2026-10-23T16:30:00+05:30",
+        "effective_session_date": "2026-10-26",
+        "tier": 2,
+        "tier_label": "Tier 2: Financial Statement / Corporate Action",
+        "category": "EARNINGS_RELEASE",
+        "direction": "AMBIGUOUS",
+        "headline": "Quarterly Financial Statement (CONSOLIDATED V1): INFY DISCRETE_QUARTER 2026-09-30",
+        "source_identity": "company_financial_statements",
+        "source_reference": "https://www.infosys.com/investors/reports-filings/quarterly-results.html",
+        "verification_status": "VERIFIED",
+        "is_pit_eligible": true,
+        "relevance_note": "Coinciding corporate announcement evaluated by attribution engine."
+      }
+    ],
+    "excluded_evidence": []
+  },
+  "ranked_explanations": [
+    {
+      "rank": 1,
+      "hypothesis_id": "HYP_INFY_20261028_EV_DISC_INFY_DISC_20261023_Q2",
+      "primary_evidence_id": "EV_DISC_INFY_DISC_20261023_Q2",
+      "catalyst_type": "INSUFFICIENT_DATA",
+      "headline": "Exchange Disclosure: Outcome of Board Meeting: Audited Standalone & Consolidated Financial Results for Q2 FY2027 and Declaration of Interim Dividend",
+      "score_breakdown": {
+        "evidence_strength_score": 55.0,
+        "clamped_total": 55.0,
+        "confidence_level": "MODERATE_CONFIDENCE",
+        "is_contradicted": false,
+        "contradiction_penalty": 0.0,
+        "base_score": 60.0,
+        "temporal_score": 0.0,
+        "directional_score": 0.0,
+        "abnormal_return_score": 0.0,
+        "volume_score": 0.0,
+        "corroboration_score": 0.0
+      },
+      "final_score": 55.0,
+      "confidence_level": "MODERATE_CONFIDENCE",
+      "is_contradicted": false,
+      "contradiction_penalty": 0.0,
+      "is_company_specific": true,
+      "ranking_rationale": "Tier 1 base score: 60.0; Multi-day lag (2 days): +0.0, decay: -5.0; Financial statement evaluated with ExpectationSurprise.UNKNOWN; PAT sign does NOT award directional points.; Abnormal return unavailable (insufficient history): +0.0",
+      "alternative_hypotheses": [
+        "HYP_INFY_20261028_EV_FS_INFY_Q2_FY27_CONS_V1 (LOW_CONFIDENCE, Score: 45.0)",
+        "HYP_INFY_20261028_EV_VOL_INFY_20261023 (INSUFFICIENT_EVIDENCE, Score: 25.0)",
+        "HYP_INFY_20261028_EV_MKT_NIFTY_IT_20261021_PRI (INSUFFICIENT_EVIDENCE, Score: 0.0)"
+      ]
+    },
+    {
+      "rank": 2,
+      "hypothesis_id": "HYP_INFY_20261028_EV_FS_INFY_Q2_FY27_CONS_V1",
+      "primary_evidence_id": "EV_FS_INFY_Q2_FY27_CONS_V1",
+      "catalyst_type": "INSUFFICIENT_DATA",
+      "headline": "Quarterly Financial Statement (CONSOLIDATED V1): INFY DISCRETE_QUARTER 2026-09-30",
+      "score_breakdown": {
+        "evidence_strength_score": 45.0,
+        "clamped_total": 45.0,
+        "confidence_level": "LOW_CONFIDENCE",
+        "is_contradicted": false,
+        "contradiction_penalty": 0.0,
+        "base_score": 50.0,
+        "temporal_score": 0.0,
+        "directional_score": 0.0,
+        "abnormal_return_score": 0.0,
+        "volume_score": 0.0,
+        "corroboration_score": 0.0
+      },
+      "final_score": 45.0,
+      "confidence_level": "LOW_CONFIDENCE",
+      "is_contradicted": false,
+      "contradiction_penalty": 0.0,
+      "is_company_specific": true,
+      "ranking_rationale": "Tier 2 base score: 50.0; Multi-day lag (2 days): +0.0, decay: -5.0; Financial statement evaluated with ExpectationSurprise.UNKNOWN; PAT sign does NOT award directional points.; Abnormal return unavailable (insufficient history): +0.0",
+      "alternative_hypotheses": []
+    },
+    {
+      "rank": 3,
+      "hypothesis_id": "HYP_INFY_20261028_EV_VOL_INFY_20261023",
+      "primary_evidence_id": "EV_VOL_INFY_20261023",
+      "catalyst_type": "ACTIVITY_OBSERVATION",
+      "headline": "Volume Anomaly: INFY Volume Ratio=2.43x, Log Z=2.89",
+      "score_breakdown": {
+        "evidence_strength_score": 25.0,
+        "clamped_total": 25.0,
+        "confidence_level": "INSUFFICIENT_EVIDENCE",
+        "is_contradicted": false,
+        "contradiction_penalty": 0.0,
+        "base_score": 35.0,
+        "temporal_score": 0.0,
+        "directional_score": 0.0,
+        "abnormal_return_score": 0.0,
+        "volume_score": 0.0,
+        "corroboration_score": 0.0
+      },
+      "final_score": 25.0,
+      "confidence_level": "INSUFFICIENT_EVIDENCE",
+      "is_contradicted": false,
+      "contradiction_penalty": 0.0,
+      "is_company_specific": true,
+      "ranking_rationale": "Tier 3 base score: 35.0; Multi-day lag (3 days): +0.0, decay: -10.0; Mechanical corporate action on trending day: +0.0 (neutral adjustment, non-directional); Abnormal return unavailable (insufficient history): +0.0; Volume activity observation guard applied: explanatory score capped at 49.9 (LOW_CONFIDENCE) as volume measures market activity, not causal explanation.",
+      "alternative_hypotheses": []
+    },
+    {
+      "rank": 4,
+      "hypothesis_id": "HYP_INFY_20261028_EV_MKT_NIFTY_IT_20261021_PRI",
+      "primary_evidence_id": "EV_MKT_NIFTY_IT_20261021_PRI",
+      "catalyst_type": "INSUFFICIENT_DATA",
+      "headline": "Significant Index Move: NIFTY IT Surge (+2.88%) [PRI]",
+      "score_breakdown": {
+        "evidence_strength_score": 0.0,
+        "clamped_total": 0.0,
+        "confidence_level": "INSUFFICIENT_EVIDENCE",
+        "is_contradicted": true,
+        "contradiction_penalty": 30.0,
+        "base_score": 35.0,
+        "temporal_score": 0.0,
+        "directional_score": 0.0,
+        "abnormal_return_score": 0.0,
+        "volume_score": 0.0,
+        "corroboration_score": 0.0
+      },
+      "final_score": 0.0,
+      "confidence_level": "INSUFFICIENT_EVIDENCE",
+      "is_contradicted": true,
+      "contradiction_penalty": 30.0,
+      "is_company_specific": false,
+      "ranking_rationale": "Tier 3 base score: 35.0; Multi-day lag (5 days): +0.0, decay: -20.0; CONTRADICTION: Direction POSITIVE vs move NEGATIVE: -30.0; Abnormal return unavailable (insufficient history): +0.0; Contradicted evidence guard applied: capped at 49.9 (cannot achieve HIGH_CONFIDENCE).",
+      "alternative_hypotheses": []
+    }
+  ],
+  "contradictions": {
+    "has_contradictions": true,
+    "contradicting_evidence": [
+      {
+        "evidence_id": "EV_MKT_NIFTY_IT_20261021_PRI",
+        "headline": "Significant Index Move: NIFTY IT Surge (+2.88%) [PRI]",
+        "direction": "POSITIVE",
+        "conflict_reason": "Evidence direction POSITIVE conflicts with price move NEGATIVE (ret: -3.43%).",
+        "penalty_applied": 30.0
+      }
+    ],
+    "alternative_explanations": [
+      "HYP_INFY_20261028_EV_FS_INFY_Q2_FY27_CONS_V1 (LOW_CONFIDENCE, Score: 45.0)",
+      "HYP_INFY_20261028_EV_VOL_INFY_20261023 (INSUFFICIENT_EVIDENCE, Score: 25.0)",
+      "HYP_INFY_20261028_EV_MKT_NIFTY_IT_20261021_PRI (INSUFFICIENT_EVIDENCE, Score: 0.0)"
+    ]
+  },
+  "limitations": {
+    "unresolved_questions": [
+      "Analyst consensus expectations unavailable in offline archive; quarterly financial statements evaluated under ExpectationSurprise.UNKNOWN.",
+      "Econometric Market Model status is 'BENCHMARK_UNAVAILABLE' (229 valid sessions). Abnormal return (AR) and Sector-Adjusted Return (SAR) are unestimated."
+    ],
+    "limitations": [
+      "Frozen offline research dataset; real-time streaming market data is paused.",
+      "Zero-LLM deterministic attribution; score measures evidence strength, not causal certainty.",
+      "Consensus estimates must be authenticated; unauthenticated surprise remains UNKNOWN."
+    ],
+    "governance_notice": "DATA GOVERNANCE NOTICE: Market Intelligence Lab operates on a frozen historical research benchmark (October 2024 \u2013 October 2026). Automated web scraping is paused in compliance with exchange terms. Commercial deployment or live simulation requires authorized data licensing or academic agreements."
+  },
+  "final_assessment": {
+    "final_outcome": "MODERATELY_SUPPORTED_EXPLANATION",
+    "conclusion_statement": "The observed price action is MODERATELY SUPPORTED by candidate catalyst 'EV_DISC_INFY_DISC_20261023_Q2'. While temporally coincident, unverified expectations or absence of independent corroboration preclude a definitive high-confidence conclusion.",
+    "provenance_audit_hash": "d5785d25369a5feeda3204e10b5639f3225453e2e40b38fd10cb588ab7944b80",
+    "reproducibility_token": "INFY_2026-10-28_MIL_FROZEN_BENCHMARK_2024_2026_V1"
+  }
+}

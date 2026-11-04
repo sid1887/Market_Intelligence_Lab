@@ -1,0 +1,821 @@
+{
+  "overview": {
+    "investigation_id": "EXP_TMPV_20251110",
+    "symbol": "TMPV",
+    "company_name": "Tata Motors Passenger Vehicles Ltd.",
+    "isin": "INE155A01022",
+    "trading_date": "2025-11-10",
+    "sector": "Automobile and Auto Components",
+    "industry": "Automobile and Auto Components",
+    "reporting_basis": "CONSOLIDATED",
+    "is_standalone_isolated": false,
+    "primary_classification": "INSUFFICIENT_DATA",
+    "secondary_classifications": [],
+    "confidence_level": "MODERATE_CONFIDENCE",
+    "final_attribution_outcome": "MODERATELY_SUPPORTED_EXPLANATION",
+    "dataset_identifier": "MIL_FROZEN_BENCHMARK_2024_2026_V1",
+    "schema_version": "1.0.0",
+    "analyzer_version": "1.0.0",
+    "attribution_engine_version": "1.0.0",
+    "scoring_config_version": "1.0.0",
+    "generation_timestamp": "2026-11-01T11:15:30.944544+00:00"
+  },
+  "executive_summary": {
+    "narrative": "On 2025-11-10, Tata Motors Passenger Vehicles Ltd. (TMPV) rose 1.17% (Close: \u20b9410.45) with an unadjusted raw return of +1.17%. The movement was classified as 'INSUFFICIENT_DATA'.",
+    "relative_performance_summary": "Against broad-market benchmark NIFTY 50 (+0.32%), the stock exhibited an excess return of +0.85%. Compared to sector benchmark NIFTY AUTO (+0.30%), the sector-adjusted return (SAR) was +0.87%.",
+    "systematic_vs_idiosyncratic": "The price action did not exhibit strong systematic coupling; classified as idiosyncratic or routine drift.",
+    "strongest_hypothesis_summary": "The highest-ranked explanatory candidate is 'EV_FS_TMPV_Q2_FY26_CONS_V1' with an evidence strength score of 65.0/100.0 (MODERATE_CONFIDENCE).",
+    "evidence_sufficiency": "Available evidence provides sufficient corroboration for the candidate explanation.",
+    "key_uncertainties": [
+      "Analyst consensus expectations unavailable in offline archive; quarterly financial statements evaluated under ExpectationSurprise.UNKNOWN.",
+      "Econometric Market Model status is 'INSUFFICIENT_HISTORY' (0 valid sessions). Abnormal return (AR) and Sector-Adjusted Return (SAR) are unestimated."
+    ],
+    "score_is_heuristic_disclaimer": "Methodological Note: The evidence strength score (0.0 to 100.0) is a deterministic heuristic measuring evidence quality, temporal proximity, and directional consistency. It is NOT a statistical probability or a calibrated confidence interval."
+  },
+  "movement_analysis": {
+    "price_action": {
+      "open": 406.0,
+      "high": 412.95,
+      "low": 406.0,
+      "close": 410.45,
+      "prev_close": 405.7,
+      "volume": 7913640,
+      "ret_1d_raw": 0.011708158737983733,
+      "ret_1d_adj": 0.011708158737983733,
+      "gap_open": 0.0007394626571358427,
+      "intraday_drift": 0.010960591133004897,
+      "intraday_range": 0.017130884890313013,
+      "ret_5d": 0.0010975609756097284,
+      "ret_20d": null,
+      "has_calendar_gap": false,
+      "prev_stored_date": "2025-11-07",
+      "prev_stored_close": 405.7,
+      "source_prev_close": 405.7,
+      "source_prev_close_provenance": "database_consecutive_session",
+      "missing_intermediate_sessions": [],
+      "interval_return_raw": null,
+      "interval_return_adj": null,
+      "interval_sessions_count": 1,
+      "interval_start_date": null
+    },
+    "benchmark_comparison": {
+      "benchmark_name": "NIFTY 50 (PRI)",
+      "benchmark_return": 0.003218618955527719,
+      "sector_benchmark_type": "OFFICIAL_SECTOR_PRI",
+      "sector_benchmark_name": "NIFTY AUTO",
+      "sector_return": 0.0029985567345231444,
+      "excess_over_market": 0.008489539782456014,
+      "excess_over_sector": 0.008709602003460588,
+      "is_survivorship_biased_proxy": false
+    },
+    "market_model": {
+      "model_status": "INSUFFICIENT_HISTORY",
+      "alpha": null,
+      "beta": null,
+      "r_squared": null,
+      "residual_std_err": null,
+      "estimation_sessions_count": 0,
+      "expected_return": null,
+      "abnormal_return": null,
+      "t_statistic": null,
+      "sector_adjusted_return": 0.008709602003460588
+    },
+    "volume_liquidity": {
+      "volume_ratio_20d": null,
+      "volume_log_zscore_50d": null,
+      "is_volume_spike": false,
+      "is_zero_volume": false
+    },
+    "mechanical_adjustment": null
+  },
+  "timeline": {
+    "eligible_timeline": [
+      {
+        "evidence_id": "EV_FS_TMPV_Q2_FY26_CONS_V1",
+        "event_date": "2025-11-07",
+        "broadcast_timestamp": "2025-11-07T18:00:00+05:30",
+        "effective_session_date": "2025-11-10",
+        "tier": 2,
+        "tier_label": "Tier 2: Financial Statement / Corporate Action",
+        "category": "EARNINGS_RELEASE",
+        "direction": "AMBIGUOUS",
+        "headline": "Quarterly Financial Statement (CONSOLIDATED V1): TMPV DISCRETE_QUARTER 2025-09-30",
+        "source_identity": "company_financial_statements",
+        "source_reference": "https://www.tatamotors.com/investors/financials/post-demerger-pv",
+        "verification_status": "VERIFIED",
+        "is_pit_eligible": true,
+        "relevance_note": "Primary explanatory catalyst selected by attribution engine."
+      },
+      {
+        "evidence_id": "EV_FS_TMPV_Q1_FY26_CONS_V2_RECAST",
+        "event_date": "2025-11-07",
+        "broadcast_timestamp": "2025-11-07T18:00:00+05:30",
+        "effective_session_date": "2025-11-10",
+        "tier": 2,
+        "tier_label": "Tier 2: Financial Statement / Corporate Action",
+        "category": "EARNINGS_REVISION",
+        "direction": "AMBIGUOUS",
+        "headline": "Restated Financial Statement (CONSOLIDATED V2): TMPV DISCRETE_QUARTER 2025-06-30",
+        "source_identity": "company_financial_statements",
+        "source_reference": "https://www.tatamotors.com/investors/financials/recast-q1fy26",
+        "verification_status": "VERIFIED",
+        "is_pit_eligible": true,
+        "relevance_note": "Coinciding corporate announcement evaluated by attribution engine."
+      }
+    ],
+    "excluded_evidence": [
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260120_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.48%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-01-20",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-01-20 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_FS_TMPV_Q3_FY26_CONS_V1",
+        "headline": "Quarterly Financial Statement (CONSOLIDATED V1): TMPV DISCRETE_QUARTER 2025-12-31",
+        "tier": 2,
+        "effective_session_date": "2026-01-30",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-01-30 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260201_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.96%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260201_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.09%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260202_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.13%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-02",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-02 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260203_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+2.55%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-03",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-03 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260203_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.81%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-03",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-03 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260219_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.10%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-19",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-19 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260225_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.85%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-25",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-25 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260227_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.86%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-27 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260302_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.20%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-02",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-02 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260304_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.55%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-04",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260304_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.44%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-04",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260305_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.86%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-05",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-05 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260309_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.73%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-09",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260309_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-4.10%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-09",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260310_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+3.10%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-10",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-10 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260311_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.63%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-11",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-11 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260311_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-3.15%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-11",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-11 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260312_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-3.19%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-12 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260313_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.06%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-13",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-13 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260313_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-3.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-13",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-13 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260316_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.67%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-16",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-16 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260317_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.11%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-17",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-17 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260318_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.92%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-18",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-18 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260319_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-3.26%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-19",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260319_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-4.25%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-19",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260323_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-23",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260323_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-3.16%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-23",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260324_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.78%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-24",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-24 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260324_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.43%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-24",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-24 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260325_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.72%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-25",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260325_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.22%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-25",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260327_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.09%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260327_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.82%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260330_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.14%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-30",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260330_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.39%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-30",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260401_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.56%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-01 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260401_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.97%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-01 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260408_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+3.78%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260408_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+6.69%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260410_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.85%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-10",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-10 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260413_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.09%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-13",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-13 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260415_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.63%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-15 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260415_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.53%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-15 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260423_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.35%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-23",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-23 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260427_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.56%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-27 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260506_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.41%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-06",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-06 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260507_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.93%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-07",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-07 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_FS_TMPV_Q4_FY26_CONS_V1",
+        "headline": "Quarterly Financial Statement (CONSOLIDATED V1): TMPV DISCRETE_QUARTER 2026-03-31",
+        "tier": 2,
+        "effective_session_date": "2026-05-11",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-11 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260511_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.86%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-11",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-11 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260512_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.83%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-12 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260512_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.28%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-12 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260518_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.71%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-18",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-18 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260525_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.71%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-25",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-25 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260529_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.50%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-29",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-29 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260529_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.96%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-29",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-29 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260601_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.70%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-01 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260608_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.85%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-08 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260612_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.99%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-12 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260612_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.95%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-12 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260615_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-15 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_CA_TMPV_DIVIDEND_20260619_DIVIDEND_RS_3_PER_SHARE",
+        "headline": "Corporate Action Ex-Date: TMPV Dividend - Rs 3 Per Share (Factor: 1.0)",
+        "tier": 2,
+        "effective_session_date": "2026-06-19",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-19 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260625_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+2.25%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-25",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-25 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260629_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.08%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-29",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-29 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260708_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.12%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260708_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.23%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260714_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.61%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-14",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-14 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260727_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-27 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260730_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.63%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-30",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-30 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260731_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.64%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-31",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-31 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260803_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-08-03",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-08-03 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260807_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.84%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-08-07",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-08-07 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260902_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.79%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-02",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-02 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260915_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.01%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-15 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260924_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-24",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-24 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260924_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.57%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-24",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-24 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260928_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.56%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-28",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-28 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20260928_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.64%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-28",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-28 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20261001_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-3.46%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-01 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20261007_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.58%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-07",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-07 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20261008_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-08 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20261008_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-2.49%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-08 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20261013_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-13",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-13 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20261015_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.66%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-15 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20261015_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Surge (+1.67%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-15 > 2025-11-10)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_AUTO_20261021_PRI",
+        "headline": "Significant Index Move: NIFTY AUTO Selloff (-1.54%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-21",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-21 > 2025-11-10)"
+      }
+    ]
+  },
+  "ranked_explanations": [
+    {
+      "rank": 1,
+      "hypothesis_id": "HYP_TMPV_20251110_EV_FS_TMPV_Q2_FY26_CONS_V1",
+      "primary_evidence_id": "EV_FS_TMPV_Q2_FY26_CONS_V1",
+      "catalyst_type": "INSUFFICIENT_DATA",
+      "headline": "Quarterly Financial Statement (CONSOLIDATED V1): TMPV DISCRETE_QUARTER 2025-09-30",
+      "score_breakdown": {
+        "evidence_strength_score": 65.0,
+        "clamped_total": 65.0,
+        "confidence_level": "MODERATE_CONFIDENCE",
+        "is_contradicted": false,
+        "contradiction_penalty": 0.0,
+        "base_score": 50.0,
+        "temporal_score": 15.0,
+        "directional_score": 0.0,
+        "abnormal_return_score": 0.0,
+        "volume_score": 0.0,
+        "corroboration_score": 0.0
+      },
+      "final_score": 65.0,
+      "confidence_level": "MODERATE_CONFIDENCE",
+      "is_contradicted": false,
+      "contradiction_penalty": 0.0,
+      "is_company_specific": true,
+      "ranking_rationale": "Tier 2 base score: 50.0; Same-session announcement: +15.0; Financial statement evaluated with ExpectationSurprise.UNKNOWN; PAT sign does NOT award directional points.; Abnormal return unavailable (insufficient history): +0.0",
+      "alternative_hypotheses": [
+        "HYP_TMPV_20251110_EV_FS_TMPV_Q1_FY26_CONS_V2_RECAST (MODERATE_CONFIDENCE, Score: 65.0)"
+      ]
+    },
+    {
+      "rank": 2,
+      "hypothesis_id": "HYP_TMPV_20251110_EV_FS_TMPV_Q1_FY26_CONS_V2_RECAST",
+      "primary_evidence_id": "EV_FS_TMPV_Q1_FY26_CONS_V2_RECAST",
+      "catalyst_type": "INSUFFICIENT_DATA",
+      "headline": "Restated Financial Statement (CONSOLIDATED V2): TMPV DISCRETE_QUARTER 2025-06-30",
+      "score_breakdown": {
+        "evidence_strength_score": 65.0,
+        "clamped_total": 65.0,
+        "confidence_level": "MODERATE_CONFIDENCE",
+        "is_contradicted": false,
+        "contradiction_penalty": 0.0,
+        "base_score": 50.0,
+        "temporal_score": 15.0,
+        "directional_score": 0.0,
+        "abnormal_return_score": 0.0,
+        "volume_score": 0.0,
+        "corroboration_score": 0.0
+      },
+      "final_score": 65.0,
+      "confidence_level": "MODERATE_CONFIDENCE",
+      "is_contradicted": false,
+      "contradiction_penalty": 0.0,
+      "is_company_specific": true,
+      "ranking_rationale": "Tier 2 base score: 50.0; Same-session announcement: +15.0; Financial statement evaluated with ExpectationSurprise.UNKNOWN; PAT sign does NOT award directional points.; Abnormal return unavailable (insufficient history): +0.0",
+      "alternative_hypotheses": []
+    }
+  ],
+  "contradictions": {
+    "has_contradictions": false,
+    "contradicting_evidence": [],
+    "alternative_explanations": [
+      "HYP_TMPV_20251110_EV_FS_TMPV_Q1_FY26_CONS_V2_RECAST (MODERATE_CONFIDENCE, Score: 65.0)"
+    ]
+  },
+  "limitations": {
+    "unresolved_questions": [
+      "Analyst consensus expectations unavailable in offline archive; quarterly financial statements evaluated under ExpectationSurprise.UNKNOWN.",
+      "Econometric Market Model status is 'INSUFFICIENT_HISTORY' (0 valid sessions). Abnormal return (AR) and Sector-Adjusted Return (SAR) are unestimated."
+    ],
+    "limitations": [
+      "Frozen offline research dataset; real-time streaming market data is paused.",
+      "Zero-LLM deterministic attribution; score measures evidence strength, not causal certainty.",
+      "Consensus estimates must be authenticated; unauthenticated surprise remains UNKNOWN."
+    ],
+    "governance_notice": "DATA GOVERNANCE NOTICE: Market Intelligence Lab operates on a frozen historical research benchmark (October 2024 \u2013 October 2026). Automated web scraping is paused in compliance with exchange terms. Commercial deployment or live simulation requires authorized data licensing or academic agreements."
+  },
+  "final_assessment": {
+    "final_outcome": "MODERATELY_SUPPORTED_EXPLANATION",
+    "conclusion_statement": "The observed price action is MODERATELY SUPPORTED by candidate catalyst 'EV_FS_TMPV_Q2_FY26_CONS_V1'. While temporally coincident, unverified expectations or absence of independent corroboration preclude a definitive high-confidence conclusion.",
+    "provenance_audit_hash": "aa28d1395d599a612391fdfd5108a4f37876fb2f01e2d069429b6e127c7ec8ee",
+    "reproducibility_token": "TMPV_2025-11-10_MIL_FROZEN_BENCHMARK_2024_2026_V1"
+  }
+}

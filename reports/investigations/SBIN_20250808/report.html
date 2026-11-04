@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Investigation Report: State Bank of India (SBIN) - 2025-08-08</title>
+<style>
+  :root {
+    --primary: #0f172a;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --card-bg: #ffffff;
+    --bg: #f8fafc;
+    --accent: #2563eb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background-color: var(--bg);
+    line-height: 1.5;
+    padding: 32px 16px;
+  }
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    padding: 36px 44px;
+  }
+  header {
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 28px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  h1 { font-size: 26px; color: var(--primary); margin-top: 12px; margin-bottom: 6px; }
+  .meta-sub { color: var(--text-muted); font-size: 14px; font-weight: 500; }
+  section { margin-bottom: 32px; }
+  h2 {
+    font-size: 18px;
+    color: var(--primary);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  h3 { font-size: 15px; color: #334155; margin: 16px 0 8px 0; }
+  p { margin-bottom: 12px; font-size: 14.5px; color: #334155; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+    font-size: 13.5px;
+  }
+  th, td {
+    padding: 9px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th { background-color: #f1f5f9; color: #334155; font-weight: 600; }
+  tr:hover { background-color: #f8fafc; }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .callout {
+    background-color: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    color: #1e3a8a;
+  }
+  .warning-callout {
+    background-color: #fef2f2;
+    border-left: 4px solid #ef4444;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 16px 0;
+    font-size: 13.5px;
+    color: #991b1b;
+  }
+  .hash-box {
+    background: #f1f5f9;
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    word-break: break-all;
+    color: #475569;
+  }
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="badge" style="color:#2563eb; background-color:#dbeafe;">MODERATE_CONFIDENCE</span>
+      <span style="font-size:12px; color:var(--text-muted); font-family:monospace;">ID: EXP_SBIN_20250808</span>
+    </div>
+    <h1>State Bank of India (SBIN)</h1>
+    <div class="meta-sub">
+      Trading Date: <strong>2025-08-08</strong> | Sector: <strong>Financial Services</strong> | Primary Classification: <strong>MARKET_BETA_DRIVEN</strong>
+    </div>
+  </header>
+
+  <!-- Section A & B: Executive Summary -->
+  <section>
+    <h2>Executive Summary</h2>
+    <p>On 2025-08-08, State Bank of India (SBIN) declined 0.11% (Close: ₹804.30) with an unadjusted raw return of -0.11%. The movement was classified as 'MARKET_BETA_DRIVEN'.</p>
+    <p><strong>Relative Performance:</strong> Against broad-market benchmark NIFTY 50 (-0.95%), the stock exhibited an excess return of +0.84%. Compared to sector benchmark NIFTY BANK (-0.93%), the sector-adjusted return (SAR) was +0.82%.</p>
+    <p><strong>Systematic Coupling:</strong> The price action was broad-market beta driven, closely tracking the NIFTY 50 PRI index.</p>
+    <p><strong>Strongest Hypothesis:</strong> The highest-ranked explanatory candidate is 'EV_FS_SBIN_Q1_FY26_STAND_V1' with an evidence strength score of 65.0/100.0 (MODERATE_CONFIDENCE).</p>
+    <div class="callout">
+      <strong>Methodological Note:</strong> Methodological Note: The evidence strength score (0.0 to 100.0) is a deterministic heuristic measuring evidence quality, temporal proximity, and directional consistency. It is NOT a statistical probability or a calibrated confidence interval.
+    </div>
+  </section>
+
+  <!-- Visual Evidence Charts -->
+  <section>
+    <h2>Visual Movement Decomposition</h2>
+    <div class="chart-grid">
+      <div><svg width="560" height="180" viewBox="0 0 560 180" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="180" fill="#f8fafc" rx="6" />
+  <text x="20" y="24" font-size="12" font-weight="700" fill="#334155">1-DAY PERFORMANCE DECOMPOSITION (PRI BASIS)</text>
+  <line x1="280" y1="30" x2="280" y2="165" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 3" />
+  <text x="280" y="176" font-size="10" fill="#64748b" text-anchor="middle">0.0% Baseline</text>
+  <text x="20" y="51" font-size="11" font-weight="600" fill="#1e293b">SBIN</text>
+  <rect x="272" y="35" width="8" height="24" fill="#dc2626" rx="3" />
+  <text x="266" y="51" font-size="11" font-weight="700" fill="#dc2626" text-anchor="end">-0.11%</text>
+  <text x="20" y="89" font-size="11" font-weight="600" fill="#1e293b">NIFTY 50 (PRI)</text>
+  <rect x="205" y="73" width="75" height="24" fill="#dc2626" rx="3" />
+  <text x="199" y="89" font-size="11" font-weight="700" fill="#dc2626" text-anchor="end">-0.95%</text>
+  <text x="20" y="127" font-size="11" font-weight="600" fill="#1e293b">NIFTY BANK</text>
+  <rect x="206" y="111" width="74" height="24" fill="#dc2626" rx="3" />
+  <text x="200" y="127" font-size="11" font-weight="700" fill="#dc2626" text-anchor="end">-0.93%</text>
+</svg></div>
+      <div><svg width="560" height="150" viewBox="0 0 560 150" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="150" fill="#f8fafc" rx="6" />
+  <text x="20" y="22" font-size="12" font-weight="700" fill="#334155">INTRADAY PRICE DRIFT &amp; GAP DECOMPOSITION</text>
+  <line x1="280" y1="30" x2="280" y2="138" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 3" />
+  <text x="20" y="50" font-size="11" font-weight="600" fill="#1e293b">Overnight Gap</text>
+  <rect x="278" y="35" width="2" height="20" fill="#0284c7" rx="3" />
+  <text x="272" y="50" font-size="11" font-weight="700" fill="#0284c7" text-anchor="end">-0.02%</text>
+  <text x="20" y="82" font-size="11" font-weight="600" fill="#1e293b">Intraday Drift</text>
+  <rect x="274" y="67" width="6" height="20" fill="#8b5cf6" rx="3" />
+  <text x="268" y="82" font-size="11" font-weight="700" fill="#8b5cf6" text-anchor="end">-0.09%</text>
+  <text x="20" y="114" font-size="11" font-weight="600" fill="#1e293b">Net Return (Adj)</text>
+  <rect x="272" y="99" width="8" height="20" fill="#0d9488" rx="3" />
+  <text x="266" y="114" font-size="11" font-weight="700" fill="#0d9488" text-anchor="end">-0.11%</text>
+</svg></div>
+      <div><svg width="560" height="110" viewBox="0 0 560 110" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="110" fill="#f8fafc" rx="6" />
+  <text x="20" y="24" font-size="12" font-weight="700" fill="#334155">VOLUME &amp; LIQUIDITY ANOMALY INDICATOR</text>
+  <text x="540" y="24" font-size="11" font-weight="700" fill="#3b82f6" text-anchor="end">ELEVATED ACTIVITY (1.51x 20d SMA, Log Z=+0.99)</text>
+  
+  <!-- Background Track -->
+  <rect x="20" y="45" width="440" height="20" fill="#e2e8f0" rx="4" />
+  
+  <!-- Active Bar -->
+  <rect x="20" y="45" width="165" height="20" fill="#3b82f6" rx="4" />
+  
+  <!-- Benchmark Markers -->
+  <line x1="130" y1="40" x2="130" y2="70" stroke="#0f172a" stroke-width="2" />
+  <text x="130" y="84" font-size="10" fill="#475569" text-anchor="middle">1.0x (Norm)</text>
+
+  <line x1="240" y1="40" x2="240" y2="70" stroke="#0f172a" stroke-width="2" />
+  <text x="240" y="84" font-size="10" fill="#475569" text-anchor="middle">2.0x (High)</text>
+
+  <line x1="350" y1="40" x2="350" y2="70" stroke="#0f172a" stroke-width="2" />
+  <text x="350" y="84" font-size="10" fill="#475569" text-anchor="middle">3.0x (Extreme)</text>
+</svg></div>
+      <div><svg width="560" height="210" viewBox="0 0 560 210" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border-radius:6px; font-family:system-ui, sans-serif;">
+  <rect width="560" height="210" fill="#f8fafc" rx="6" />
+  <text x="20" y="24" font-size="12" font-weight="700" fill="#334155">EVIDENCE STRENGTH SCORE DECOMPOSITION</text>
+  <text x="540" y="24" font-size="13" font-weight="800" fill="#0f172a" text-anchor="end">Final Score: 65.0 / 100.0</text>
+  <text x="20" y="49" font-size="11" font-weight="500" fill="#475569">Base Tier Score</text>
+  <rect x="180" y="38" width="228" height="14" fill="#3b82f6" rx="2" />
+  <text x="414" y="49" font-size="10" font-weight="700" fill="#3b82f6">+50.0</text>
+  <text x="20" y="71" font-size="11" font-weight="500" fill="#475569">Temporal Timing</text>
+  <rect x="180" y="60" width="68" height="14" fill="#06b6d4" rx="2" />
+  <text x="254" y="71" font-size="10" font-weight="700" fill="#06b6d4">+15.0</text>
+</svg></div>
+    </div>
+  </section>
+
+  <!-- Section C: Quantitative Metrics -->
+  <section>
+    <h2>Market Movement Details</h2>
+    <table>
+      <thead>
+        <tr><th>Metric</th><th>Value</th><th>Context</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Adjusted Return</strong></td><td><strong>-0.11%</strong></td><td>Corporate action adjusted</td></tr>
+        <tr><td><strong>Raw Price Return</strong></td><td>-0.11%</td><td>Close: ₹804.30 vs Prev: ₹805.15</td></tr>
+        <tr><td><strong>NIFTY 50 PRI Return</strong></td><td>-0.95%</td><td>Official Market Benchmark</td></tr>
+        <tr><td><strong>Sector Return</strong></td><td>-0.93%</td><td>NIFTY BANK (OFFICIAL_SECTOR_PRI)</td></tr>
+        <tr><td><strong>Abnormal Return (AR)</strong></td><td>+0.88%</td><td>OLS Model status: ESTIMATED (t = 0.79)</td></tr>
+        <tr><td><strong>Sector-Adjusted Return (SAR)</strong></td><td>+0.82%</td><td>Net excess over sector</td></tr>
+        <tr><td><strong>Volume Ratio (20d)</strong></td><td>1.51x</td><td>Spike Flag: No (Z=+0.99)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Section D: Evidence Timeline -->
+  <section>
+    <h2>Chronological Evidence Timeline</h2>
+    <table>
+      <thead>
+        <tr><th>Session Date</th><th>Evidence ID</th><th>Category</th><th>Direction</th><th>Tier</th><th>Headline</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>2025-08-08</code></td>
+          <td><code>EV_FS_SBIN_Q1_FY26_STAND_V1</code></td>
+          <td>EARNINGS_RELEASE</td>
+          <td><strong>AMBIGUOUS</strong></td>
+          <td>T2</td>
+          <td>Quarterly Financial Statement (STANDALONE V1): SBIN DISCRETE_QUARTER 2025-06-30</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Excluded Evidence Records (Audit Trail)</h3>
+    <table>
+      <thead><tr><th>Evidence ID</th><th>Tier</th><th>Headline</th><th>Exclusion Reason</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>EV_FS_SBIN_Q2_FY26_STAND_V1</code></td>
+          <td>T2</td>
+          <td>Quarterly Financial Statement (STANDALONE V1): SBIN DISCRETE_QUARTER 2025-09-30</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2025-11-07 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260201_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.96%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260201_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-2.00%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260203_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+2.55%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-03 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260203_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.43%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-03 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_FS_SBIN_Q3_FY26_STAND_V1</code></td>
+          <td>T2</td>
+          <td>Quarterly Financial Statement (STANDALONE V1): SBIN DISCRETE_QUARTER 2025-12-31</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-02-06 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260304_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.55%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260304_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-1.81%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260306_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-2.15%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-06 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260309_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.73%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260309_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-3.05%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260310_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+1.66%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-10 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260311_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-11 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260311_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-2.13%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-11 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260313_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.06%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-13 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260313_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-2.44%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-13 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260319_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-3.26%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260319_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-3.39%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260323_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260323_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-3.72%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260324_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.78%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-24 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260324_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.27%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-24 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260325_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.72%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260325_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.10%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260327_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.09%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260327_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-2.67%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260330_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.14%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260330_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-3.82%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260401_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.56%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-01 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260401_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.33%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-01 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260406_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.06%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-06 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260408_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+3.78%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260408_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+5.67%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260409_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-1.58%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-09 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260410_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+1.99%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-10 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260415_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-15 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260428_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-1.54%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-04-28 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260506_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-06 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_FS_SBIN_Q4_FY26_STAND_V1</code></td>
+          <td>T2</td>
+          <td>Quarterly Financial Statement (STANDALONE V1): SBIN DISCRETE_QUARTER 2026-03-31</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-08 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260511_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-1.57%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-11 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260512_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.83%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-12 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260512_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-1.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-12 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_CA_SBIN_DIVIDEND_20260515_DIVIDEND_RS_17_35_PER_SHARE</code></td>
+          <td>T2</td>
+          <td>Corporate Action Ex-Date: SBIN Dividend - Rs 17.35 Per Share (Factor: 1.0)</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-15 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260525_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.29%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-25 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260529_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.50%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-05-29 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260609_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.09%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-09 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260612_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.99%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-12 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260612_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+2.97%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-12 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260624_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+1.69%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-06-24 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260708_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-2.12%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260708_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-2.51%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260717_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+1.63%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-07-17 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260803_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-08-03 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260803_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Surge (+1.72%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-08-03 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260924_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-24 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260924_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-1.96%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-24 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20260928_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.56%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-28 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_BANK_20260928_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY BANK Selloff (-1.99%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-09-28 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20261008_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-08 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20261013_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-13 > 2025-08-08)</span></td>
+        </tr>
+        <tr>
+          <td><code>EV_MKT_NIFTY_50_20261015_PRI</code></td>
+          <td>T3</td>
+          <td>Significant Index Move: NIFTY 50 Surge (+1.66%) [PRI]</td>
+          <td><span style="color:#b91c1c; font-family:monospace; font-size:12px;">FUTURE_EVENT_LOOKAHEAD (effective 2026-10-15 > 2025-08-08)</span></td>
+        </tr></tbody></table>
+  </section>
+
+  <!-- Section E: Ranked Explanations -->
+  <section>
+    <h2>Ranked Explanatory Hypotheses</h2>
+    <table>
+      <thead>
+        <tr><th>Rank</th><th>Primary Evidence</th><th>Category / Role</th><th>Score</th><th>Confidence</th><th>Type</th><th>Contradicted</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td><code>EV_FS_SBIN_Q1_FY26_STAND_V1</code></td>
+          <td>MARKET_BETA_DRIVEN</td>
+          <td><strong>65.0</strong></td>
+          <td><span class="badge" style="font-size:11px; padding:2px 8px;">MODERATE_CONFIDENCE</span></td>
+          <td>Company-Specific</td>
+          <td>No</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout" style="background:#f8fafc; border-left-color:#64748b; color:#334155;">
+      <strong>Attribution Rationale:</strong> Tier 2 base score: 50.0; Same-session announcement: +15.0; Financial statement evaluated with ExpectationSurprise.UNKNOWN; PAT sign does NOT award directional points.
+    </div>
+  </section>
+  <!-- Section G & H: Limitations & Assessment -->
+  <section>
+    <h2>Limitations &amp; Final Assessment</h2>
+    <div style="margin-bottom:16px;">
+      <strong>Final Outcome:</strong> <span style="font-size:16px; font-weight:700; color:#2563eb;">MODERATELY_SUPPORTED_EXPLANATION</span>
+    </div>
+    <p>The observed price action is MODERATELY SUPPORTED by candidate catalyst 'EV_FS_SBIN_Q1_FY26_STAND_V1'. While temporally coincident, unverified expectations or absence of independent corroboration preclude a definitive high-confidence conclusion.</p>
+    
+    <div style="margin-top:16px;">
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">AUDIT PROVENANCE HASH (SHA-256):</p>
+      <div class="hash-box">0c02098408419a5addd1f4cae2438c53ffa259c7dbc550da673ed6c64f4abb19</div>
+      <p style="font-size:11px; color:var(--text-muted); margin-top:4px;">Cryptographically protects canonical analytical payload (symbol, date, classifications, price action, ranked scores). Independent of presentation formatting.</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>DATA GOVERNANCE NOTICE: Market Intelligence Lab operates on a frozen historical research benchmark (October 2024 – October 2026). Automated web scraping is paused in compliance with exchange terms. Commercial deployment or live simulation requires authorized data licensing or academic agreements.</p>
+    <p style="margin-top:4px;">Schema Version: 1.0.0 | Dataset: MIL_FROZEN_BENCHMARK_2024_2026_V1</p>
+  </footer>
+</div>
+</body>
+</html>

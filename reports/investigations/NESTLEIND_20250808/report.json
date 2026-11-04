@@ -1,0 +1,588 @@
+{
+  "overview": {
+    "investigation_id": "EXP_NESTLEIND_20250808",
+    "symbol": "NESTLEIND",
+    "company_name": "Nestle India Ltd.",
+    "isin": "INE239A01024",
+    "trading_date": "2025-08-08",
+    "sector": "Fast Moving Consumer Goods",
+    "industry": "Fast Moving Consumer Goods",
+    "reporting_basis": "CONSOLIDATED",
+    "is_standalone_isolated": false,
+    "primary_classification": "UNEXPLAINED_MOVEMENT",
+    "secondary_classifications": [],
+    "confidence_level": "UNEXPLAINED_MOVEMENT",
+    "final_attribution_outcome": "UNEXPLAINED_PRICE_MOVEMENT",
+    "dataset_identifier": "MIL_FROZEN_BENCHMARK_2024_2026_V1",
+    "schema_version": "1.0.0",
+    "analyzer_version": "1.0.0",
+    "attribution_engine_version": "1.0.0",
+    "scoring_config_version": "1.0.0",
+    "generation_timestamp": "2026-11-01T11:15:30.912335+00:00"
+  },
+  "executive_summary": {
+    "narrative": "On 2025-08-08, Nestle India Ltd. (NESTLEIND) quoted at \u20b91,096.50 with an unadjusted raw price discontinuity of -50.93% and an adjusted economic return of -1.86%. The raw price discontinuity is mechanically explained by the BONUS corporate action (adjustment factor 0.50). However, the underlying economic market return of -1.86% had no independent explanatory catalyst and is classified as 'UNEXPLAINED_MOVEMENT'.",
+    "relative_performance_summary": "Against broad-market benchmark NIFTY 50 (-0.95%), the stock exhibited an excess return of -0.91%. Compared to sector benchmark NIFTY FMCG (-0.72%), the sector-adjusted return (SAR) was -1.14%.",
+    "systematic_vs_idiosyncratic": "The price action did not exhibit strong systematic coupling; classified as idiosyncratic or routine drift.",
+    "strongest_hypothesis_summary": "Mechanical Price Adjustment: BONUS Corporate Action (EV_CA_NESTLEIND_BONUS_20250808_BONUS_1_1). Underlying Economic Return: No independent market catalyst identified (UNEXPLAINED_MOVEMENT).",
+    "evidence_sufficiency": "Mechanical price adjustment is fully accounted for by corporate action; evidential support for underlying economic return is INSUFFICIENT.",
+    "key_uncertainties": [],
+    "score_is_heuristic_disclaimer": "Methodological Note: The evidence strength score (0.0 to 100.0) is a deterministic heuristic measuring evidence quality, temporal proximity, and directional consistency. It is NOT a statistical probability or a calibrated confidence interval."
+  },
+  "movement_analysis": {
+    "price_action": {
+      "open": 1122.0,
+      "high": 1126.4,
+      "low": 1093.4,
+      "close": 1096.5,
+      "prev_close": 2234.6,
+      "volume": 1242852,
+      "ret_1d_raw": -0.5093081535845341,
+      "ret_1d_adj": -0.01861630716906825,
+      "gap_open": -0.4978967152958024,
+      "intraday_drift": -0.022727272727272728,
+      "intraday_range": 0.01476774366777052,
+      "ret_5d": -0.5183395563364814,
+      "ret_20d": -0.5437903058040358,
+      "has_calendar_gap": false,
+      "prev_stored_date": "2025-08-07",
+      "prev_stored_close": 2234.6,
+      "source_prev_close": 2234.6,
+      "source_prev_close_provenance": "database_consecutive_session",
+      "missing_intermediate_sessions": [],
+      "interval_return_raw": null,
+      "interval_return_adj": null,
+      "interval_sessions_count": 1,
+      "interval_start_date": null
+    },
+    "benchmark_comparison": {
+      "benchmark_name": "NIFTY 50 (PRI)",
+      "benchmark_return": -0.009466928767307167,
+      "sector_benchmark_type": "OFFICIAL_SECTOR_PRI",
+      "sector_benchmark_name": "NIFTY FMCG",
+      "sector_return": -0.0071891642630451625,
+      "excess_over_market": -0.009149378401761084,
+      "excess_over_sector": -0.011427142906023088,
+      "is_survivorship_biased_proxy": false
+    },
+    "market_model": {
+      "model_status": "ESTIMATED",
+      "alpha": 7.534533638204068e-05,
+      "beta": 0.6053388854075394,
+      "r_squared": 0.21495492076010503,
+      "residual_std_err": 0.010284042498239944,
+      "estimation_sessions_count": 179,
+      "expected_return": -0.005655354771852251,
+      "abnormal_return": -0.012960952397216001,
+      "t_statistic": -1.25266584343752,
+      "sector_adjusted_return": -0.011427142906023088
+    },
+    "volume_liquidity": {
+      "volume_ratio_20d": 0.8435450295265737,
+      "volume_log_zscore_50d": -0.10482608268901264,
+      "is_volume_spike": false,
+      "is_zero_volume": false
+    },
+    "mechanical_adjustment": {
+      "has_mechanical_adjustment": true,
+      "corporate_action_type": "BONUS",
+      "adjustment_factor": 0.5,
+      "raw_return_pct": -0.5093081535845341,
+      "adjusted_return_pct": -0.01861630716906825,
+      "corporate_action_evidence_id": "EV_CA_NESTLEIND_BONUS_20250808_BONUS_1_1",
+      "mechanical_explanation": "The quoted raw price change of -50.93% is mechanically explained by the BONUS corporate action (adjustment factor 0.50). This mechanical price adjustment does NOT establish positive or negative market sentiment.",
+      "disclaimer": "Mechanical Adjustment Notice: Quoted price adjustments resulting from corporate actions (bonus issues, stock splits, cash dividends) are purely mechanical arithmetic recalculations. They do NOT establish positive or negative market sentiment, nor do they explain the underlying economic market return."
+    }
+  },
+  "timeline": {
+    "eligible_timeline": [
+      {
+        "evidence_id": "EV_CA_NESTLEIND_BONUS_20250808_BONUS_1_1",
+        "event_date": "2025-08-08",
+        "broadcast_timestamp": null,
+        "effective_session_date": "2025-08-08",
+        "tier": 2,
+        "tier_label": "Tier 2: Financial Statement / Corporate Action",
+        "category": "BONUS_SPLIT_EVENT",
+        "direction": "NEUTRAL",
+        "headline": "Corporate Action Ex-Date: NESTLEIND Bonus 1:1 (Factor: 0.5)",
+        "source_identity": "corporate_actions",
+        "source_reference": "nse_mcp",
+        "verification_status": "VERIFIED",
+        "is_pit_eligible": true,
+        "relevance_note": "Primary explanatory catalyst selected by attribution engine."
+      }
+    ],
+    "excluded_evidence": [
+      {
+        "evidence_id": "EV_FS_NESTLEIND_Q2_FY26_CONS_V1",
+        "headline": "Quarterly Financial Statement (CONSOLIDATED V1): NESTLEIND DISCRETE_QUARTER 2025-09-30",
+        "tier": 2,
+        "effective_session_date": "2025-10-16",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2025-10-16 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20251016_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+2.02%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2025-10-16",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2025-10-16 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260101_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-3.17%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-01-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-01-01 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_FS_NESTLEIND_Q3_FY26_CONS_V1",
+        "headline": "Quarterly Financial Statement (CONSOLIDATED V1): NESTLEIND DISCRETE_QUARTER 2025-12-31",
+        "tier": 2,
+        "effective_session_date": "2026-01-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-01-15 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260201_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.96%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260201_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-2.29%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-01 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260203_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+2.55%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-03",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-03 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_CA_NESTLEIND_DIVIDEND_20260206_INTERIM_DIVIDEND_RS_7_PER_SHAR",
+        "headline": "Corporate Action Ex-Date: NESTLEIND Interim Dividend - Rs 7 Per Share (Factor: 1.0)",
+        "tier": 2,
+        "effective_session_date": "2026-02-06",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-06 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260206_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+2.27%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-06",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-06 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260213_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.90%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-13",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-13 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260219_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.76%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-19",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-19 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260227_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.69%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-02-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-02-27 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260304_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.55%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-04",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260304_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.88%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-04",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-04 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260309_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.73%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-09",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260309_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.56%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-09",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-09 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260311_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.63%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-11",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-11 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260312_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.77%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-12 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260313_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.06%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-13",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-13 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260319_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-3.26%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-19",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260319_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-2.53%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-19",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-19 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260323_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-23",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260323_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-2.49%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-23",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-23 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260324_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.78%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-24",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-24 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260325_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.72%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-25",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260325_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.89%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-25",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-25 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260327_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.09%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260327_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.81%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-27",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-27 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260330_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.14%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-30",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260330_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.91%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-03-30",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-03-30 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260401_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.56%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-01 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260408_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+3.78%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260408_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.54%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-08 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260415_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.63%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-15 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260415_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.51%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-15 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260417_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+2.65%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-17",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-17 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260421_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+2.55%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-21",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-21 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_FS_NESTLEIND_Q4_FY26_CONS_V1",
+        "headline": "Quarterly Financial Statement (CONSOLIDATED V1): NESTLEIND DISCRETE_QUARTER 2026-03-31",
+        "tier": 2,
+        "effective_session_date": "2026-04-23",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-23 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260429_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.75%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-04-29",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-04-29 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260512_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.83%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-12 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260529_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.50%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-29",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-29 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260529_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.51%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-05-29",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-05-29 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260601_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-2.30%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-01 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260612_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.99%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-06-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-06-12 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260701_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+2.08%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-01 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260708_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-2.12%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260708_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-2.49%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-08 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_CA_NESTLEIND_DIVIDEND_20260710_DIVIDEND_RS_5_PER_SHARE",
+        "headline": "Corporate Action Ex-Date: NESTLEIND Dividend - Rs 5 Per Share (Factor: 1.0)",
+        "tier": 2,
+        "effective_session_date": "2026-07-10",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-10 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_CA_NESTLEIND_DIVIDEND_20260710_SPECIAL_DIVIDEND_RS_2_PER_SHAR",
+        "headline": "Corporate Action Ex-Date: NESTLEIND Special Dividend - Rs 2 Per Share (Factor: 1.0)",
+        "tier": 2,
+        "effective_session_date": "2026-07-10",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-10 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260729_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.66%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-07-29",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-07-29 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260803_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-08-03",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-08-03 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260803_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.72%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-08-03",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-08-03 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260831_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.69%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-08-31",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-08-31 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20260916_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.63%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-16",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-16 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260924_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-24",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-24 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20260928_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.56%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-09-28",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-09-28 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20261001_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.61%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-01",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-01 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20261005_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+1.80%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-05",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-05 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20261008_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Selloff (-1.64%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-08 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20261008_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-2.02%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-08",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-08 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20261009_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Surge (+2.20%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-09",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-09 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_FMCG_20261012_PRI",
+        "headline": "Significant Index Move: NIFTY FMCG Selloff (-1.67%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-12",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-12 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20261013_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.60%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-13",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-13 > 2025-08-08)"
+      },
+      {
+        "evidence_id": "EV_MKT_NIFTY_50_20261015_PRI",
+        "headline": "Significant Index Move: NIFTY 50 Surge (+1.66%) [PRI]",
+        "tier": 3,
+        "effective_session_date": "2026-10-15",
+        "exclusion_reason": "FUTURE_EVENT_LOOKAHEAD (effective 2026-10-15 > 2025-08-08)"
+      }
+    ]
+  },
+  "ranked_explanations": [],
+  "contradictions": {
+    "has_contradictions": false,
+    "contradicting_evidence": [],
+    "alternative_explanations": []
+  },
+  "limitations": {
+    "unresolved_questions": [],
+    "limitations": [
+      "Frozen offline research dataset; real-time streaming market data is paused.",
+      "Zero-LLM deterministic attribution; score measures evidence strength, not causal certainty.",
+      "Consensus estimates must be authenticated; unauthenticated surprise remains UNKNOWN."
+    ],
+    "governance_notice": "DATA GOVERNANCE NOTICE: Market Intelligence Lab operates on a frozen historical research benchmark (October 2024 \u2013 October 2026). Automated web scraping is paused in compliance with exchange terms. Commercial deployment or live simulation requires authorized data licensing or academic agreements."
+  },
+  "final_assessment": {
+    "final_outcome": "UNEXPLAINED_PRICE_MOVEMENT",
+    "conclusion_statement": "The quoted price discontinuity of -50.93% is mechanically explained by the BONUS corporate action (factor 0.50). However, the underlying economic market return (-1.86%) remains an UNEXPLAINED MOVEMENT as no verified independent market catalyst was identified in the local evidence store.",
+    "provenance_audit_hash": "c36f4714642aadc57d42366507a8e8b65aaed6cf893819e99b01437232b53817",
+    "reproducibility_token": "NESTLEIND_2025-08-08_MIL_FROZEN_BENCHMARK_2024_2026_V1"
+  }
+}

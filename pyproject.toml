@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-intelligence-lab"
+version = "0.2.0"
+description = "Local-First Quantitative Market Research Engine for Indian Equities"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Market Intelligence Lab Team"}
+]
+dependencies = [
+    "requests>=2.31.0,<3.0.0",
+    "numpy>=1.26.0,<2.0.0",
+    "scipy>=1.11.0,<2.0.0",
+    "matplotlib>=3.6.0,<4.0.0",
+    "reportlab>=4.0.0,<6.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "scripts*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
