@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import StockChart, { CandleData } from "@/components/StockChart";
@@ -16,7 +16,11 @@ import {
   AlertTriangle,
   Clock,
   Sparkles,
-  Activity
+  Activity,
+  CheckCircle2,
+  Loader2,
+  Circle,
+  SearchX
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -87,31 +91,235 @@ export default function StockTearsheetPage() {
   const [data, setData] = useState<TearsheetData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState<boolean>(false);
+  const [ingestion, setIngestion] = useState<{
+    isIngesting: boolean;
+    progressPct: number;
+    step: string;
+    detail: string;
+  }>({
+    isIngesting: false,
+    progressPct: 0,
+    step: "IDLE",
+    detail: ""
+  });
+
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const fetchTearsheetRef = useRef<() => Promise<void>>();
+
+  const startPolling = useCallback(() => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const statusRes = await fetch(`${API_BASE}/stocks/${symbol}/status`);
+        if (!statusRes.ok) return;
+        const statusJson = await statusRes.json();
+        if (statusJson.status === "READY") {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          fetchTearsheetRef.current?.();
+        } else if (statusJson.status === "FAILED") {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          setIngestion({ isIngesting: false, progressPct: 0, step: "FAILED", detail: "" });
+          setError(statusJson.detail || "Dynamic ingestion failed for this ticker.");
+        } else if (statusJson.status === "INGESTING") {
+          setIngestion({
+            isIngesting: true,
+            progressPct: statusJson.progress_pct || 50,
+            step: statusJson.step || "INGESTING",
+            detail: statusJson.detail || "Ingesting..."
+          });
+        }
+      } catch (e) {
+        console.error("Polling error:", e);
+      }
+    }, 1500);
+  }, [symbol]);
+
+  const fetchTearsheet = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/stocks/${symbol}/tearsheet`);
+      if (res.status === 202) {
+        const json = await res.json();
+        setIngestion({
+          isIngesting: true,
+          progressPct: json.progress_pct || 25,
+          step: json.step || "QUEUED",
+          detail: json.message || "Discovered unseeded ticker. Ingesting 24-month historical series, fundamentals, and factors..."
+        });
+        setLoading(false);
+        startPolling();
+        return;
+      }
+
+      if (res.status === 404) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(`Failed to load tearsheet (HTTP ${res.status})`);
+      }
+
+      const json = await res.json();
+      setData(json);
+      setIngestion({ isIngesting: false, progressPct: 100, step: "READY", detail: "Ready" });
+      setNotFound(false);
+      setError(null);
+    } catch (err: unknown) {
+      console.error("Tearsheet fetch error:", err);
+      const msg = err instanceof Error ? err.message : "Failed to load stock data";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [symbol, startPolling]);
+
+  useEffect(() => {
+    fetchTearsheetRef.current = fetchTearsheet;
+  }, [fetchTearsheet]);
 
   useEffect(() => {
     if (!symbol) return;
-
-    const fetchTearsheet = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`${API_BASE}/stocks/${symbol}/tearsheet`);
-        if (!res.ok) {
-          throw new Error(`Failed to fetch tearsheet for ${symbol} (status ${res.status})`);
-        }
-        const json = await res.json();
-        setData(json);
-      } catch (err: unknown) {
-        console.error("Tearsheet fetch error:", err);
-        const msg = err instanceof Error ? err.message : "Failed to load stock data";
-        setError(msg);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+    setLoading(true);
     fetchTearsheet();
-  }, [symbol]);
+
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [symbol, fetchTearsheet]);
+
+  // Loading Screen: Ingestion in Progress
+  if (ingestion.isIngesting) {
+    const isStep1Done = ingestion.progressPct >= 35;
+    const isStep2Done = ingestion.progressPct >= 60;
+    const isStep3Done = ingestion.progressPct >= 90;
+    const isStep4Done = ingestion.progressPct >= 100;
+
+    const isStep2Active = ingestion.progressPct >= 35 && ingestion.progressPct < 60;
+    const isStep3Active = ingestion.progressPct >= 60 && ingestion.progressPct < 90;
+    const isStep4Active = ingestion.progressPct >= 90 && ingestion.progressPct < 100;
+
+    return (
+      <div className="max-w-2xl mx-auto my-12 p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl space-y-8 backdrop-blur-xl">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-700/60 text-cyan-400 text-xs font-mono">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>On-Demand Dynamic Ingestion</span>
+          </div>
+          <h2 className="text-2xl font-black text-white tracking-tight">
+            Universal Ingestion: <span className="text-cyan-400 font-mono">{symbol}</span>
+          </h2>
+          <p className="text-xs text-slate-400 font-mono max-w-md mx-auto">
+            {ingestion.detail || "Connecting to NSE pipeline, resolving ISIN, and synchronizing data..."}
+          </p>
+        </div>
+
+        {/* Progress Bar & Percentage */}
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs font-mono text-slate-400">
+            <span>Pipeline Progress</span>
+            <span className="text-cyan-400 font-bold">{ingestion.progressPct}%</span>
+          </div>
+          <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out shadow-lg shadow-cyan-500/50"
+              style={{ width: `${Math.max(5, ingestion.progressPct)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Checklist */}
+        <div className="space-y-3.5 bg-slate-950/60 p-5 rounded-xl border border-slate-800/80 font-mono text-xs">
+          {/* Step 1 */}
+          <div className="flex items-center space-x-3">
+            {isStep1Done ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : (
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+            )}
+            <span className={isStep1Done ? "text-slate-200 line-through text-slate-400" : "text-cyan-300 font-semibold"}>
+              Resolving NSE Security Master & ISIN
+            </span>
+          </div>
+
+          {/* Step 2 */}
+          <div className="flex items-center space-x-3">
+            {isStep2Done ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : isStep2Active ? (
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+            ) : (
+              <Circle className="w-5 h-5 text-slate-600 shrink-0" />
+            )}
+            <span className={isStep2Done ? "text-slate-400 line-through" : isStep2Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
+              Backfilling 24-Month EOD Historical Bars
+            </span>
+          </div>
+
+          {/* Step 3 */}
+          <div className="flex items-center space-x-3">
+            {isStep3Done ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : isStep3Active ? (
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+            ) : (
+              <Circle className="w-5 h-5 text-slate-600 shrink-0" />
+            )}
+            <span className={isStep3Done ? "text-slate-400 line-through" : isStep3Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
+              Ingesting P&L & Balance Sheet Statements
+            </span>
+          </div>
+
+          {/* Step 4 */}
+          <div className="flex items-center space-x-3">
+            {isStep4Done ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : isStep4Active ? (
+              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+            ) : (
+              <Circle className="w-5 h-5 text-slate-600 shrink-0" />
+            )}
+            <span className={isStep4Done ? "text-slate-400 line-through" : isStep4Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
+              Computing 200-Day SMAs & Factor Analytics
+            </span>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <p className="text-[11px] text-slate-500 font-mono">
+            Auto-refreshing every 1.5s · Background Worker Active
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not Found Error Boundary
+  if (notFound) {
+    return (
+      <div className="p-8 rounded-2xl bg-slate-900/90 border border-rose-900/40 text-center space-y-4 max-w-lg mx-auto my-14 shadow-2xl backdrop-blur-md">
+        <div className="w-14 h-14 rounded-full bg-rose-950/60 border border-rose-800/60 flex items-center justify-center mx-auto text-rose-400">
+          <SearchX className="w-7 h-7" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold text-white">Symbol Not Found on NSE</h2>
+          <p className="text-xs text-slate-400 font-mono">
+            The symbol <span className="text-rose-400 font-bold">{symbol}</span> is not listed or actively traded on the National Stock Exchange of India (series &apos;EQ&apos;).
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/"
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Dashboard</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

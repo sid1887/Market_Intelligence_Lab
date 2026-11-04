@@ -11,15 +11,22 @@ concurrency-safe read-only WAL connection endpoints:
 """
 
 import os
+import re
 import sqlite3
 import datetime
+import logging
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from src.storage.database import DatabaseManager
 from src.quant.screener import FactorScreener
+from src.client.symbol_resolver import SymbolResolver
+from src.pipeline.dynamic_ingestion import DynamicIngestionManager
+
+logger = logging.getLogger(__name__)
 
 DATABASE_PATH = os.path.abspath(
     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "market_lab.db")
@@ -259,17 +266,79 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
         raise HTTPException(status_code=500, detail=f"Watchlist retrieval error: {str(e)}")
 
 
+def run_dynamic_ingestion(symbol: str) -> None:
+    try:
+        manager = DynamicIngestionManager()
+        manager.ensure_symbol_data(symbol)
+    except Exception as e:
+        logger.error(f"Background dynamic ingestion failed for {symbol}: {e}")
+
+
+@app.get("/api/v1/stocks/{symbol}/status")
+def get_stock_status(
+    symbol: str,
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """
+    Returns real-time data readiness status for frontend polling during dynamic ingestion.
+    """
+    sym = symbol.upper().strip()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'", (sym,))
+    bar_count = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM quant_factors_daily WHERE symbol = ?", (sym,))
+    factor_count = cur.fetchone()[0]
+
+    if bar_count >= 240 and factor_count > 0:
+        return {
+            "status": "READY",
+            "symbol": sym,
+            "progress_pct": 100,
+            "step": "READY",
+            "detail": f"Data fully populated ({bar_count} bars, {factor_count} factors)."
+        }
+
+    status_info = DynamicIngestionManager.get_ingestion_status(sym)
+    if status_info.get("status") in ("INGESTING", "FAILED"):
+        return status_info
+
+    cur.execute("SELECT symbol FROM securities_master WHERE symbol = ?", (sym,))
+    if cur.fetchone():
+        return {
+            "status": "PENDING",
+            "symbol": sym,
+            "progress_pct": 10,
+            "step": "REGISTERED",
+            "detail": "Symbol registered in securities master; historical series pending backfill."
+        }
+
+    return {
+        "status": "UNKNOWN",
+        "symbol": sym,
+        "progress_pct": 0,
+        "step": "UNSEEDED",
+        "detail": f"Symbol '{sym}' has not been queued for dynamic ingestion."
+    }
+
+
 @app.get("/api/v1/stocks/{symbol}/tearsheet")
 def get_stock_tearsheet(
     symbol: str,
+    background_tasks: BackgroundTasks,
     conn: sqlite3.Connection = Depends(get_db_connection)
 ):
     """
     Returns a unified JSON payload containing the stock's latest OHLCV,
     20/50/200 SMAs, fundamental ratios (ROE, D/E, TTM P/E), 5 most recent
     corporate disclosures, and historical candlestick bars for charting.
+    If the symbol is unseeded on the NSE cash segment, returns HTTP 202 Accepted
+    and triggers background dynamic ingestion.
     """
     sym = symbol.upper().strip()
+    if not re.match(r"^[A-Z0-9&_\-]{1,20}$", sym):
+        raise HTTPException(status_code=400, detail=f"Invalid symbol format: '{sym}'.")
+
     cur = conn.cursor()
 
     # 1. Fetch metadata
@@ -285,8 +354,59 @@ def get_stock_tearsheet(
     )
     wl_row = cur.fetchone()
 
-    if not sec_row and not wl_row:
-        raise HTTPException(status_code=404, detail=f"Symbol '{sym}' not found in securities_master or user_watchlists.")
+    # Check OHLCV presence and bar count
+    cur.execute(
+        "SELECT * FROM ohlcv_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1",
+        (sym,)
+    )
+    ohlcv_row = cur.fetchone()
+
+    cur.execute(
+        "SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'",
+        (sym,)
+    )
+    ohlcv_count = cur.fetchone()[0]
+
+    # Check Factor presence
+    cur.execute(
+        "SELECT * FROM quant_factors_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1",
+        (sym,)
+    )
+    factors_row = cur.fetchone()
+
+    # If NOT fully populated, resolve dynamically and trigger background ingestion
+    if not (sec_row or wl_row) or not ohlcv_row or ohlcv_count < 240 or not factors_row:
+        resolver = SymbolResolver()
+        try:
+            resolver.resolve_symbol(sym)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Symbol '{sym}' not found or not actively traded on NSE cash segment (series 'EQ')."
+            )
+
+        status_info = DynamicIngestionManager.get_ingestion_status(sym)
+        if status_info.get("status") != "INGESTING":
+            DynamicIngestionManager.update_ingestion_status(
+                sym,
+                status="INGESTING",
+                progress_pct=25,
+                step="QUEUED",
+                detail="Symbol discovered. Ingesting 24-month historical series, fundamentals, and factors..."
+            )
+            background_tasks.add_task(run_dynamic_ingestion, sym)
+
+        current_status = DynamicIngestionManager.get_ingestion_status(sym)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "INGESTING",
+                "symbol": sym,
+                "message": "Symbol discovered. Ingesting 24-month historical series, fundamentals, and factors...",
+                "progress_pct": current_status.get("progress_pct", 25),
+                "step": current_status.get("step", "QUEUED")
+            }
+        )
 
     company_name = (wl_row["company_name"] if wl_row else sec_row["company_name"]) or sym
     sector = (wl_row["sector"] if wl_row else sec_row["sector"]) or "General"
@@ -296,15 +416,6 @@ def get_stock_tearsheet(
     target_price = wl_row["target_price"] if wl_row else None
     stop_loss = wl_row["stop_loss"] if wl_row else None
     notes = wl_row["notes"] if wl_row else None
-
-    # 2. Fetch Latest OHLCV
-    cur.execute(
-        "SELECT * FROM ohlcv_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1",
-        (sym,)
-    )
-    ohlcv_row = cur.fetchone()
-    if not ohlcv_row:
-        raise HTTPException(status_code=404, detail=f"No OHLCV trading bars found for '{sym}'.")
 
     latest_close = round(float(ohlcv_row["close"]), 2)
 

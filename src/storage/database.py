@@ -163,6 +163,12 @@ class DatabaseManager:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_sector ON user_watchlists(sector);")
 
+            # 10. Safe additive column alterations on securities_master (Milestone B6.4)
+            cursor = conn.execute("PRAGMA table_info(securities_master);")
+            sec_cols = {row["name"] for row in cursor.fetchall()}
+            if sec_cols and "is_nifty50" not in sec_cols:
+                conn.execute("ALTER TABLE securities_master ADD COLUMN is_nifty50 INTEGER NOT NULL DEFAULT 0;")
+
     def _migrate_corporate_actions_pk(self, conn: sqlite3.Connection) -> None:
         """Migrates corporate_actions table so PRIMARY KEY includes purpose (symbol, action_type, ex_date, purpose)."""
         cursor = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='corporate_actions';")
@@ -450,11 +456,17 @@ class DatabaseManager:
     def upsert_securities_master(self, securities: List[Dict[str, Any]]) -> int:
         if not securities:
             return 0
+        clean_records = []
+        for s in securities:
+            rec = dict(s)
+            if "is_nifty50" not in rec:
+                rec["is_nifty50"] = 0
+            clean_records.append(rec)
         sql = """
         INSERT INTO securities_master (
-            symbol, company_name, isin, industry, sector, macro_sector, listing_date, is_active, updated_at
+            symbol, company_name, isin, industry, sector, macro_sector, listing_date, is_active, is_nifty50, updated_at
         ) VALUES (
-            :symbol, :company_name, :isin, :industry, :sector, :macro_sector, :listing_date, :is_active, :updated_at
+            :symbol, :company_name, :isin, :industry, :sector, :macro_sector, :listing_date, :is_active, :is_nifty50, :updated_at
         )
         ON CONFLICT(symbol) DO UPDATE SET
             company_name = excluded.company_name,
@@ -464,10 +476,11 @@ class DatabaseManager:
             macro_sector = excluded.macro_sector,
             listing_date = excluded.listing_date,
             is_active = excluded.is_active,
+            is_nifty50 = excluded.is_nifty50,
             updated_at = excluded.updated_at;
         """
         with self.get_connection() as conn:
-            cursor = conn.executemany(sql, securities)
+            cursor = conn.executemany(sql, clean_records)
             return cursor.rowcount
 
     def get_securities_master(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
