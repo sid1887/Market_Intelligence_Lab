@@ -1,21 +1,24 @@
 """
-Market Intelligence Lab — FastAPI REST API Bridge.
+Market Intelligence Lab — FastAPI REST API Bridge (Milestones B6.3, B6.4 & B6.4.1).
 
 Exposes local SQLite quantitative database (`data/market_lab.db`) via high-performance,
 concurrency-safe read-only WAL connection endpoints:
-- GET /api/v1/health: System status & latest market dates
+- GET /health & GET /api/v1/health: System status & latest market dates
 - GET /api/v1/screener: Top ranked stocks based on composite Quality-Momentum score
 - GET /api/v1/watchlist: Active user watchlist equities with real-time stats
-- GET /api/v1/stocks/{symbol}/tearsheet: Complete tearsheet JSON payload
-- GET /api/v1/stocks/{symbol}/history: Daily OHLCV candlestick series for lightweight-charts
+- GET /stocks/{symbol}/status & GET /api/v1/stocks/{symbol}/status: Ingestion status
+- GET /stocks/{symbol}/tearsheet & GET /api/v1/stocks/{symbol}/tearsheet: Complete tearsheet JSON payload
+- GET /stocks/{symbol}/history & GET /api/v1/stocks/{symbol}/history: Daily OHLCV candlestick series
 """
 
 import os
 import re
+import gc
 import sqlite3
 import datetime
 import logging
 from typing import List, Dict, Any, Optional
+import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,18 +26,26 @@ from pydantic import BaseModel
 
 from src.storage.database import DatabaseManager
 from src.quant.screener import FactorScreener
-from src.client.symbol_resolver import SymbolResolver
-from src.pipeline.dynamic_ingestion import DynamicIngestionManager
+from src.api.utils import (
+    DATABASE_PATH,
+    get_db_connection,
+    sanitize_for_json,
+    safe_float,
+    safe_int
+)
+from src.api.routes_market import (
+    market_router,
+    get_stock_status,
+    get_stock_tearsheet,
+    get_stock_history,
+    run_dynamic_ingestion
+)
 
 logger = logging.getLogger(__name__)
 
-DATABASE_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "market_lab.db")
-)
-
 app = FastAPI(
     title="Market Intelligence Lab API",
-    version="1.0.0",
+    version="1.1.0",
     description="Local-first quantitative analytics & market terminal REST API."
 )
 
@@ -54,19 +65,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-def get_db_connection():
-    """
-    Dependency that provides a safe read-only SQLite connection configured for concurrent WAL reads.
-    Does not block concurrent writes or reader transactions.
-    """
-    db_uri = f"file:{DATABASE_PATH}?mode=ro"
-    conn = sqlite3.connect(db_uri, uri=True, timeout=15.0, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
+# Mount modular market routes (status, tearsheet, history)
+app.include_router(market_router)
 
 
 @app.get("/health")
@@ -83,7 +83,7 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
         active_count = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM user_watchlists")
         watchlist_count = cur.fetchone()[0]
-        return {
+        return sanitize_for_json({
             "status": "healthy",
             "database": "connected (WAL mode)",
             "latest_ohlcv_date": latest_ohlcv,
@@ -91,7 +91,7 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
             "active_universe_count": active_count,
             "user_watchlist_count": watchlist_count,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-        }
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database health check failed: {str(e)}")
 
@@ -108,6 +108,7 @@ def get_screener(
     """
     Returns top-ranked stocks from the latest trading session in quant_factors_daily
     sorted descending by composite Quality-Momentum score.
+    Safely sanitizes all NaN / Infinity values to prevent serialization crashes.
     """
     try:
         db = DatabaseManager(DATABASE_PATH)
@@ -119,7 +120,7 @@ def get_screener(
             latest_date = cur.fetchone()[0]
 
         if not latest_date:
-            return {"as_of_date": None, "total_count": 0, "results": []}
+            return sanitize_for_json({"as_of_date": None, "total_count": 0, "results": []})
 
         # 2. Build Criteria
         criteria: Dict[str, Any] = {}
@@ -139,31 +140,35 @@ def get_screener(
             include_watchlists=include_watchlists
         )
 
+        # Sanitize DataFrame replacing NaNs with None as specified in directive
+        df_clean = df.where(pd.notnull(df), None)
+
         results = []
-        for rank, (_, row) in enumerate(df.head(limit).iterrows(), start=1):
+        for rank, (_, row) in enumerate(df_clean.head(limit).iterrows(), start=1):
             results.append({
                 "rank": rank,
                 "symbol": str(row["symbol"]),
                 "company_name": str(row["company_name"]),
                 "sector": str(row["sector"]),
-                "close": round(float(row["close"]), 2) if row.get("close") is not None else None,
-                "sma_200": round(float(row["sma_200"]), 2) if row.get("sma_200") is not None else None,
-                "debt_to_equity": round(float(row["debt_to_equity"]), 4) if row.get("debt_to_equity") is not None else None,
-                "roe_pct": round(float(row["roe_pct"]), 2) if row.get("roe_pct") is not None else None,
-                "opm_pct": round(float(row["opm_pct"]), 2) if row.get("opm_pct") is not None else None,
-                "excess_ret_20d": round(float(row["excess_ret_20d"]), 4) if row.get("excess_ret_20d") is not None else None,
-                "composite_score": round(float(row["composite_score"]), 2) if row.get("composite_score") is not None else None,
+                "close": safe_float(row.get("close"), 2),
+                "sma_200": safe_float(row.get("sma_200"), 2),
+                "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
+                "roe_pct": safe_float(row.get("roe_pct"), 2),
+                "opm_pct": safe_float(row.get("opm_pct"), 2),
+                "excess_ret_20d": safe_float(row.get("excess_ret_20d"), 4),
+                "composite_score": safe_float(row.get("composite_score"), 2),
                 "price_above_sma200": bool(row.get("price_above_sma200", False)),
                 "is_watchlist": bool(row.get("is_watchlist", 0))
             })
 
-        return {
+        return sanitize_for_json({
             "as_of_date": latest_date,
             "total_candidates": len(df),
             "returned_count": len(results),
             "results": results
-        }
+        })
     except Exception as e:
+        logger.error(f"Screener execution error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Screener execution error: {str(e)}")
 
 
@@ -221,9 +226,9 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
 
         watchlist = []
         for r in rows:
-            close_val = round(float(r["close"]), 2) if r["close"] is not None else None
-            sma200_val = round(float(r["sma_200"]), 2) if r["sma_200"] is not None else None
-            ret_1d_val = float(r["ret_1d"]) if r["ret_1d"] is not None else 0.0
+            close_val = safe_float(r["close"], 2)
+            sma200_val = safe_float(r["sma_200"], 2)
+            ret_1d_val = safe_float(r["ret_1d"], 4) or 0.0
 
             dist_sma200 = None
             if close_val is not None and sma200_val is not None and sma200_val > 0:
@@ -233,342 +238,46 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
                 "symbol": r["symbol"],
                 "company_name": r["company_name"],
                 "sector": r["sector"],
-                "target_price": r["target_price"],
-                "stop_loss": r["stop_loss"],
+                "target_price": safe_float(r["target_price"], 2),
+                "stop_loss": safe_float(r["stop_loss"], 2),
                 "notes": r["notes"],
                 "added_date": r["added_date"],
                 "trading_date": r["trading_date"],
                 "close": close_val,
-                "open": round(float(r["open"]), 2) if r["open"] is not None else None,
-                "high": round(float(r["high"]), 2) if r["high"] is not None else None,
-                "low": round(float(r["low"]), 2) if r["low"] is not None else None,
-                "volume": int(r["volume"]) if r["volume"] is not None else None,
+                "open": safe_float(r["open"], 2),
+                "high": safe_float(r["high"], 2),
+                "low": safe_float(r["low"], 2),
+                "volume": safe_int(r["volume"]),
                 "ret_1d": round(ret_1d_val, 4),
                 "ret_1d_pct": round(ret_1d_val * 100.0, 2),
-                "sma_20": round(float(r["sma_20"]), 2) if r["sma_20"] is not None else None,
-                "sma_50": round(float(r["sma_50"]), 2) if r["sma_50"] is not None else None,
+                "sma_20": safe_float(r["sma_20"], 2),
+                "sma_50": safe_float(r["sma_50"], 2),
                 "sma_200": sma200_val,
                 "dist_sma200_pct": dist_sma200,
                 "price_above_sma200": (close_val > sma200_val) if (close_val and sma200_val) else False,
-                "volatility_annualized": round(float(r["volatility_annualized"]), 4) if r["volatility_annualized"] is not None else None,
-                "beta_60d_nifty": round(float(r["beta_60d_nifty"]), 2) if r["beta_60d_nifty"] is not None else None,
-                "ttm_pe": round(float(r["ttm_pe"]), 2) if r["ttm_pe"] is not None else None,
-                "roe_pct": round(float(r["roe_pct"]), 2) if r["roe_pct"] is not None else None,
-                "debt_to_equity": round(float(r["debt_to_equity"]), 4) if r["debt_to_equity"] is not None else None,
-                "opm_pct": round(float(r["opm_pct"]), 2) if r["opm_pct"] is not None else None
+                "volatility_annualized": safe_float(r["volatility_annualized"], 4),
+                "beta_60d_nifty": safe_float(r["beta_60d_nifty"], 2),
+                "ttm_pe": safe_float(r["ttm_pe"], 2),
+                "roe_pct": safe_float(r["roe_pct"], 2),
+                "debt_to_equity": safe_float(r["debt_to_equity"], 4),
+                "opm_pct": safe_float(r["opm_pct"], 2)
             })
 
-        return {
+        return sanitize_for_json({
             "count": len(watchlist),
             "watchlist": watchlist
-        }
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Watchlist retrieval error: {str(e)}")
 
 
-def run_dynamic_ingestion(symbol: str) -> None:
-    try:
-        manager = DynamicIngestionManager()
-        manager.ensure_symbol_data(symbol)
-    except Exception as e:
-        logger.error(f"Background dynamic ingestion failed for {symbol}: {e}")
-
-
-@app.get("/api/v1/stocks/{symbol}/status")
-def get_stock_status(
-    symbol: str,
-    conn: sqlite3.Connection = Depends(get_db_connection)
-):
-    """
-    Returns real-time data readiness status for frontend polling during dynamic ingestion.
-    """
-    sym = symbol.upper().strip()
-    cur = conn.cursor()
-
-    cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'", (sym,))
-    bar_count = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM quant_factors_daily WHERE symbol = ?", (sym,))
-    factor_count = cur.fetchone()[0]
-
-    if bar_count >= 240 and factor_count > 0:
-        return {
-            "status": "READY",
-            "symbol": sym,
-            "progress_pct": 100,
-            "step": "READY",
-            "detail": f"Data fully populated ({bar_count} bars, {factor_count} factors)."
-        }
-
-    status_info = DynamicIngestionManager.get_ingestion_status(sym)
-    if status_info.get("status") in ("INGESTING", "FAILED"):
-        return status_info
-
-    cur.execute("SELECT symbol FROM securities_master WHERE symbol = ?", (sym,))
-    if cur.fetchone():
-        return {
-            "status": "PENDING",
-            "symbol": sym,
-            "progress_pct": 10,
-            "step": "REGISTERED",
-            "detail": "Symbol registered in securities master; historical series pending backfill."
-        }
-
-    return {
-        "status": "UNKNOWN",
-        "symbol": sym,
-        "progress_pct": 0,
-        "step": "UNSEEDED",
-        "detail": f"Symbol '{sym}' has not been queued for dynamic ingestion."
-    }
-
-
-@app.get("/api/v1/stocks/{symbol}/tearsheet")
-def get_stock_tearsheet(
-    symbol: str,
-    background_tasks: BackgroundTasks,
-    conn: sqlite3.Connection = Depends(get_db_connection)
-):
-    """
-    Returns a unified JSON payload containing the stock's latest OHLCV,
-    20/50/200 SMAs, fundamental ratios (ROE, D/E, TTM P/E), 5 most recent
-    corporate disclosures, and historical candlestick bars for charting.
-    If the symbol is unseeded on the NSE cash segment, returns HTTP 202 Accepted
-    and triggers background dynamic ingestion.
-    """
-    sym = symbol.upper().strip()
-    if not re.match(r"^[A-Z0-9&_\-]{1,20}$", sym):
-        raise HTTPException(status_code=400, detail=f"Invalid symbol format: '{sym}'.")
-
-    cur = conn.cursor()
-
-    # 1. Fetch metadata
-    cur.execute(
-        "SELECT symbol, company_name, isin, industry, sector FROM securities_master WHERE symbol = ?",
-        (sym,)
-    )
-    sec_row = cur.fetchone()
-
-    cur.execute(
-        "SELECT company_name, sector, target_price, stop_loss, notes FROM user_watchlists WHERE symbol = ?",
-        (sym,)
-    )
-    wl_row = cur.fetchone()
-
-    # Check OHLCV presence and bar count
-    cur.execute(
-        "SELECT * FROM ohlcv_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1",
-        (sym,)
-    )
-    ohlcv_row = cur.fetchone()
-
-    cur.execute(
-        "SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'",
-        (sym,)
-    )
-    ohlcv_count = cur.fetchone()[0]
-
-    # Check Factor presence
-    cur.execute(
-        "SELECT * FROM quant_factors_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1",
-        (sym,)
-    )
-    factors_row = cur.fetchone()
-
-    # If NOT fully populated, resolve dynamically and trigger background ingestion
-    if not (sec_row or wl_row) or not ohlcv_row or ohlcv_count < 240 or not factors_row:
-        resolver = SymbolResolver()
-        try:
-            resolver.resolve_symbol(sym)
-        except ValueError:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Symbol '{sym}' not found or not actively traded on NSE cash segment (series 'EQ')."
-            )
-
-        status_info = DynamicIngestionManager.get_ingestion_status(sym)
-        if status_info.get("status") != "INGESTING":
-            DynamicIngestionManager.update_ingestion_status(
-                sym,
-                status="INGESTING",
-                progress_pct=25,
-                step="QUEUED",
-                detail="Symbol discovered. Ingesting 24-month historical series, fundamentals, and factors..."
-            )
-            background_tasks.add_task(run_dynamic_ingestion, sym)
-
-        current_status = DynamicIngestionManager.get_ingestion_status(sym)
-        return JSONResponse(
-            status_code=202,
-            content={
-                "status": "INGESTING",
-                "symbol": sym,
-                "message": "Symbol discovered. Ingesting 24-month historical series, fundamentals, and factors...",
-                "progress_pct": current_status.get("progress_pct", 25),
-                "step": current_status.get("step", "QUEUED")
-            }
-        )
-
-    company_name = (wl_row["company_name"] if wl_row else sec_row["company_name"]) or sym
-    sector = (wl_row["sector"] if wl_row else sec_row["sector"]) or "General"
-    industry = (sec_row["industry"] if sec_row else sector) or "General"
-    isin = (sec_row["isin"] if sec_row else "N/A") or "N/A"
-    is_watchlist = wl_row is not None
-    target_price = wl_row["target_price"] if wl_row else None
-    stop_loss = wl_row["stop_loss"] if wl_row else None
-    notes = wl_row["notes"] if wl_row else None
-
-    latest_close = round(float(ohlcv_row["close"]), 2)
-
-    # 3. Fetch Latest Quantitative Factors
-    cur.execute(
-        "SELECT * FROM quant_factors_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1",
-        (sym,)
-    )
-    factors_row = cur.fetchone()
-
-    sma20 = round(float(factors_row["sma_20"]), 2) if (factors_row and factors_row["sma_20"] is not None) else None
-    sma50 = round(float(factors_row["sma_50"]), 2) if (factors_row and factors_row["sma_50"] is not None) else None
-    sma200 = round(float(factors_row["sma_200"]), 2) if (factors_row and factors_row["sma_200"] is not None) else None
-    ret1d = float(factors_row["ret_1d"]) if (factors_row and factors_row["ret_1d"] is not None) else 0.0
-
-    dist_sma200 = None
-    if sma200 and sma200 > 0:
-        dist_sma200 = round(((latest_close / sma200) - 1.0) * 100.0, 2)
-
-    # 4. Fetch 5 Most Recent Corporate Disclosures
-    cur.execute(
-        """
-        SELECT disclosure_id, broadcast_timestamp, effective_session_date,
-               category, subject, details_summary, source_url, verification_status,
-               audit_status, dividend_declared, operating_margin_pct
-        FROM corporate_disclosures
-        WHERE symbol = ?
-        ORDER BY broadcast_timestamp DESC LIMIT 5
-        """,
-        (sym,)
-    )
-    disc_rows = cur.fetchall()
-    disclosures = []
-    for d in disc_rows:
-        disclosures.append({
-            "disclosure_id": d["disclosure_id"],
-            "broadcast_timestamp": d["broadcast_timestamp"],
-            "effective_session_date": d["effective_session_date"],
-            "category": d["category"] or "GENERAL",
-            "subject": d["subject"] or "Corporate Disclosure",
-            "details_summary": d["details_summary"],
-            "source_url": d["source_url"],
-            "verification_status": d["verification_status"] or "PENDING_VERIFICATION",
-            "audit_status": d["audit_status"],
-            "dividend_declared": d["dividend_declared"],
-            "operating_margin_pct": d["operating_margin_pct"]
-        })
-
-    # 5. Fetch Historical Daily Candlesticks (for lightweight-charts)
-    cur.execute(
-        """
-        SELECT trading_date as time, open, high, low, close, volume 
-        FROM ohlcv_daily 
-        WHERE symbol = ? 
-        ORDER BY trading_date ASC
-        """,
-        (sym,)
-    )
-    chart_rows = cur.fetchall()
-    history = [
-        {
-            "time": r["time"],
-            "open": round(float(r["open"]), 2),
-            "high": round(float(r["high"]), 2),
-            "low": round(float(r["low"]), 2),
-            "close": round(float(r["close"]), 2),
-            "volume": int(r["volume"]) if r["volume"] is not None else 0
-        }
-        for r in chart_rows
-    ]
-
-    return {
-        "symbol": sym,
-        "company_name": company_name,
-        "isin": isin,
-        "sector": sector,
-        "industry": industry,
-        "is_watchlist": is_watchlist,
-        "target_price": target_price,
-        "stop_loss": stop_loss,
-        "notes": notes,
-        "as_of_date": ohlcv_row["trading_date"],
-        "latest_ohlcv": {
-            "trading_date": ohlcv_row["trading_date"],
-            "open": round(float(ohlcv_row["open"]), 2),
-            "high": round(float(ohlcv_row["high"]), 2),
-            "low": round(float(ohlcv_row["low"]), 2),
-            "close": latest_close,
-            "volume": int(ohlcv_row["volume"]) if ohlcv_row["volume"] is not None else 0
-        },
-        "technicals": {
-            "ret_1d": round(ret1d, 4),
-            "ret_1d_pct": round(ret1d * 100.0, 2),
-            "ret_5d": round(float(factors_row["ret_5d"]), 4) if (factors_row and factors_row["ret_5d"] is not None) else None,
-            "ret_20d": round(float(factors_row["ret_20d"]), 4) if (factors_row and factors_row["ret_20d"] is not None) else None,
-            "sma_20": sma20,
-            "sma_50": sma50,
-            "sma_200": sma200,
-            "dist_sma200_pct": dist_sma200,
-            "price_above_sma200": (latest_close > sma200) if sma200 else False,
-            "volatility_annualized": round(float(factors_row["volatility_annualized"]), 4) if (factors_row and factors_row["volatility_annualized"] is not None) else None,
-            "beta_60d_nifty": round(float(factors_row["beta_60d_nifty"]), 2) if (factors_row and factors_row["beta_60d_nifty"] is not None) else None,
-            "volume_ratio_20d": round(float(factors_row["volume_ratio_20d"]), 2) if (factors_row and factors_row["volume_ratio_20d"] is not None) else None,
-            "volume_zscore_50d": round(float(factors_row["volume_zscore_50d"]), 2) if (factors_row and factors_row["volume_zscore_50d"] is not None) else None
-        },
-        "fundamentals": {
-            "roe_pct": round(float(factors_row["roe_pct"]), 2) if (factors_row and factors_row["roe_pct"] is not None) else None,
-            "debt_to_equity": round(float(factors_row["debt_to_equity"]), 4) if (factors_row and factors_row["debt_to_equity"] is not None) else None,
-            "ttm_pe": round(float(factors_row["ttm_pe"]), 2) if (factors_row and factors_row["ttm_pe"] is not None) else None,
-            "opm_pct": round(float(factors_row["opm_pct"]), 2) if (factors_row and factors_row["opm_pct"] is not None) else None
-        },
-        "recent_disclosures": disclosures,
-        "history": history
-    }
-
-
-@app.get("/api/v1/stocks/{symbol}/history")
-def get_stock_history(
-    symbol: str,
-    limit: int = 500,
-    conn: sqlite3.Connection = Depends(get_db_connection)
-):
-    """
-    Returns time series OHLCV records for lightweight-charts candlestick rendering.
-    """
-    sym = symbol.upper().strip()
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT trading_date as time, open, high, low, close, volume 
-        FROM (
-            SELECT trading_date, open, high, low, close, volume
-            FROM ohlcv_daily 
-            WHERE symbol = ? 
-            ORDER BY trading_date DESC 
-            LIMIT ?
-        )
-        ORDER BY trading_date ASC
-        """,
-        (sym, max(1, limit))
-    )
-    rows = cur.fetchall()
-    if not rows:
-        raise HTTPException(status_code=404, detail=f"No price history found for symbol '{sym}'.")
-
-    return [
-        {
-            "time": r["time"],
-            "open": round(float(r["open"]), 2),
-            "high": round(float(r["high"]), 2),
-            "low": round(float(r["low"]), 2),
-            "close": round(float(r["close"]), 2),
-            "volume": int(r["volume"]) if r["volume"] is not None else 0
-        }
-        for r in rows
-    ]
+__all__ = [
+    "app",
+    "market_router",
+    "get_db_connection",
+    "sanitize_for_json",
+    "get_stock_status",
+    "get_stock_tearsheet",
+    "get_stock_history",
+    "run_dynamic_ingestion",
+]

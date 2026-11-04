@@ -9,6 +9,7 @@ Orchestrates dynamic, background backfilling for unseeded equity tickers:
 """
 
 import os
+import gc
 import time
 import math
 import logging
@@ -27,12 +28,15 @@ logger = logging.getLogger(__name__)
 
 # In-memory status registry for polling status tracking across threads/tasks
 _INGESTION_STATE: Dict[str, Dict[str, Any]] = {}
+_active_jobs: Dict[str, Dict[str, Any]] = _INGESTION_STATE
 
 
 class DynamicIngestionManager:
     """
     Orchestrates the on-demand sequential backfill and factor generation for newly discovered tickers.
     """
+
+    _active_jobs: Dict[str, Dict[str, Any]] = _INGESTION_STATE
 
     def __init__(
         self,
@@ -227,6 +231,10 @@ class DynamicIngestionManager:
             factors_upserted = self.db.upsert_quant_factors(factors)
             logger.info(f"Step 5 Complete: Computed and upserted {factors_upserted} factors for {sym}")
 
+            # Reclaim memory from factor calculations
+            del factors
+            gc.collect()
+
             # ---------------------------------------------------------
             # Final Completion (Progress: 100%)
             # ---------------------------------------------------------
@@ -251,6 +259,8 @@ class DynamicIngestionManager:
                 detail=str(err)
             )
             return False
+        finally:
+            gc.collect()
 
     def _generate_and_ingest_ohlcv(self, symbol: str) -> None:
         """
