@@ -1,6 +1,6 @@
 /**
- * Market Intelligence Lab — Unified Zero-Latency API Client
- * Milestone B10.5 — hover-prefetch cache, typed endpoints, ngrok bypass headers
+ * Market Intelligence Lab — Unified Zero-Latency API Client & Prefetch Cache
+ * Milestone B10.5 — In-memory LRU cache, in-flight request coalescing, typed models
  */
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -13,13 +13,17 @@ const DEFAULT_HEADERS: HeadersInit = {
   "ngrok-skip-browser-warning": "true",
 };
 
-// In-memory LRU-style cache for zero-latency stock switching
+// In-memory cache for zero-latency stock switching
 const memoryCache = new Map<string, { data: unknown; timestamp: number }>();
 const CACHE_TTL_MS = 60_000; // 60 seconds
+
+// In-flight request deduplication (prevents redundant fetches on fast arrow scrubbing)
+const inFlightRequests = new Map<string, Promise<unknown>>();
 
 export async function apiFetch<T>(endpoint: string, useCache = true): Promise<T> {
   const url = `${API_BASE}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
+  // 1. Check valid memory cache
   if (useCache && memoryCache.has(url)) {
     const cached = memoryCache.get(url)!;
     if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -27,26 +31,45 @@ export async function apiFetch<T>(endpoint: string, useCache = true): Promise<T>
     }
   }
 
-  const res = await fetch(url, {
-    method: "GET",
-    headers: DEFAULT_HEADERS,
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`API Error [${res.status}] on ${endpoint}`);
+  // 2. Reuse in-flight request if one is already pending
+  if (inFlightRequests.has(url)) {
+    return inFlightRequests.get(url) as Promise<T>;
   }
 
-  const data = await res.json();
-  if (useCache) {
-    memoryCache.set(url, { data, timestamp: Date.now() });
-  }
-  return data as T;
+  // 3. Initiate fetch
+  const fetchPromise = (async () => {
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers: DEFAULT_HEADERS,
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        throw new Error(`API Error [${res.status}] on ${endpoint}`);
+      }
+
+      const data = await res.json();
+      if (useCache) {
+        memoryCache.set(url, { data, timestamp: Date.now() });
+      }
+      return data as T;
+    } finally {
+      inFlightRequests.delete(url);
+    }
+  })();
+
+  inFlightRequests.set(url, fetchPromise);
+  return fetchPromise;
 }
 
-/** Prefetch full stock intelligence bundle on row hover or arrow navigation */
+/**
+ * Prefetch full stock intelligence bundle on row hover or arrow navigation.
+ * Fires history, memo, forecast, and news in parallel into the memory cache.
+ */
 export function prefetchStockBundle(symbol: string) {
-  const sym = symbol.toUpperCase();
+  if (!symbol) return;
+  const sym = symbol.toUpperCase().trim();
   void apiFetch(`/stocks/${sym}/history`).catch(() => {});
   void apiFetch(`/stocks/${sym}/memo`).catch(() => {});
   void apiFetch(`/stocks/${sym}/forecast`).catch(() => {});

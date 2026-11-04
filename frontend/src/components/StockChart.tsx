@@ -54,9 +54,19 @@ interface StockChartProps {
   data: CandleData[];
   sma200?: number | null;
   forecast?: ForecastData | null;
+  height?: number;
+  compact?: boolean;
 }
 
-export default function StockChart({ symbol, data, sma200, forecast }: StockChartProps) {
+export default function StockChart({
+  symbol,
+  data,
+  sma200,
+  forecast,
+  height,
+  compact = false,
+}: StockChartProps) {
+  const chartHeight = height || (compact ? 270 : 440);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -81,16 +91,16 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
     // Initialize Chart
     const chart = createChart(container, {
       width: container.clientWidth,
-      height: 260,
+      height: chartHeight,
       layout: {
-        background: { type: ColorType.Solid, color: "#090d16" },
+        background: { type: ColorType.Solid, color: "#050811" },
         textColor: "#94a3b8",
-        fontSize: 12,
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        fontSize: 11,
+        fontFamily: "var(--font-jetbrains-mono), monospace"
       },
       grid: {
-        vertLines: { color: "#1e293b", style: 1 },
-        horzLines: { color: "#1e293b", style: 1 }
+        vertLines: { color: "rgba(255, 255, 255, 0.03)", style: 1 },
+        horzLines: { color: "rgba(255, 255, 255, 0.03)", style: 1 }
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -108,14 +118,14 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
         }
       },
       rightPriceScale: {
-        borderColor: "#1e293b",
+        borderColor: "rgba(255, 255, 255, 0.06)",
         scaleMargins: {
-          top: 0.1,
-          bottom: 0.25
+          top: 0.08,
+          bottom: 0.22
         }
       },
       timeScale: {
-        borderColor: "#1e293b",
+        borderColor: "rgba(255, 255, 255, 0.06)",
         timeVisible: true,
         secondsVisible: false
       }
@@ -143,7 +153,7 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
     });
     volumeSeries.priceScale().applyOptions({
       scaleMargins: {
-        top: 0.8,
+        top: 0.82,
         bottom: 0
       }
     });
@@ -307,7 +317,7 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
         chartRef.current = null;
       }
     };
-  }, [data, activeRange, showForecast, forecast]);
+  }, [data, activeRange, showForecast, forecast, chartHeight]);
 
   const latest = hoverData || (data && data.length > 0 ? data[data.length - 1] : null);
   const isUp = latest ? latest.close >= latest.open : true;
@@ -315,28 +325,29 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
   const changePct = latest && latest.open > 0 ? (changeVal / latest.open) * 100 : 0;
 
   return (
-    <div className="bg-[#090d16] rounded-xl p-3 shadow-xl">
+    <div className={`bg-[#050811] border border-white/[0.05] rounded-xl shadow-xl backdrop-blur-sm overflow-hidden ${compact ? "p-2.5" : "p-4"}`}>
       {/* Top Header: Title, Live Telemetry & Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-2 pb-2 border-b border-white/[0.05]">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-white/[0.05]">
         <div>
-          <div className="flex items-center space-x-3">
-            <h2 className="text-lg font-bold text-slate-100 font-mono tracking-tight">{symbol} Price Action</h2>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono">
-              NSE Cash (EQ)
-            </span>
-          </div>
+          {!compact && (
+            <div className="flex items-center space-x-3 mb-1">
+              <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">{symbol} Price Action</h2>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono">
+                NSE Cash (EQ)
+              </span>
+            </div>
+          )}
 
           {/* Crosshair Header Telemetry: Historical Bar vs Future Projection */}
           {hoverProjection ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs font-mono bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-800/60">
-              <span className="text-cyan-400 font-semibold">Forecast Step +{hoverProjection.step} ({hoverProjection.target_date}):</span>
-              <span className="text-slate-300">Expected: <strong className="text-cyan-300">₹{hoverProjection.expected.toFixed(2)}</strong></span>
-              <span className="text-slate-400">80% CI: <strong className="text-slate-200">₹{hoverProjection.lower_80.toFixed(2)} – ₹{hoverProjection.upper_80.toFixed(2)}</strong></span>
-              <span className="text-slate-400">95% CI: <strong className="text-slate-200">₹{hoverProjection.lower_95.toFixed(2)} – ₹{hoverProjection.upper_95.toFixed(2)}</strong></span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-800/60">
+              <span className="text-cyan-400 font-semibold">Forecast +{hoverProjection.step}d:</span>
+              <span className="text-slate-300">Target: <strong className="text-cyan-300">₹{hoverProjection.expected.toFixed(2)}</strong></span>
+              <span className="text-slate-400">80% CI: <strong className="text-slate-200">₹{hoverProjection.lower_80.toFixed(1)}–₹{hoverProjection.upper_80.toFixed(1)}</strong></span>
             </div>
           ) : latest ? (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs font-mono">
-              <span className="text-slate-400">Date: <strong className="text-slate-200">{latest.time}</strong></span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono">
+              <span className="text-slate-400">{latest.time}</span>
               <span className="text-slate-400">O: <strong className="text-slate-200">₹{latest.open.toFixed(2)}</strong></span>
               <span className="text-slate-400">H: <strong className="text-slate-200">₹{latest.high.toFixed(2)}</strong></span>
               <span className="text-slate-400">L: <strong className="text-slate-200">₹{latest.low.toFixed(2)}</strong></span>
@@ -344,37 +355,37 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
               <span className={isUp ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
                 {changeVal >= 0 ? "+" : ""}{changeVal.toFixed(2)} ({changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%)
               </span>
-              <span className="text-slate-400">Vol: <strong className="text-slate-200">{latest.volume.toLocaleString()}</strong></span>
+              <span className="text-slate-500 hidden sm:inline">Vol: {latest.volume.toLocaleString()}</span>
             </div>
           ) : null}
         </div>
 
         {/* Forecast Cone Toggle & Time Horizon Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 ml-auto">
           {/* 20D Forecast Cone Toggle */}
           <button
             onClick={() => setShowForecast(!showForecast)}
             title="Toggle Walk-Forward GARCH(1,1) & OU Mean-Reversion Fan Cone"
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-mono transition-all border ${
+            className={`flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
               showForecast
-                ? "bg-cyan-950/80 border-cyan-500/60 text-cyan-300 shadow-sm shadow-cyan-900/30 font-semibold"
+                ? "bg-cyan-950/80 border-cyan-500/60 text-cyan-300 font-semibold"
                 : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${showForecast ? "bg-cyan-400 animate-pulse" : "bg-slate-600"}`} />
-            <span>Econometric Forecast Cone (20D)</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${showForecast ? "bg-cyan-400 animate-pulse" : "bg-slate-600"}`} />
+            <span>20D Cone</span>
           </button>
 
           {/* Time Horizon Selector */}
-          <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-mono">
-            {(["3M", "6M", "1Y", "3Y", "5Y", "MAX"] as const).map(range => (
+          <div className="flex items-center space-x-0.5 bg-slate-950 p-0.5 rounded border border-white/[0.06] text-[10px] font-mono">
+            {(["3M", "6M", "1Y", "3Y", "MAX"] as const).map(range => (
               <button
                 key={range}
                 onClick={() => setActiveRange(range)}
-                className={`px-2.5 py-1 rounded transition-colors ${
+                className={`px-1.5 py-0.5 rounded transition-colors ${
                   activeRange === range
-                    ? "bg-cyan-600 text-white font-semibold shadow-sm"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                    ? "bg-cyan-600 text-white font-semibold"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 {range}
@@ -385,47 +396,43 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
       </div>
 
       {/* Chart Canvas Mount Point */}
-      <div ref={chartContainerRef} className="w-full relative min-h-[260px]" />
+      <div
+        ref={chartContainerRef}
+        style={{ height: chartHeight }}
+        className="w-full relative"
+      />
 
       {/* Legend Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-y-2 text-xs text-slate-500 font-mono mt-3 pt-2 border-t border-slate-800/60">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-            <span>Bullish</span>
+      <div className="flex flex-wrap items-center justify-between gap-y-1 text-[9px] text-slate-500 font-mono mt-1.5 pt-1.5 border-t border-white/[0.04]">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <span className="flex items-center space-x-1">
+            <span className="w-2 h-2 rounded-sm bg-emerald-500" />
+            <span>Bull</span>
           </span>
-          <span className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-red-500" />
-            <span>Bearish</span>
-          </span>
-          <span className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-slate-600" />
-            <span>Volume</span>
+          <span className="flex items-center space-x-1">
+            <span className="w-2 h-2 rounded-sm bg-red-500" />
+            <span>Bear</span>
           </span>
           {showForecast && (
             <>
-              <span className="flex items-center space-x-1.5 text-cyan-400 font-medium">
-                <span className="w-3 h-0.5 bg-cyan-400 border-dashed" />
-                <span>Expected Path</span>
+              <span className="flex items-center space-x-1 text-cyan-400">
+                <span className="w-2.5 h-0.5 bg-cyan-400" />
+                <span>Forecast Path</span>
               </span>
-              <span className="flex items-center space-x-1.5 text-cyan-300">
-                <span className="w-3 h-0.5 bg-cyan-400 opacity-60" />
+              <span className="flex items-center space-x-1 text-cyan-300">
+                <span className="w-2.5 h-0.5 bg-cyan-400 opacity-60" />
                 <span>80% Envelope</span>
-              </span>
-              <span className="flex items-center space-x-1.5 text-blue-400">
-                <span className="w-3 h-0.5 bg-blue-400 opacity-40" />
-                <span>95% Outer Envelope</span>
               </span>
             </>
           )}
           {sma200 && (
             <span className="text-slate-400">
-              200 SMA: <strong className="text-amber-400">₹{sma200.toFixed(2)}</strong>
+              200SMA: <strong className="text-amber-400">₹{sma200.toFixed(2)}</strong>
             </span>
           )}
         </div>
-        <div className="text-slate-500 hidden sm:block">
-          TradingView Lightweight-Charts · HTML5 Canvas
+        <div className="text-slate-600 hidden sm:block">
+          TradingView Lightweight-Charts
         </div>
       </div>
     </div>

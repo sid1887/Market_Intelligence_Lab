@@ -18,11 +18,11 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
   momentum20d,
   conviction,
 }) => {
-  const size = 180;
+  const size = 200;
   const center = size / 2;
-  const radius = 64;
+  const radius = 62;
 
-  // Normalize metrics to 0.15–1.0 scale
+  // Normalize metrics to 0.15 - 1.0 scale
   const normRoe = Math.min(Math.max((roe || 0) / 35, 0.15), 1);
   const normSafety = Math.min(Math.max(1 - (debtToEquity || 0) / 1.8, 0.15), 1);
   const normOpm = Math.min(Math.max((opm || 0) / 30, 0.15), 1);
@@ -47,53 +47,49 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
   const polygonPoints = values.map((v, i) => getPointStr(i, v)).join(" ");
 
   return (
-    <div className="relative flex items-center justify-center select-none">
-      <svg width={size} height={size} className="overflow-visible">
+    <div className="relative flex items-center justify-center select-none w-full">
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        className="w-[185px] h-[185px] overflow-visible"
+      >
         <defs>
           <radialGradient id="radarGlow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#10b981" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0.10" />
           </radialGradient>
-          <filter id="radarBloom">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
         </defs>
 
-        {/* Reference concentric pentagons */}
+        {/* Reference Concentric Pentagons */}
         {[0.33, 0.66, 1].map((ring) => (
           <polygon
             key={ring}
             points={[0, 1, 2, 3, 4].map((i) => getPointStr(i, ring)).join(" ")}
             fill="none"
-            stroke="rgba(148, 163, 184, 0.10)"
+            stroke="rgba(148, 163, 184, 0.12)"
             strokeWidth="1"
           />
         ))}
 
-        {/* Axis spokes & labels */}
+        {/* Axis Spokes & Labels */}
         {[0, 1, 2, 3, 4].map((i) => {
-          const [ex, ey] = getPoint(i, 1);
-          const [lx, ly] = getPoint(i, 1.28);
+          const [endX, endY] = getPoint(i, 1);
+          const [labelX, labelY] = getPoint(i, 1.25);
           return (
             <g key={i}>
               <line
                 x1={center}
                 y1={center}
-                x2={ex}
-                y2={ey}
-                stroke="rgba(148, 163, 184, 0.09)"
+                x2={endX}
+                y2={endY}
+                stroke="rgba(148, 163, 184, 0.12)"
                 strokeWidth="1"
               />
               <text
-                x={lx}
-                y={ly}
+                x={labelX}
+                y={labelY}
                 textAnchor="middle"
-                dominantBaseline="middle"
-                fontSize="8"
-                fontFamily="var(--font-jetbrains-mono), monospace"
-                letterSpacing="0.08em"
-                fill="rgba(148, 163, 184, 0.55)"
+                dominantBaseline="central"
+                className="fill-slate-400 font-mono text-[9px] tracking-wider select-none"
               >
                 {labels[i]}
               </text>
@@ -101,19 +97,7 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
           );
         })}
 
-        {/* Glow duplicate (bloom effect) */}
-        <motion.polygon
-          initial={false}
-          animate={{ points: polygonPoints }}
-          transition={{ type: "spring", stiffness: 220, damping: 22 }}
-          fill="url(#radarGlow)"
-          stroke="#22d3ee"
-          strokeWidth="4"
-          opacity="0.15"
-          filter="url(#radarBloom)"
-        />
-
-        {/* Main morphing data polygon */}
+        {/* Morphing Data Polygon */}
         <motion.polygon
           initial={false}
           animate={{ points: polygonPoints }}
@@ -123,17 +107,18 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
           strokeWidth="1.75"
         />
 
-        {/* Vertex dots */}
+        {/* Vertex Dots */}
         {values.map((v, i) => {
-          const [px, py] = getPoint(i, v);
+          const [vx, vy] = getPoint(i, v);
           return (
             <motion.circle
               key={i}
-              animate={{ cx: px, cy: py }}
+              initial={false}
+              animate={{ cx: vx, cy: vy }}
               transition={{ type: "spring", stiffness: 220, damping: 22 }}
-              r="2.5"
-              fill="#06b6d4"
-              opacity="0.9"
+              r={2.5}
+              fill="#22d3ee"
+              className="drop-shadow-[0_0_4px_#22d3ee]"
             />
           );
         })}
