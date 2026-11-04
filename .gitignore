@@ -10,8 +10,11 @@ venv/
 env/
 .venv/
 
-# Database backups & local scratch files
-data/market_lab_pre_b3_backup*.db
+# Database files & local scratch files
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
 *.db-shm
 *.db-wal
 backups/
