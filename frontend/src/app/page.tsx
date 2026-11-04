@@ -6,6 +6,7 @@ import ScreenerTable, { ScreenerCandidate } from "@/components/ScreenerTable";
 import { RefreshCw, AlertCircle } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const NGROK_HEADERS = { "ngrok-skip-browser-warning": "true" };
 
 export default function DashboardPage() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
@@ -19,13 +20,13 @@ export default function DashboardPage() {
     setError(null);
     try {
       // 1. Fetch Watchlist
-      const wlRes = await fetch(`${API_BASE}/watchlist`);
+      const wlRes = await fetch(`${API_BASE}/watchlist`, { headers: NGROK_HEADERS });
       if (!wlRes.ok) throw new Error(`Watchlist API returned ${wlRes.status}`);
       const wlData = await wlRes.json();
       setWatchlist(wlData.watchlist || []);
 
       // 2. Fetch Screener
-      const scrRes = await fetch(`${API_BASE}/screener?limit=54`);
+      const scrRes = await fetch(`${API_BASE}/screener?limit=54`, { headers: NGROK_HEADERS });
       if (!scrRes.ok) throw new Error(`Screener API returned ${scrRes.status}`);
       const scrData = await scrRes.json();
       setCandidates(scrData.results || []);

@@ -62,7 +62,7 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
   const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
 
-  const [activeRange, setActiveRange] = useState<"3M" | "6M" | "1Y" | "ALL">("6M");
+  const [activeRange, setActiveRange] = useState<"3M" | "6M" | "1Y" | "3Y" | "5Y" | "MAX">("1Y");
   const [showForecast, setShowForecast] = useState<boolean>(true);
   const [hoverData, setHoverData] = useState<CandleData | null>(null);
   const [hoverProjection, setHoverProjection] = useState<ProjectionStep | null>(null);
@@ -160,6 +160,12 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
       filteredData = sortedData.slice(-126);
     } else if (activeRange === "1Y") {
       filteredData = sortedData.slice(-252);
+    } else if (activeRange === "3Y") {
+      filteredData = sortedData.slice(-756);
+    } else if (activeRange === "5Y") {
+      filteredData = sortedData.slice(-1260);
+    } else if (activeRange === "MAX") {
+      filteredData = sortedData;
     }
 
     const candlePayload = filteredData.map(d => ({
@@ -358,11 +364,11 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
 
           {/* Time Horizon Selector */}
           <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-mono">
-            {(["3M", "6M", "1Y", "ALL"] as const).map(range => (
+            {(["3M", "6M", "1Y", "3Y", "5Y", "MAX"] as const).map(range => (
               <button
                 key={range}
                 onClick={() => setActiveRange(range)}
-                className={`px-3 py-1 rounded transition-colors ${
+                className={`px-2.5 py-1 rounded transition-colors ${
                   activeRange === range
                     ? "bg-cyan-600 text-white font-semibold shadow-sm"
                     : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"

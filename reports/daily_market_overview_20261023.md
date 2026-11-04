@@ -1,5 +1,5 @@
 # Daily Market Overview — NIFTY 50
-**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-04 09:56:26 UTC`  
+**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-04 11:24:37 UTC`  
 **Benchmark Mode:** Official `PRI` (Price Return Index) | **Coverage:** 50 Constituents (100%)  
 **System Status:** Local-First SQLite (`data/market_lab.db`) | **Trading Operations:** Strictly Disabled  
 

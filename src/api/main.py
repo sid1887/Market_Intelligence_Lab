@@ -39,6 +39,11 @@ from src.api.routes_market import (
     get_stock_tearsheet,
     get_stock_history,
     get_stock_forecast,
+    get_stock_news,
+    run_backtest_endpoint,
+    get_latest_backtest,
+    get_investment_memo,
+    get_system_accuracy,
     run_dynamic_ingestion
 )
 
@@ -284,5 +289,7 @@ __all__ = [
     "get_stock_news",
     "run_backtest_endpoint",
     "get_latest_backtest",
+    "get_investment_memo",
+    "get_system_accuracy",
     "run_dynamic_ingestion",
 ]

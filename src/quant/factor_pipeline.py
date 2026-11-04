@@ -16,6 +16,7 @@ Strict Governance:
 """
 
 import math
+import gc
 import datetime
 import logging
 from typing import Dict, Any, List, Optional, Tuple, Set
@@ -478,6 +479,9 @@ class FactorPipeline:
                 upserted = self.db.upsert_quant_factors(batch)
                 total_upserted += upserted
                 batch = []
+
+            del sym_factors
+            gc.collect()
 
         # Flush any remaining rows
         if batch:

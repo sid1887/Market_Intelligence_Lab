@@ -11,6 +11,7 @@ import re
 import gc
 import sqlite3
 import logging
+import datetime
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
@@ -427,6 +428,29 @@ def get_stock_forecast(
         from src.quant.forecasting import EconometricForecaster
         forecaster = EconometricForecaster(DatabaseManager(DATABASE_PATH))
         forecast = forecaster.generate_forecast(sym, horizon_days=horizon_days)
+
+        # Compounding ML feedback hook: record forecast prediction to audit ledger
+        try:
+            projections = forecast.get("projections", [])
+            if projections:
+                from src.quant.feedback_evaluator import FeedbackEvaluator
+                evaluator = FeedbackEvaluator(DatabaseManager(DATABASE_PATH))
+                last_p = projections[-1]
+                evaluator.record_forecast(
+                    symbol=sym,
+                    prediction_date=forecast.get("as_of_date", datetime.date.today().isoformat()),
+                    horizon_days=horizon_days,
+                    target_evaluation_date=last_p["target_date"],
+                    current_price=forecast["current_close"],
+                    expected_price=last_p["expected"],
+                    lower_80=last_p["lower_80"],
+                    upper_80=last_p["upper_80"],
+                    lower_95=last_p["lower_95"],
+                    upper_95=last_p["upper_95"]
+                )
+        except Exception as log_err:
+            logger.warning(f"Could not record forecast audit for {sym}: {log_err}")
+
         return sanitize_for_json(forecast)
     except Exception as e:
         logger.error(f"Econometric forecast error for {sym}: {e}", exc_info=True)
@@ -560,6 +584,43 @@ def get_latest_backtest():
         raise HTTPException(status_code=500, detail=f"Failed to retrieve latest backtest: {str(e)}")
 
 
+@router.get("/stocks/{symbol}/memo")
+@router.get("/api/v1/stocks/{symbol}/memo")
+def get_investment_memo(symbol: str):
+    """
+    Returns the synthesized institutional Investment Decision Memo for the specified symbol.
+    Integrates technical trend structure, point-in-time fundamentals, news sentiment,
+    and walk-forward GARCH econometric cones into a definitive one-page tearsheet memo.
+    """
+    try:
+        from src.explanation.decision_engine import InvestmentDecisionEngine
+        engine = InvestmentDecisionEngine(DatabaseManager(DATABASE_PATH))
+        memo = engine.generate_memo(symbol)
+        return sanitize_for_json(memo)
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Investment memo generation error for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Memo generation failed: {str(e)}")
+
+
+@router.get("/system/accuracy")
+@router.get("/api/v1/system/accuracy")
+def get_system_accuracy():
+    """
+    Returns compounding ML self-evaluation accuracy metrics across historical econometric
+    confidence cone containment (80% & 95%) and post-catalyst return realizations.
+    """
+    try:
+        from src.quant.feedback_evaluator import FeedbackEvaluator
+        evaluator = FeedbackEvaluator(DatabaseManager(DATABASE_PATH))
+        metrics = evaluator.get_accuracy_metrics()
+        return sanitize_for_json(metrics)
+    except Exception as e:
+        logger.error(f"System accuracy metrics retrieval error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve accuracy metrics: {str(e)}")
+
+
 __all__ = [
     "router",
     "market_router",
@@ -570,5 +631,7 @@ __all__ = [
     "get_stock_news",
     "run_backtest_endpoint",
     "get_latest_backtest",
+    "get_investment_memo",
+    "get_system_accuracy",
     "run_dynamic_ingestion",
 ]

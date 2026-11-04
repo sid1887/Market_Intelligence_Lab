@@ -225,3 +225,57 @@ CREATE TABLE IF NOT EXISTS backtest_equity_curve (
 
 CREATE INDEX IF NOT EXISTS idx_backtest_curve_run_date
 ON backtest_equity_curve(run_id, trading_date ASC);
+
+-- ====================================================================
+-- Milestone B9.0: Compounding ML Feedback Ledger & Autonomous Evaluation
+-- ====================================================================
+
+-- 10. Econometric Forecast Realization & Outcome Ledger
+CREATE TABLE IF NOT EXISTS forecast_audit_ledger (
+    id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    prediction_date TEXT NOT NULL,
+    horizon_days INTEGER NOT NULL,
+    target_evaluation_date TEXT NOT NULL,
+    current_price REAL NOT NULL,
+    expected_price REAL NOT NULL,
+    lower_80 REAL NOT NULL,
+    upper_80 REAL NOT NULL,
+    lower_95 REAL NOT NULL,
+    upper_95 REAL NOT NULL,
+    realized_price REAL DEFAULT NULL,
+    within_80_ci INTEGER DEFAULT NULL,
+    within_95_ci INTEGER DEFAULT NULL,
+    forecast_error_pct REAL DEFAULT NULL,
+    evaluated_at TEXT DEFAULT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_forecast_audit_sym_target
+ON forecast_audit_ledger(symbol, target_evaluation_date);
+
+CREATE INDEX IF NOT EXISTS idx_forecast_audit_pending
+ON forecast_audit_ledger(target_evaluation_date)
+WHERE evaluated_at IS NULL;
+
+-- 11. News & Catalyst Realization Ledger
+CREATE TABLE IF NOT EXISTS catalyst_audit_ledger (
+    id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    article_id TEXT NOT NULL,
+    published_at TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    price_at_publish REAL NOT NULL,
+    price_5d_after REAL DEFAULT NULL,
+    realized_return_5d REAL DEFAULT NULL,
+    is_direction_accurate INTEGER DEFAULT NULL,
+    evaluated_at TEXT DEFAULT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalyst_audit_sym
+ON catalyst_audit_ledger(symbol, published_at);
+
+CREATE INDEX IF NOT EXISTS idx_catalyst_audit_pending
+ON catalyst_audit_ledger(evaluated_at)
+WHERE evaluated_at IS NULL;

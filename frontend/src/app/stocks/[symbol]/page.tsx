@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import StockChart, { CandleData, ForecastData } from "@/components/StockChart";
 import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
+import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
 import {
   ArrowLeft,
   TrendingUp,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const NGROK_HEADERS = { "ngrok-skip-browser-warning": "true" };
 
 interface Disclosure {
   disclosure_id: string;
@@ -93,6 +95,7 @@ export default function StockTearsheetPage() {
   const [forecast, setForecast] = useState<ForecastData | null>(null);
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [newsLoading, setNewsLoading] = useState<boolean>(true);
+  const [memo, setMemo] = useState<InvestmentMemo | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
@@ -115,7 +118,9 @@ export default function StockTearsheetPage() {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const statusRes = await fetch(`${API_BASE}/stocks/${symbol}/status`);
+        const statusRes = await fetch(`${API_BASE}/stocks/${symbol}/status`, {
+          headers: NGROK_HEADERS
+        });
         if (!statusRes.ok) return;
         const statusJson = await statusRes.json();
         if (statusJson.status === "READY") {
@@ -141,7 +146,9 @@ export default function StockTearsheetPage() {
 
   const fetchTearsheet = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/stocks/${symbol}/tearsheet`);
+      const res = await fetch(`${API_BASE}/stocks/${symbol}/tearsheet`, {
+        headers: NGROK_HEADERS
+      });
       if (res.status === 202) {
         const json = await res.json();
         setIngestion({
@@ -170,7 +177,9 @@ export default function StockTearsheetPage() {
 
       // Fetch Walk-Forward Econometric Forecast (Milestone B7.0)
       try {
-        const fRes = await fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`);
+        const fRes = await fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`, {
+          headers: NGROK_HEADERS
+        });
         if (fRes.ok) {
           const fJson = await fRes.json();
           setForecast(fJson);
@@ -182,7 +191,9 @@ export default function StockTearsheetPage() {
       // Fetch Real-Time News & Directional Impact (Milestone B7.5)
       try {
         setNewsLoading(true);
-        const nRes = await fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`);
+        const nRes = await fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`, {
+          headers: NGROK_HEADERS
+        });
         if (nRes.ok) {
           const nJson = await nRes.json();
           setNewsArticles(nJson.articles || []);
@@ -191,6 +202,19 @@ export default function StockTearsheetPage() {
         console.warn("News fetch warning:", nErr);
       } finally {
         setNewsLoading(false);
+      }
+
+      // Fetch Institutional Investment Decision Memo (Milestone B9.0)
+      try {
+        const mRes = await fetch(`${API_BASE}/stocks/${symbol}/memo`, {
+          headers: NGROK_HEADERS
+        });
+        if (mRes.ok) {
+          const mJson = await mRes.json();
+          setMemo(mJson);
+        }
+      } catch (mErr) {
+        console.warn("Memo fetch warning:", mErr);
       }
 
       setIngestion({ isIngesting: false, progressPct: 100, step: "READY", detail: "Ready" });
@@ -480,6 +504,11 @@ export default function StockTearsheetPage() {
           </div>
         )}
       </div>
+
+      {/* Milestone B9.0: Institutional Investment Decision Memo */}
+      <section>
+        <InvestmentMemoCard symbol={data.symbol} initialMemo={memo} />
+      </section>
 
       {/* Embed TradingView HTML5 Lightweight-Charts Candlestick Component */}
       <section>

@@ -141,7 +141,10 @@ export default function BacktestPage() {
 
       const res = await fetch(`${API_BASE}/backtest/run`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        },
         body: JSON.stringify(payload),
       });
 
@@ -165,7 +168,9 @@ export default function BacktestPage() {
     try {
       setRunning(true);
       setError(null);
-      const res = await fetch(`${API_BASE}/backtest/latest`);
+      const res = await fetch(`${API_BASE}/backtest/latest`, {
+        headers: { "ngrok-skip-browser-warning": "true" }
+      });
       if (res.ok) {
         const json = await res.json();
         // If complete run object returned, set it
