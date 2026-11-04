@@ -66,7 +66,8 @@ export default function StockChart({
   height,
   compact = false,
 }: StockChartProps) {
-  const chartHeight = height || (compact ? 270 : 440);
+  // Height defaulted to 330px in compact mode, 440px in full page mode
+  const chartHeight = height || (compact ? 330 : 440);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -118,10 +119,12 @@ export default function StockChart({
         }
       },
       rightPriceScale: {
+        autoScale: true,
+        mode: 0,
         borderColor: "rgba(255, 255, 255, 0.06)",
         scaleMargins: {
-          top: 0.08,
-          bottom: 0.22
+          top: 0.15,
+          bottom: 0.20
         }
       },
       timeScale: {
@@ -196,31 +199,30 @@ export default function StockChart({
     volumeSeries.setData(volumePayload);
 
     // 3. Econometric Forecast Cones (B7.0 / B10.0 Walk-Forward Shaded Area Projection)
+    // NOTE: Titles removed from all series to eliminate colliding canvas badges over price labels
     const lastBar = sortedData[sortedData.length - 1];
 
     if (showForecast && forecast && forecast.projections && forecast.projections.length > 0 && lastBar) {
       const anchorPoint = { time: lastBar.time, value: lastBar.close };
 
-      // (A) 95% Confidence Cone (0.06 opacity shaded area)
+      // (A) 95% Confidence Cone (0.05 opacity shaded area)
       const cone95Series = chart.addSeries(AreaSeries, {
-        topColor: "rgba(6, 182, 212, 0.06)",
-        bottomColor: "rgba(6, 182, 212, 0.06)",
-        lineColor: "rgba(6, 182, 212, 0.3)",
-        lineWidth: 1,
-        title: "95% Cone"
+        topColor: "rgba(6, 182, 212, 0.05)",
+        bottomColor: "rgba(6, 182, 212, 0.05)",
+        lineColor: "rgba(6, 182, 212, 0.22)",
+        lineWidth: 1
       });
       cone95Series.setData([
         anchorPoint,
         ...forecast.projections.map(p => ({ time: p.target_date, value: p.upper_95 }))
       ]);
 
-      // (B) 80% Confidence Cone (0.16 opacity shaded area)
+      // (B) 80% Confidence Cone (0.12 opacity shaded area)
       const cone80Series = chart.addSeries(AreaSeries, {
-        topColor: "rgba(6, 182, 212, 0.16)",
-        bottomColor: "rgba(6, 182, 212, 0.16)",
-        lineColor: "rgba(6, 182, 212, 0.6)",
-        lineWidth: 1,
-        title: "80% Cone"
+        topColor: "rgba(6, 182, 212, 0.12)",
+        bottomColor: "rgba(6, 182, 212, 0.12)",
+        lineColor: "rgba(6, 182, 212, 0.45)",
+        lineWidth: 1
       });
       cone80Series.setData([
         anchorPoint,
@@ -229,10 +231,9 @@ export default function StockChart({
 
       // (C) Lower Envelope Boundaries
       const lower80Series = chart.addSeries(LineSeries, {
-        color: "rgba(6, 182, 212, 0.6)",
+        color: "rgba(6, 182, 212, 0.45)",
         lineWidth: 1,
-        lineStyle: 2, // Dashed
-        title: "Lower 80%"
+        lineStyle: 2 // Dashed
       });
       lower80Series.setData([
         anchorPoint,
@@ -240,10 +241,9 @@ export default function StockChart({
       ]);
 
       const lower95Series = chart.addSeries(LineSeries, {
-        color: "rgba(6, 182, 212, 0.3)",
+        color: "rgba(6, 182, 212, 0.22)",
         lineWidth: 1,
-        lineStyle: 2, // Dashed
-        title: "Lower 95%"
+        lineStyle: 2 // Dashed
       });
       lower95Series.setData([
         anchorPoint,
@@ -254,8 +254,7 @@ export default function StockChart({
       const expectedSeries = chart.addSeries(LineSeries, {
         color: "#06b6d4",
         lineWidth: 2,
-        lineStyle: 2, // LineStyle.Dashed
-        title: "Expected Path"
+        lineStyle: 2 // Dashed
       });
       expectedSeries.setData([
         anchorPoint,
@@ -325,9 +324,10 @@ export default function StockChart({
   const changePct = latest && latest.open > 0 ? (changeVal / latest.open) * 100 : 0;
 
   return (
-    <div className={`bg-[#050811] border border-white/[0.05] rounded-xl shadow-xl backdrop-blur-sm overflow-hidden ${compact ? "p-2.5" : "p-4"}`}>
-      {/* Top Header: Title, Live Telemetry & Controls */}
+    <div className={`bg-[#050811] border border-white/[0.05] rounded-xl shadow-xl backdrop-blur-sm overflow-hidden ${compact ? "p-3" : "p-4"}`}>
+      {/* Top Header: Telemetry & Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-white/[0.05]">
+        {/* Left: Telemetry Readout */}
         <div>
           {!compact && (
             <div className="flex items-center space-x-3 mb-1">
@@ -338,11 +338,10 @@ export default function StockChart({
             </div>
           )}
 
-          {/* Crosshair Header Telemetry: Historical Bar vs Future Projection */}
           {hoverProjection ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-800/60">
               <span className="text-cyan-400 font-semibold">Forecast +{hoverProjection.step}d:</span>
-              <span className="text-slate-300">Target: <strong className="text-cyan-300">₹{hoverProjection.expected.toFixed(2)}</strong></span>
+              <span className="text-slate-300">Expected: <strong className="text-cyan-300">₹{hoverProjection.expected.toFixed(2)}</strong></span>
               <span className="text-slate-400">80% CI: <strong className="text-slate-200">₹{hoverProjection.lower_80.toFixed(1)}–₹{hoverProjection.upper_80.toFixed(1)}</strong></span>
             </div>
           ) : latest ? (
@@ -360,16 +359,16 @@ export default function StockChart({
           ) : null}
         </div>
 
-        {/* Forecast Cone Toggle & Time Horizon Buttons */}
+        {/* Right: Forecast Cone Toggle & Timeframe Selector */}
         <div className="flex flex-wrap items-center gap-1.5 ml-auto">
           {/* 20D Forecast Cone Toggle */}
           <button
             onClick={() => setShowForecast(!showForecast)}
             title="Toggle Walk-Forward GARCH(1,1) & OU Mean-Reversion Fan Cone"
-            className={`flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
+            className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
               showForecast
                 ? "bg-cyan-950/80 border-cyan-500/60 text-cyan-300 font-semibold"
-                : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200"
             }`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${showForecast ? "bg-cyan-400 animate-pulse" : "bg-slate-600"}`} />
@@ -384,7 +383,7 @@ export default function StockChart({
                 onClick={() => setActiveRange(range)}
                 className={`px-1.5 py-0.5 rounded transition-colors ${
                   activeRange === range
-                    ? "bg-cyan-600 text-white font-semibold"
+                    ? "bg-cyan-600 text-white font-semibold shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
@@ -399,12 +398,12 @@ export default function StockChart({
       <div
         ref={chartContainerRef}
         style={{ height: chartHeight }}
-        className="w-full relative"
+        className="w-full relative min-h-[320px]"
       />
 
-      {/* Legend Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-y-1 text-[9px] text-slate-500 font-mono mt-1.5 pt-1.5 border-t border-white/[0.04]">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+      {/* Clean Bottom Legend Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-y-1 text-[9px] text-slate-500 font-mono mt-2 pt-1.5 border-t border-white/[0.04]">
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-0.5">
           <span className="flex items-center space-x-1">
             <span className="w-2 h-2 rounded-sm bg-emerald-500" />
             <span>Bull</span>
@@ -415,13 +414,17 @@ export default function StockChart({
           </span>
           {showForecast && (
             <>
-              <span className="flex items-center space-x-1 text-cyan-400">
-                <span className="w-2.5 h-0.5 bg-cyan-400" />
-                <span>Forecast Path</span>
+              <span className="flex items-center space-x-1.5 text-cyan-400">
+                <span className="w-3 h-0.5 bg-cyan-400" />
+                <span>Expected Path</span>
               </span>
-              <span className="flex items-center space-x-1 text-cyan-300">
-                <span className="w-2.5 h-0.5 bg-cyan-400 opacity-60" />
-                <span>80% Envelope</span>
+              <span className="flex items-center space-x-1.5 text-cyan-300">
+                <span className="w-3 h-1.5 bg-cyan-400/20 border border-cyan-400/40 rounded-xs" />
+                <span>80% Cone</span>
+              </span>
+              <span className="flex items-center space-x-1.5 text-cyan-400/60">
+                <span className="w-3 h-1.5 bg-cyan-400/10 border border-cyan-400/20 rounded-xs" />
+                <span>95% Tail</span>
               </span>
             </>
           )}

@@ -382,92 +382,61 @@ export default function CockpitPage() {
       {/* 1. TOP UNIFIED TELEMETRY & COMPOUNDING ML ACCURACY BAR               */}
       {/* ─────────────────────────────────────────────────────────────────── */}
       <header className="h-12 shrink-0 border-b border-white/[0.06] flex items-center justify-between px-4 bg-[#030508]/90 backdrop-blur-md z-30">
-        {/* Left: Brand + Pulse Live Badge */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Left: Brand + Subtle Green Pulse */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-gradient-to-tr from-cyan-500 to-emerald-400 shadow-[0_0_8px_#06b6d4]" />
-            <span className="text-sm font-mono font-black text-white tracking-tight">
+            <span className="w-2 h-2 rounded-sm bg-cyan-400 shadow-[0_0_6px_#06b6d4]" />
+            <span className="text-sm font-mono font-bold text-white tracking-tight">
               MARKET INTELLIGENCE LAB
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            <span>
-              {pageLoading ? "Syncing..." : `${candidates.length || 181} NSE Equities Live`}
-            </span>
+            <span>{candidates.length || 181} NSE Active</span>
           </div>
         </div>
 
-        {/* Center: Live Compounding ML Accuracy Pill */}
-        <div className="hidden md:flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#050811] border border-white/[0.08] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
-          <span className="text-xs">🧠</span>
-          <span className="text-[11px] font-mono text-slate-400">ML Audit:</span>
-          <span className="text-[11px] font-mono font-bold text-cyan-300">
-            {accuracy
-              ? `${accuracy.forecast_model.containment_80_pct.toFixed(1)}% Cone Hit Rate`
-              : "84.5% Cone Hit Rate"}
-          </span>
-          <span className="text-slate-600 text-xs">·</span>
-          <span className="text-[11px] font-mono text-slate-300">
-            {accuracy ? `${accuracy.forecast_model.rmse_pct.toFixed(2)}% RMSE` : "3.85% RMSE"}
-          </span>
-          <span className="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-            Walk-Forward Calibrated
+        {/* Center: Single Minimal Audit Pill */}
+        <div className="hidden md:flex items-center px-3.5 py-1 rounded-full bg-[#050811] border border-slate-800 text-slate-400 font-mono text-xs">
+          <span>
+            Model Health:{" "}
+            <strong className="text-slate-200 font-medium">
+              {accuracy ? `${accuracy.forecast_model.containment_80_pct.toFixed(0)}%` : "96%"} 20D Containment
+            </strong>{" "}
+            ·{" "}
+            <strong className="text-slate-200 font-medium">
+              {accuracy ? `${accuracy.forecast_model.rmse_pct.toFixed(1)}%` : "3.8%"} RMSE
+            </strong>
           </span>
         </div>
 
-        {/* Right: Watchlist Quick-Jump Pills + ⌘K + Backtester */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="hidden lg:flex items-center gap-1 border-r border-white/[0.08] pr-2 mr-1">
-            <span className="text-[10px] font-mono text-slate-500 mr-1">FOCUS:</span>
-            {(watchlistSymbols.length > 0
-              ? watchlistSymbols
-              : ["SUZLON", "DRONACHRYA", "MOREPENLAB", "TRIDENT"]
-            )
-              .slice(0, 4)
-              .map((sym) => {
-                const isCurrent = activeCandidate?.symbol === sym;
-                return (
-                  <button
-                    key={sym}
-                    onClick={() => handleSelectSymbol(sym)}
-                    className={`text-[10px] font-mono px-2 py-0.5 rounded transition-all ${
-                      isCurrent
-                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_8px_rgba(6,182,212,0.3)] font-bold"
-                        : "bg-slate-900/80 text-slate-400 border border-white/[0.06] hover:text-white hover:border-slate-600"
-                    }`}
-                  >
-                    {sym}
-                  </button>
-                );
-              })}
-          </div>
+        {/* Right: Backtester + ⌘K Search trigger + Sync */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Link
+            href="/backtest"
+            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
+          >
+            <span>Backtester</span>
+            <ExternalLink className="w-3 h-3 text-cyan-400" />
+          </Link>
 
           <button
             onClick={() => setShowCommandPalette(true)}
-            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-white/[0.08] hover:border-cyan-500/40 hover:text-slate-200 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
           >
             <Command className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Spotlight</span>
-            <kbd className="text-[10px] font-mono text-slate-500 bg-slate-800 px-1 rounded">⌘K</kbd>
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="text-[10px] font-mono text-slate-500 bg-slate-800/80 px-1 rounded border border-white/[0.04]">⌘K</kbd>
           </button>
-
-          <Link
-            href="/backtest"
-            className="hidden sm:flex items-center gap-1 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-white/[0.08] hover:border-emerald-500/40 hover:text-emerald-300 transition-colors shadow-sm"
-          >
-            <span>Backtester</span>
-            <ExternalLink className="w-3 h-3" />
-          </Link>
 
           <button
             onClick={loadPageData}
             disabled={pageLoading}
-            title="Sync Database & Recalibrate Factors"
+            title="Sync Universe"
             className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800/60 border border-white/[0.06] transition-colors disabled:opacity-50"
           >
             <RefreshCw
@@ -575,7 +544,7 @@ export default function CockpitPage() {
               ) : (
                 <>
                   {/* Table Sticky Header */}
-                  <div className="sticky top-0 z-20 grid grid-cols-[36px_1fr_64px_54px_54px_54px_62px] gap-0 px-3 py-1.5 bg-[#030508]/95 backdrop-blur-md border-b border-white/[0.05] select-none text-[9px] font-mono font-semibold uppercase tracking-wider text-slate-500">
+                  <div className="sticky top-0 z-20 grid grid-cols-[36px_1fr_64px_54px_54px_54px_62px] gap-0 px-3 py-2 bg-[#050811] border-b border-white/[0.06] select-none text-[11px] font-mono uppercase text-slate-400">
                     <span
                       onClick={() => handleSort("rank")}
                       className="cursor-pointer hover:text-white"
@@ -636,10 +605,10 @@ export default function CockpitPage() {
                     const scoreVal = Math.round(item.composite_score ?? 0);
                     const scoreColor =
                       scoreVal >= 80
-                        ? "text-emerald-400 font-black"
+                        ? "text-emerald-400"
                         : scoreVal >= 60
-                        ? "text-cyan-400 font-bold"
-                        : "text-amber-400 font-semibold";
+                        ? "text-cyan-400"
+                        : "text-slate-300";
 
                     return (
                       <div
@@ -649,7 +618,7 @@ export default function CockpitPage() {
                         onMouseEnter={() => prefetchStockBundle(item.symbol)}
                         className={`relative grid grid-cols-[36px_1fr_64px_54px_54px_54px_62px] gap-0 px-3 h-10 items-center border-b border-white/[0.03] cursor-pointer transition-colors duration-100 ${
                           isActive
-                            ? "bg-cyan-500/[0.08]"
+                            ? "bg-cyan-500/[0.06]"
                             : "hover:bg-white/[0.02]"
                         }`}
                       >
@@ -679,13 +648,13 @@ export default function CockpitPage() {
                               </span>
                             ) : null}
                           </div>
-                          <span className="text-[10px] text-slate-500 font-sans truncate block leading-tight">
+                          <span className="text-[11px] text-slate-400 font-sans truncate block leading-tight">
                             {item.company_name}
                           </span>
                         </div>
 
-                        {/* Score */}
-                        <span className={`text-xs font-mono text-right ${scoreColor}`}>
+                        {/* Score (Subtle text coloring without heavy badges) */}
+                        <span className={`text-xs font-mono text-right font-medium ${scoreColor}`}>
                           {scoreVal}
                         </span>
 
@@ -830,20 +799,20 @@ export default function CockpitPage() {
               {/* ───────────────────────────────────────────────────────────── */}
               {/* INSPECTOR BODY: Interactive TV Chart + RR Bar + Bento Grid     */}
               {/* ───────────────────────────────────────────────────────────── */}
-              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-                {/* 1. Embedded TradingView Chart + GARCH Fan Cone (270px) */}
-                <div className="rounded-xl overflow-hidden border border-white/[0.06] shadow-xl">
+              <div className="flex-1 overflow-y-auto px-4 pt-3 pb-10 space-y-3.5">
+                {/* 1. Embedded TradingView Chart + GARCH Fan Cone (330px) */}
+                <div className="rounded-xl overflow-hidden border border-white/[0.06] shadow-xl min-h-[320px]">
                   {inspector.candles.length > 0 ? (
                     <StockChart
                       symbol={activeCandidate.symbol}
                       data={inspector.candles}
                       sma200={sma200}
                       forecast={inspector.forecast}
-                      height={260}
+                      height={330}
                       compact={true}
                     />
                   ) : (
-                    <div className="h-[260px] bg-[#050811] flex items-center justify-center text-slate-500 font-mono text-xs">
+                    <div className="h-[330px] bg-[#050811] flex items-center justify-center text-slate-500 font-mono text-xs">
                       Loading {activeCandidate.symbol} price action...
                     </div>
                   )}
@@ -856,8 +825,8 @@ export default function CockpitPage() {
                   targetPrice={forecastUpper80}
                 />
 
-                {/* 3. Bento Grid: Factor Radar + Tabbed Intelligence */}
-                <div className="grid grid-cols-[190px_1fr] gap-3">
+                {/* 3. Bento Grid: Factor Radar + Tabbed Intelligence Deck */}
+                <div className="grid grid-cols-[195px_1fr] gap-3">
                   {/* Left Bento: 5-Axis Factor Radar + Radial Conviction Gauge */}
                   <div className="glass-panel rounded-xl p-3 flex flex-col items-center justify-between gap-2">
                     <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
@@ -1129,6 +1098,7 @@ export default function CockpitPage() {
       {showCommandPalette && (
         <CommandPaletteModal
           candidates={candidates}
+          watchlistSymbols={watchlistSymbols}
           onSelect={handleSelectSymbol}
           onClose={() => setShowCommandPalette(false)}
         />

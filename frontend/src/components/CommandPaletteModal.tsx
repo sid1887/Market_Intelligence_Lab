@@ -7,12 +7,14 @@ import { ScreenerCandidate, prefetchStockBundle } from "@/lib/api";
 
 interface CommandPaletteModalProps {
   candidates: ScreenerCandidate[];
+  watchlistSymbols?: string[];
   onSelect: (symbol: string) => void;
   onClose: () => void;
 }
 
 export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   candidates,
+  watchlistSymbols = [],
   onSelect,
   onClose,
 }) => {
@@ -110,6 +112,25 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
               ESC
             </kbd>
           </div>
+
+          {/* Focus Watchlist Quick Access */}
+          {watchlistSymbols.length > 0 && (
+            <div className="flex items-center gap-1.5 px-4 py-2 bg-white/[0.02] border-b border-white/[0.05] overflow-x-auto no-scrollbar">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 shrink-0 mr-1">
+                Focus:
+              </span>
+              {watchlistSymbols.map((sym) => (
+                <button
+                  key={sym}
+                  onClick={() => handleSelect(sym)}
+                  onMouseEnter={() => prefetchStockBundle(sym)}
+                  className="px-2 py-0.5 rounded text-[11px] font-mono bg-cyan-950/40 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-500/40 transition-colors shrink-0"
+                >
+                  {sym}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Results */}
           <div ref={listRef} className="max-h-[400px] overflow-y-auto py-1.5">

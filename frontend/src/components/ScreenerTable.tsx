@@ -259,7 +259,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
         {/* High-Density Candidates Table with Frozen Columns */}
         <div className="overflow-x-auto rounded-lg border border-white/[0.06] relative shadow-inner">
           <table className="w-full text-left text-xs font-mono border-collapse">
-            <thead className="bg-[#050811] text-slate-400 uppercase text-[10px] tracking-wider border-b border-white/[0.06]">
+            <thead className="bg-[#050811] text-slate-400 uppercase text-[11px] font-mono tracking-wider border-b border-white/[0.06]">
               <tr className="h-9">
                 <th scope="col" className="sticky left-0 bg-[#050811] z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-2 px-2.5 w-10 text-center">#</th>
                 <th scope="col" className="sticky left-10 bg-[#050811] z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-2 px-3.5 min-w-[180px]">Symbol / Name</th>
@@ -317,7 +317,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
                                 <span>{c.symbol}</span>
                                 <ChevronRight className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
                               </span>
-                              <span className="text-[10px] text-slate-400 truncate max-w-[150px] leading-tight" title={c.company_name}>
+                              <span className="text-[11px] text-slate-400 truncate max-w-[150px] leading-tight" title={c.company_name}>
                                 {c.company_name}
                               </span>
                             </div>
