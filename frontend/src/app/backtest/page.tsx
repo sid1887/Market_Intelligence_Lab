@@ -169,7 +169,10 @@ export default function BacktestPage() {
       setRunning(true);
       setError(null);
       const res = await fetch(`${API_BASE}/backtest/latest`, {
-        headers: { "ngrok-skip-browser-warning": "true" }
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        }
       });
       if (res.ok) {
         const json = await res.json();

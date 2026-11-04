@@ -6,7 +6,10 @@ import ScreenerTable, { ScreenerCandidate } from "@/components/ScreenerTable";
 import { RefreshCw, AlertCircle } from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-const NGROK_HEADERS = { "ngrok-skip-browser-warning": "true" };
+const NGROK_HEADERS = {
+  "Content-Type": "application/json",
+  "ngrok-skip-browser-warning": "true",
+};
 
 export default function DashboardPage() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
