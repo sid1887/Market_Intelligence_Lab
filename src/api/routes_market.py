@@ -12,12 +12,13 @@ import gc
 import sqlite3
 import logging
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
 
+from src.storage.database import DatabaseManager
 from src.client.symbol_resolver import SymbolResolver
 from src.pipeline.dynamic_ingestion import DynamicIngestionManager, _INGESTION_STATE
-from src.api.utils import get_db_connection, sanitize_for_json, safe_float, safe_int
+from src.api.utils import get_db_connection, sanitize_for_json, safe_float, safe_int, DATABASE_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -358,11 +359,85 @@ def get_stock_history(
     return sanitize_for_json(history)
 
 
+@router.get("/stocks/{symbol}/forecast")
+@router.get("/api/v1/stocks/{symbol}/forecast")
+def get_stock_forecast(
+    symbol: str,
+    background_tasks: BackgroundTasks,
+    horizon_days: int = Query(20, ge=1, le=60, description="Forecast horizon in trading days"),
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """
+    Returns walk-forward econometric price forecasts with GARCH(1,1) conditional volatility
+    and Ornstein-Uhlenbeck mean-reverting drift projections (80% and 95% confidence fan cones).
+    """
+    sym = symbol.upper().strip()
+    if not re.match(r"^[A-Z0-9&_\-]{1,20}$", sym):
+        raise HTTPException(status_code=400, detail=f"Invalid symbol format: '{sym}'.")
+
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM securities_master WHERE symbol = ?", (sym,))
+    sec_row = cur.fetchone()
+
+    cur.execute("SELECT 1 FROM user_watchlists WHERE symbol = ?", (sym,))
+    wl_row = cur.fetchone()
+
+    cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'", (sym,))
+    ohlcv_count = cur.fetchone()[0]
+    if ohlcv_count == 0:
+        cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ?", (sym,))
+        ohlcv_count = cur.fetchone()[0]
+
+    # If unseeded or insufficient bars (< 126), trigger dynamic ingestion
+    if not (sec_row or wl_row) or ohlcv_count < 126:
+        resolver = SymbolResolver()
+        try:
+            resolver.resolve_symbol(sym)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Symbol '{sym}' not found or not actively traded on NSE cash segment (series 'EQ')."
+            )
+
+        status_info = DynamicIngestionManager.get_ingestion_status(sym)
+        if status_info.get("status") != "INGESTING":
+            DynamicIngestionManager.update_ingestion_status(
+                sym,
+                status="INGESTING",
+                progress_pct=25,
+                step="QUEUED",
+                detail="Symbol discovered. Ingesting historical series for econometric forecasting..."
+            )
+            background_tasks.add_task(run_dynamic_ingestion, sym)
+
+        current_status = DynamicIngestionManager.get_ingestion_status(sym)
+        return JSONResponse(
+            status_code=202,
+            content=sanitize_for_json({
+                "status": "INGESTING",
+                "symbol": sym,
+                "message": "Symbol discovered. Ingesting historical series for econometric forecasting...",
+                "progress_pct": current_status.get("progress_pct", 25),
+                "step": current_status.get("step", "QUEUED")
+            })
+        )
+
+    try:
+        from src.quant.forecasting import EconometricForecaster
+        forecaster = EconometricForecaster(DatabaseManager(DATABASE_PATH))
+        forecast = forecaster.generate_forecast(sym, horizon_days=horizon_days)
+        return sanitize_for_json(forecast)
+    except Exception as e:
+        logger.error(f"Econometric forecast error for {sym}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Econometric forecasting failed: {str(e)}")
+
+
 __all__ = [
     "router",
     "market_router",
     "get_stock_status",
     "get_stock_tearsheet",
     "get_stock_history",
+    "get_stock_forecast",
     "run_dynamic_ingestion",
 ]

@@ -38,6 +38,7 @@ from src.api.routes_market import (
     get_stock_status,
     get_stock_tearsheet,
     get_stock_history,
+    get_stock_forecast,
     run_dynamic_ingestion
 )
 
@@ -279,5 +280,6 @@ __all__ = [
     "get_stock_status",
     "get_stock_tearsheet",
     "get_stock_history",
+    "get_stock_forecast",
     "run_dynamic_ingestion",
 ]

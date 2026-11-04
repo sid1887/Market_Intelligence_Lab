@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import StockChart, { CandleData } from "@/components/StockChart";
+import StockChart, { CandleData, ForecastData } from "@/components/StockChart";
 import {
   ArrowLeft,
   TrendingUp,
@@ -89,6 +89,7 @@ export default function StockTearsheetPage() {
   const symbol = rawSymbol ? rawSymbol.toUpperCase() : "";
 
   const [data, setData] = useState<TearsheetData | null>(null);
+  const [forecast, setForecast] = useState<ForecastData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
@@ -163,6 +164,18 @@ export default function StockTearsheetPage() {
 
       const json = await res.json();
       setData(json);
+
+      // Fetch Walk-Forward Econometric Forecast (Milestone B7.0)
+      try {
+        const fRes = await fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`);
+        if (fRes.ok) {
+          const fJson = await fRes.json();
+          setForecast(fJson);
+        }
+      } catch (fErr) {
+        console.warn("Forecast fetch warning:", fErr);
+      }
+
       setIngestion({ isIngesting: false, progressPct: 100, step: "READY", detail: "Ready" });
       setNotFound(false);
       setError(null);
@@ -457,8 +470,112 @@ export default function StockTearsheetPage() {
           symbol={data.symbol}
           data={data.history}
           sma200={data.technicals.sma_200}
+          forecast={forecast}
         />
       </section>
+
+      {/* Milestone B7.0: 20-Day Econometric Forecast & Tail Risk Card */}
+      {forecast && forecast.projections && forecast.projections.length > 0 && (
+        <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl backdrop-blur-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-lg bg-cyan-950/70 border border-cyan-800/80 text-cyan-400">
+                <Activity className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white font-mono tracking-tight">
+                  20-Day Econometric Forecast &amp; Tail Risk
+                </h3>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  GARCH(1,1) Conditional Volatility &middot; Ornstein-Uhlenbeck Mean-Reverting Drift
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-mono text-slate-400">Regime:</span>
+              <span
+                className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold border ${
+                  forecast.volatility_regime === "LOW"
+                    ? "bg-emerald-950/70 text-emerald-400 border-emerald-800/80"
+                    : forecast.volatility_regime === "NORMAL"
+                    ? "bg-cyan-950/70 text-cyan-400 border-cyan-800/80"
+                    : "bg-amber-950/70 text-amber-400 border-amber-800/80"
+                }`}
+              >
+                {forecast.volatility_regime} DISPERSION
+              </span>
+            </div>
+          </div>
+
+          {/* Forecast Telemetry Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+            {/* 1. Expected 20D Price */}
+            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
+              <span className="text-xs text-slate-400 block">Expected 20D Price</span>
+              <div className="text-2xl font-black text-cyan-300 mt-1">
+                ₹{forecast.projections[forecast.projections.length - 1].expected.toFixed(2)}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                {(() => {
+                  const expPrice = forecast.projections[forecast.projections.length - 1].expected;
+                  const diff = expPrice - data.latest_ohlcv.close;
+                  const pct = (diff / data.latest_ohlcv.close) * 100;
+                  return (
+                    <span className={diff >= 0 ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
+                      {diff >= 0 ? "+" : ""}{diff.toFixed(2)} ({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)
+                    </span>
+                  );
+                })()}
+                <span className="text-slate-500 ml-1">expected return</span>
+              </div>
+            </div>
+
+            {/* 2. 80% Expected Range */}
+            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
+              <span className="text-xs text-slate-400 block">80% Expected Range</span>
+              <div className="text-lg font-bold text-white mt-1">
+                ₹{forecast.projections[forecast.projections.length - 1].lower_80.toFixed(2)} – ₹{forecast.projections[forecast.projections.length - 1].upper_80.toFixed(2)}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                High Probability Trajectory Envelope
+              </div>
+            </div>
+
+            {/* 3. 95% Tail Risk Floor */}
+            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
+              <span className="text-xs text-slate-400 block">95% Tail Risk Floor</span>
+              <div className="text-2xl font-black text-rose-400 mt-1">
+                ₹{forecast.projections[forecast.projections.length - 1].lower_95.toFixed(2)}
+              </div>
+              <div className="text-[11px] text-rose-400/90 mt-1">
+                {(() => {
+                  const floorPrice = forecast.projections[forecast.projections.length - 1].lower_95;
+                  const maxDrawdownPct = ((floorPrice / data.latest_ohlcv.close) - 1.0) * 100;
+                  return `${maxDrawdownPct.toFixed(1)}% Max Modeled Drawdown`;
+                })()}
+              </div>
+            </div>
+
+            {/* 4. Model Calibration Telemetry */}
+            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
+              <span className="text-xs text-slate-400 block">Annualized Volatility</span>
+              <div className="text-2xl font-black text-white mt-1">
+                {(forecast.annualized_volatility * 100).toFixed(2)}%
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                {forecast.garch_parameters ? (
+                  <span>
+                    Persistence (α+β): <strong className="text-slate-200">{forecast.garch_parameters.persistence.toFixed(3)}</strong>
+                  </span>
+                ) : (
+                  <span>Walk-Forward Risk Calibrated</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Core 4-Card Grid: Fundamentals & Technicals */}
       <section className="space-y-3">
