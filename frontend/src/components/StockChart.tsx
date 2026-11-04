@@ -217,10 +217,10 @@ export default function StockChart({
         ...forecast.projections.map(p => ({ time: p.target_date, value: p.upper_95 }))
       ]);
 
-      // (B) 80% Confidence Cone (0.12 opacity shaded area)
+      // (B) 80% Confidence Cone (0.14 opacity shaded area)
       const cone80Series = chart.addSeries(AreaSeries, {
-        topColor: "rgba(6, 182, 212, 0.12)",
-        bottomColor: "rgba(6, 182, 212, 0.12)",
+        topColor: "rgba(6, 182, 212, 0.14)",
+        bottomColor: "rgba(6, 182, 212, 0.14)",
         lineColor: "rgba(6, 182, 212, 0.45)",
         lineWidth: 1
       });

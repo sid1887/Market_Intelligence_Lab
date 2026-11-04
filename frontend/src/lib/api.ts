@@ -256,3 +256,22 @@ export interface NewsResponse {
   article_count: number;
   articles: NewsArticle[];
 }
+
+export interface MacroIndicator {
+  symbol: string;
+  label: string;
+  value: number;
+  unit: string;
+  change_pct: number;
+  source: string;
+}
+
+export interface MacroResponse {
+  status: string;
+  timestamp: string;
+  indicators: MacroIndicator[];
+}
+
+export async function fetchMacroTelemetry(): Promise<MacroResponse> {
+  return apiFetch<MacroResponse>("/macro");
+}

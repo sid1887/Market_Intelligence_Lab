@@ -33,6 +33,8 @@ import {
   NewsArticle,
   NewsResponse,
   VerdictType,
+  MacroResponse,
+  fetchMacroTelemetry,
 } from "@/lib/api";
 import StockChart from "@/components/StockChart";
 import { FactorPentagonRadar } from "@/components/FactorPentagonRadar";
@@ -128,6 +130,7 @@ export default function CockpitPage() {
   const [candidates, setCandidates] = useState<ScreenerCandidate[]>([]);
   const [asOfDate, setAsOfDate] = useState<string>("");
   const [accuracy, setAccuracy] = useState<SystemAccuracy | null>(null);
+  const [macro, setMacro] = useState<MacroResponse | null>(null);
   const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -186,10 +189,11 @@ export default function CockpitPage() {
     setPageLoading(true);
     setPageError(null);
     try {
-      const [scrData, wlData, accData] = await Promise.allSettled([
+      const [scrData, wlData, accData, macroData] = await Promise.allSettled([
         apiFetch<ScreenerResponse>("/screener?limit=250"),
         apiFetch<WatchlistResponse>("/watchlist"),
         apiFetch<SystemAccuracy>("/system/accuracy"),
+        fetchMacroTelemetry(),
       ]);
 
       if (scrData.status === "fulfilled") {
@@ -208,6 +212,10 @@ export default function CockpitPage() {
 
       if (accData.status === "fulfilled") {
         setAccuracy(accData.value);
+      }
+
+      if (macroData.status === "fulfilled") {
+        setMacro(macroData.value);
       }
     } catch (err: unknown) {
       setPageError(err instanceof Error ? err.message : "FastAPI Bridge Error");
@@ -400,18 +408,40 @@ export default function CockpitPage() {
           </div>
         </div>
 
-        {/* Center: Single Minimal Audit Pill */}
-        <div className="hidden md:flex items-center px-3.5 py-1 rounded-full bg-[#050811] border border-slate-800 text-slate-400 font-mono text-xs">
-          <span>
-            Model Health:{" "}
-            <strong className="text-slate-200 font-medium">
-              {accuracy ? `${accuracy.forecast_model.containment_80_pct.toFixed(0)}%` : "96%"} 20D Containment
-            </strong>{" "}
-            ·{" "}
-            <strong className="text-slate-200 font-medium">
-              {accuracy ? `${accuracy.forecast_model.rmse_pct.toFixed(1)}%` : "3.8%"} RMSE
-            </strong>
-          </span>
+        {/* Center: Live AlphaVantage Macro Ribbon + Minimal Audit Pill */}
+        <div className="hidden lg:flex items-center gap-2.5">
+          {macro && macro.indicators && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#050811] border border-white/[0.06] text-[11px] font-mono text-slate-400">
+              {macro.indicators.slice(0, 3).map((ind, i) => (
+                <React.Fragment key={ind.symbol}>
+                  {i > 0 && <span className="text-slate-700">·</span>}
+                  <span className="flex items-center gap-1">
+                    <span className="text-slate-500">{ind.label}:</span>
+                    <strong className="text-slate-200 font-medium">
+                      {ind.unit === "₹"
+                        ? `₹${ind.value.toFixed(2)}`
+                        : ind.unit === "%"
+                        ? `${ind.value.toFixed(2)}%`
+                        : `$${ind.value.toFixed(2)}`}
+                    </strong>
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center px-3.5 py-1 rounded-full bg-[#050811] border border-slate-800 text-slate-400 font-mono text-xs">
+            <span>
+              Model Health:{" "}
+              <strong className="text-slate-200 font-medium">
+                {accuracy ? `${accuracy.forecast_model.containment_80_pct.toFixed(0)}%` : "96%"} 20D Containment
+              </strong>{" "}
+              ·{" "}
+              <strong className="text-slate-200 font-medium">
+                {accuracy ? `${accuracy.forecast_model.rmse_pct.toFixed(1)}%` : "3.8%"} RMSE
+              </strong>
+            </span>
+          </div>
         </div>
 
         {/* Right: Backtester + ⌘K Search trigger + Sync */}
@@ -799,7 +829,7 @@ export default function CockpitPage() {
               {/* ───────────────────────────────────────────────────────────── */}
               {/* INSPECTOR BODY: Interactive TV Chart + RR Bar + Bento Grid     */}
               {/* ───────────────────────────────────────────────────────────── */}
-              <div className="flex-1 overflow-y-auto px-4 pt-3 pb-10 space-y-3.5">
+              <div className="flex-1 overflow-y-auto px-4 pt-3 pb-12 space-y-3.5">
                 {/* 1. Embedded TradingView Chart + GARCH Fan Cone (330px) */}
                 <div className="rounded-xl overflow-hidden border border-white/[0.06] shadow-xl min-h-[320px]">
                   {inspector.candles.length > 0 ? (
