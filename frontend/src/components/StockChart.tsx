@@ -81,7 +81,7 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
     // Initialize Chart
     const chart = createChart(container, {
       width: container.clientWidth,
-      height: 440,
+      height: 260,
       layout: {
         background: { type: ColorType.Solid, color: "#090d16" },
         textColor: "#94a3b8",
@@ -315,9 +315,9 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
   const changePct = latest && latest.open > 0 ? (changeVal / latest.open) * 100 : 0;
 
   return (
-    <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 shadow-xl backdrop-blur-sm">
+    <div className="bg-[#090d16] rounded-xl p-3 shadow-xl">
       {/* Top Header: Title, Live Telemetry & Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-3 pb-3 border-b border-slate-800/80">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-2 pb-2 border-b border-white/[0.05]">
         <div>
           <div className="flex items-center space-x-3">
             <h2 className="text-lg font-bold text-slate-100 font-mono tracking-tight">{symbol} Price Action</h2>
@@ -385,7 +385,7 @@ export default function StockChart({ symbol, data, sma200, forecast }: StockChar
       </div>
 
       {/* Chart Canvas Mount Point */}
-      <div ref={chartContainerRef} className="w-full relative min-h-[440px]" />
+      <div ref={chartContainerRef} className="w-full relative min-h-[260px]" />
 
       {/* Legend Footer */}
       <div className="flex flex-wrap items-center justify-between gap-y-2 text-xs text-slate-500 font-mono mt-3 pt-2 border-t border-slate-800/60">

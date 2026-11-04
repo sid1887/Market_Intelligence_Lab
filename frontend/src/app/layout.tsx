@@ -1,10 +1,24 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
+});
 
 export const metadata: Metadata = {
   title: "Market Intelligence Lab — Quantitative Terminal",
-  description: "High-performance quantitative market research and equity attribution terminal.",
+  description:
+    "High-performance quantitative market research and equity attribution terminal. Local-first SQLite, multi-factor quality-momentum, GARCH forecasting.",
 };
 
 export default function RootLayout({
@@ -13,15 +27,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-cyan-500/20 selection:text-cyan-300">
-        <Navbar />
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {children}
-        </main>
-        <footer className="border-t border-slate-900 bg-slate-950/90 py-6 text-center text-xs text-slate-500 font-mono">
-          Market Intelligence Lab · Deterministic Quantitative Attribution Engine · Non-Custodial Research Terminal
-        </footer>
+    <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
+      <body className="bg-[#030508] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 overflow-hidden">
+        {children}
       </body>
     </html>
   );

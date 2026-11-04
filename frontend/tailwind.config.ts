@@ -8,12 +8,16 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        mono: ["var(--font-jetbrains-mono)", "JetBrains Mono", "monospace"],
+        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
+      },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-        obsidian: "#050811",
-        "surface-1": "rgba(15, 23, 42, 0.6)",
-        "surface-2": "rgba(2, 6, 23, 0.7)",
+        obsidian: "#030508",
+        "surface-1": "rgba(10, 15, 28, 0.65)",
+        "surface-2": "rgba(14, 20, 38, 0.80)",
       },
       keyframes: {
         'tick-up': { '0%': { backgroundColor: 'rgba(16, 185, 129, 0.35)', color: '#34d399' }, '100%': { backgroundColor: 'transparent' } },

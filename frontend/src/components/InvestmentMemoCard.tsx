@@ -74,11 +74,7 @@ export interface InvestmentMemo {
   generated_at: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-const NGROK_HEADERS = {
-  "Content-Type": "application/json",
-  "ngrok-skip-browser-warning": "true",
-};
+import { apiFetch } from "@/lib/api";
 
 interface InvestmentMemoCardProps {
   symbol: string;
@@ -102,13 +98,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`${API_BASE}/stocks/${symbol}/memo`, {
-          headers: NGROK_HEADERS
-        });
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: Failed to generate investment decision memo.`);
-        }
-        const data = await res.json();
+        const data = await apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`);
         if (isMounted) {
           setMemo(data);
         }

@@ -15,11 +15,7 @@ import {
 } from "lucide-react";
 import { RadialConvictionGauge } from "./RadialConvictionGauge";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-const NGROK_HEADERS = {
-  "Content-Type": "application/json",
-  "ngrok-skip-browser-warning": "true",
-};
+import { apiFetch } from "@/lib/api";
 
 interface Candle {
   time: string;
@@ -75,22 +71,14 @@ export default function QuickInspectDrawer({ symbol, onClose }: QuickInspectDraw
     const fetchData = async () => {
       try {
         // Fetch Memo and 30-day History in parallel
-        const [memoRes, histRes] = await Promise.all([
-          fetch(`${API_BASE}/stocks/${symbol}/memo`, { headers: NGROK_HEADERS }),
-          fetch(`${API_BASE}/stocks/${symbol}/history?limit=30`, { headers: NGROK_HEADERS })
+        const [memoJson, histJson] = await Promise.all([
+          apiFetch<MemoData>(`/stocks/${symbol}/memo`),
+          apiFetch<Candle[]>(`/stocks/${symbol}/history?limit=30`),
         ]);
-
-        if (!memoRes.ok) throw new Error(`HTTP ${memoRes.status}: Unable to load investment memo`);
-        const memoJson = await memoRes.json();
-
-        let histJson: Candle[] = [];
-        if (histRes.ok) {
-          histJson = await histRes.json();
-        }
 
         if (isMounted) {
           setMemo(memoJson);
-          setCandles(histJson);
+          setCandles(histJson ?? []);
         }
       } catch (err: unknown) {
         if (isMounted) {
