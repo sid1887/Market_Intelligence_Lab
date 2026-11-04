@@ -281,5 +281,6 @@ __all__ = [
     "get_stock_tearsheet",
     "get_stock_history",
     "get_stock_forecast",
+    "get_stock_news",
     "run_dynamic_ingestion",
 ]

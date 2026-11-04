@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 import json
 import datetime
 from typing import List, Dict, Any, Optional
@@ -1479,5 +1480,118 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
+
+    # ====================================================================
+    # Milestone B7.5: News Ingestion & Directional Impact Storage
+    # ====================================================================
+
+    def insert_news_articles(self, articles: List[Dict[str, Any]]) -> int:
+        """Inserts processed news articles into equity_news_feed."""
+        if not articles:
+            return 0
+        sql = """
+        INSERT OR REPLACE INTO equity_news_feed (
+            id, symbol, title, source, published_at, article_url,
+            summary_bullets, impact_direction, impact_horizon,
+            impact_drivers, impact_rationale, confidence_score, fetched_at
+        ) VALUES (
+            :id, :symbol, :title, :source, :published_at, :article_url,
+            :summary_bullets, :impact_direction, :impact_horizon,
+            :impact_drivers, :impact_rationale, :confidence_score, :fetched_at
+        );
+        """
+        normalized = []
+        for a in articles:
+            summary_bullets = a.get("summary_bullets", "[]")
+            if isinstance(summary_bullets, list):
+                summary_bullets = json.dumps(summary_bullets)
+            impact_drivers = a.get("impact_drivers", "[]")
+            if isinstance(impact_drivers, list):
+                impact_drivers = json.dumps(impact_drivers)
+            
+            normalized.append({
+                "id": a["id"],
+                "symbol": a["symbol"].upper(),
+                "title": a["title"],
+                "source": a.get("source", "Financial Media"),
+                "published_at": a["published_at"],
+                "article_url": a["article_url"],
+                "summary_bullets": summary_bullets,
+                "impact_direction": a.get("impact_direction", "NEUTRAL"),
+                "impact_horizon": a.get("impact_horizon", "SHORT_TERM"),
+                "impact_drivers": impact_drivers,
+                "impact_rationale": a.get("impact_rationale", ""),
+                "confidence_score": float(a.get("confidence_score", 1.0)),
+                "fetched_at": a.get("fetched_at", datetime.datetime.now(datetime.timezone.utc).isoformat())
+            })
+        with self.get_connection() as conn:
+            cursor = conn.executemany(sql, normalized)
+            return cursor.rowcount
+
+    def get_news_articles(
+        self,
+        symbol: Optional[str] = None,
+        limit: int = 10,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Queries equity news feed optionally filtered by symbol, ordered by published_at DESC."""
+        query = "SELECT * FROM equity_news_feed"
+        params: List[Any] = []
+        if symbol:
+            query += " WHERE symbol = ?"
+            params.append(symbol.upper())
+        query += " ORDER BY published_at DESC LIMIT ? OFFSET ?;"
+        params.extend([limit, offset])
+        with self.get_connection() as conn:
+            cursor = conn.execute(query, params)
+            rows = [dict(row) for row in cursor.fetchall()]
+            for r in rows:
+                if isinstance(r.get("summary_bullets"), str):
+                    try:
+                        r["summary"] = json.loads(r["summary_bullets"])
+                    except Exception:
+                        r["summary"] = [r["summary_bullets"]]
+                else:
+                    r["summary"] = r.get("summary_bullets") or []
+                
+                drivers = r.get("impact_drivers")
+                if isinstance(drivers, str):
+                    try:
+                        drivers = json.loads(drivers)
+                    except Exception:
+                        drivers = []
+                elif not drivers:
+                    drivers = []
+                r["impact"] = {
+                    "direction": r.get("impact_direction", "NEUTRAL"),
+                    "horizon": r.get("impact_horizon", "SHORT_TERM"),
+                    "affected_drivers": drivers,
+                    "rationale": r.get("impact_rationale", ""),
+                    "confidence_score": r.get("confidence_score", 1.0)
+                }
+            return rows
+
+    def get_latest_news_timestamp(self, symbol: str) -> Optional[str]:
+        """Returns the most recent fetched_at timestamp for a given symbol."""
+        query = "SELECT MAX(fetched_at) as latest_fetch FROM equity_news_feed WHERE symbol = ?;"
+        with self.get_connection() as conn:
+            cursor = conn.execute(query, (symbol.upper(),))
+            row = cursor.fetchone()
+            return row["latest_fetch"] if row and row["latest_fetch"] else None
+
+    def article_exists(self, symbol: str, article_url: str, normalized_title: str) -> bool:
+        """Checks whether an article exists by URL or normalized title for this symbol."""
+        query = "SELECT article_url, title FROM equity_news_feed WHERE symbol = ?;"
+        with self.get_connection() as conn:
+            cursor = conn.execute(query, (symbol.upper(),))
+            rows = cursor.fetchall()
+            for r in rows:
+                if r["article_url"] == article_url:
+                    return True
+                norm_existing = re.sub(r'[^a-zA-Z0-9]', '', r["title"].lower())
+                if norm_existing and norm_existing == normalized_title:
+                    return True
+        return False
+
 
 

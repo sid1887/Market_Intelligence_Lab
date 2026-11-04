@@ -167,3 +167,31 @@ CREATE TABLE IF NOT EXISTS user_watchlists (
 
 CREATE INDEX IF NOT EXISTS idx_watchlist_sector 
 ON user_watchlists(sector);
+
+-- ====================================================================
+-- Milestone B7.5: News Ingestion, Structured Summarization & Directional Impact
+-- ====================================================================
+
+-- 7. Equity News Feed & Directional Impact Ledger
+CREATE TABLE IF NOT EXISTS equity_news_feed (
+    id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    title TEXT NOT NULL,
+    source TEXT NOT NULL,
+    published_at TEXT NOT NULL,
+    article_url TEXT NOT NULL,
+    summary_bullets TEXT NOT NULL,
+    impact_direction TEXT NOT NULL,
+    impact_horizon TEXT NOT NULL,
+    impact_drivers TEXT DEFAULT '[]',
+    impact_rationale TEXT NOT NULL,
+    confidence_score REAL DEFAULT 1.0,
+    fetched_at TEXT NOT NULL,
+    FOREIGN KEY (symbol) REFERENCES securities_master(symbol)
+);
+
+CREATE INDEX IF NOT EXISTS idx_news_sym_pub 
+ON equity_news_feed(symbol, published_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_news_article_url
+ON equity_news_feed(article_url);

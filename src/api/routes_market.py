@@ -432,6 +432,70 @@ def get_stock_forecast(
         raise HTTPException(status_code=500, detail=f"Econometric forecasting failed: {str(e)}")
 
 
+@router.get("/stocks/{symbol}/news")
+@router.get("/api/v1/stocks/{symbol}/news")
+def get_stock_news(
+    symbol: str,
+    limit: int = Query(5, ge=1, le=20, description="Max news articles to return"),
+    force_refresh: bool = Query(False, description="Bypass cache and fetch live RSS"),
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """
+    Returns real-time news articles with dual summary and directional impact assessment (Milestone B7.5).
+    Cached up to 4 hours; automatically queries structured Google News RSS if stale or missing.
+    """
+    sym = symbol.upper().strip()
+    cur = conn.cursor()
+
+    cur.execute("SELECT 1 FROM securities_master WHERE symbol = ?", (sym,))
+    sec_row = cur.fetchone()
+
+    cur.execute("SELECT 1 FROM user_watchlists WHERE symbol = ?", (sym,))
+    wl_row = cur.fetchone()
+
+    if not (sec_row or wl_row):
+        resolver = SymbolResolver()
+        try:
+            resolver.resolve_symbol(sym)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Symbol '{sym}' not found in active universe or user watchlists."
+            )
+
+    try:
+        from src.client.news_client import NewsClient
+        client = NewsClient(DatabaseManager(DATABASE_PATH))
+        raw_articles = client.fetch_latest_news(sym, limit=limit, force_refresh=force_refresh)
+
+        articles = []
+        for r in raw_articles:
+            articles.append({
+                "id": r["id"],
+                "title": r["title"],
+                "source": r.get("source", "Financial Media"),
+                "published_at": r["published_at"],
+                "article_url": r["article_url"],
+                "summary": r.get("summary") or [],
+                "impact": r.get("impact") or {
+                    "direction": r.get("impact_direction", "NEUTRAL"),
+                    "horizon": r.get("impact_horizon", "SHORT_TERM"),
+                    "affected_drivers": r.get("impact_drivers", []),
+                    "rationale": r.get("impact_rationale", ""),
+                    "confidence_score": r.get("confidence_score", 1.0),
+                }
+            })
+
+        return sanitize_for_json({
+            "symbol": sym,
+            "count": len(articles),
+            "articles": articles
+        })
+    except Exception as e:
+        logger.error(f"News retrieval error for {sym}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch news feed: {str(e)}")
+
+
 __all__ = [
     "router",
     "market_router",
@@ -439,5 +503,6 @@ __all__ = [
     "get_stock_tearsheet",
     "get_stock_history",
     "get_stock_forecast",
+    "get_stock_news",
     "run_dynamic_ingestion",
 ]

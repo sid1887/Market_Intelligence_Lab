@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import StockChart, { CandleData, ForecastData } from "@/components/StockChart";
+import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import {
   ArrowLeft,
   TrendingUp,
@@ -90,6 +91,8 @@ export default function StockTearsheetPage() {
 
   const [data, setData] = useState<TearsheetData | null>(null);
   const [forecast, setForecast] = useState<ForecastData | null>(null);
+  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
+  const [newsLoading, setNewsLoading] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
@@ -174,6 +177,20 @@ export default function StockTearsheetPage() {
         }
       } catch (fErr) {
         console.warn("Forecast fetch warning:", fErr);
+      }
+
+      // Fetch Real-Time News & Directional Impact (Milestone B7.5)
+      try {
+        setNewsLoading(true);
+        const nRes = await fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`);
+        if (nRes.ok) {
+          const nJson = await nRes.json();
+          setNewsArticles(nJson.articles || []);
+        }
+      } catch (nErr) {
+        console.warn("News fetch warning:", nErr);
+      } finally {
+        setNewsLoading(false);
       }
 
       setIngestion({ isIngesting: false, progressPct: 100, step: "READY", detail: "Ready" });
@@ -698,6 +715,13 @@ export default function StockTearsheetPage() {
           </div>
         </div>
       </section>
+
+      {/* Section: Real-Time Equity News & Impact Analysis (Milestone B7.5) */}
+      <NewsImpactCard
+        symbol={data.symbol}
+        articles={newsArticles}
+        loading={newsLoading}
+      />
 
       {/* Section: Recent Corporate Filings & Disclosures Timeline */}
       <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
