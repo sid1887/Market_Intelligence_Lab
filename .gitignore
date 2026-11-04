@@ -12,6 +12,8 @@ env/
 
 # Database backups & local scratch files
 data/market_lab_pre_b3_backup*.db
+*.db-shm
+*.db-wal
 backups/
 data/raw/
 *.log
