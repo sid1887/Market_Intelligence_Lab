@@ -28,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="bg-[#030508] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 overflow-hidden">
+      <body className="bg-[#030508] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 min-h-screen">
         {children}
       </body>
     </html>

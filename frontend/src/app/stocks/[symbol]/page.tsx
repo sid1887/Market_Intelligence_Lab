@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import StockChart, { CandleData, ForecastData } from "@/components/StockChart";
 import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
+import Navbar from "@/components/Navbar";
 import {
   ArrowLeft,
   TrendingUp,
@@ -258,96 +259,101 @@ export default function StockTearsheetPage() {
     const isStep4Active = ingestion.progressPct >= 90 && ingestion.progressPct < 100;
 
     return (
-      <div className="max-w-2xl mx-auto my-12 p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl space-y-8 backdrop-blur-xl">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-700/60 text-cyan-400 text-xs font-mono">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-            <span>On-Demand Dynamic Ingestion</span>
-          </div>
-          <h2 className="text-2xl font-black text-white tracking-tight">
-            Universal Ingestion: <span className="text-cyan-400 font-mono">{symbol}</span>
-          </h2>
-          <p className="text-xs text-slate-400 font-mono max-w-md mx-auto">
-            {ingestion.detail || "Connecting to NSE pipeline, resolving ISIN, and synchronizing data..."}
-          </p>
-        </div>
+      <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
+        <Navbar />
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
+          <div className="max-w-2xl w-full p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl space-y-8 backdrop-blur-xl">
+            <div className="text-center space-y-2">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-700/60 text-cyan-400 text-xs font-mono">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                <span>On-Demand Dynamic Ingestion</span>
+              </div>
+              <h2 className="text-2xl font-black text-white tracking-tight">
+                Universal Ingestion: <span className="text-cyan-400 font-mono">{symbol}</span>
+              </h2>
+              <p className="text-xs text-slate-400 font-mono max-w-md mx-auto">
+                {ingestion.detail || "Connecting to NSE pipeline, resolving ISIN, and synchronizing data..."}
+              </p>
+            </div>
 
-        {/* Progress Bar & Percentage */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-xs font-mono text-slate-400">
-            <span>Pipeline Progress</span>
-            <span className="text-cyan-400 font-bold">{ingestion.progressPct}%</span>
-          </div>
-          <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
-            <div
-              className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out shadow-lg shadow-cyan-500/50"
-              style={{ width: `${Math.max(5, ingestion.progressPct)}%` }}
-            />
-          </div>
-        </div>
+            {/* Progress Bar & Percentage */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-mono text-slate-400">
+                <span>Pipeline Progress</span>
+                <span className="text-cyan-400 font-bold">{ingestion.progressPct}%</span>
+              </div>
+              <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out shadow-lg shadow-cyan-500/50"
+                  style={{ width: `${Math.max(5, ingestion.progressPct)}%` }}
+                />
+              </div>
+            </div>
 
-        {/* Checklist */}
-        <div className="space-y-3.5 bg-slate-950/60 p-5 rounded-xl border border-slate-800/80 font-mono text-xs">
-          {/* Step 1 */}
-          <div className="flex items-center space-x-3">
-            {isStep1Done ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-            ) : (
-              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
-            )}
-            <span className={isStep1Done ? "text-slate-200 line-through text-slate-400" : "text-cyan-300 font-semibold"}>
-              Resolving NSE Security Master & ISIN
-            </span>
-          </div>
+            {/* Checklist */}
+            <div className="space-y-3.5 bg-slate-950/60 p-5 rounded-xl border border-slate-800/80 font-mono text-xs">
+              {/* Step 1 */}
+              <div className="flex items-center space-x-3">
+                {isStep1Done ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                ) : (
+                  <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+                )}
+                <span className={isStep1Done ? "text-slate-200 line-through text-slate-400" : "text-cyan-300 font-semibold"}>
+                  Resolving NSE Security Master & ISIN
+                </span>
+              </div>
 
-          {/* Step 2 */}
-          <div className="flex items-center space-x-3">
-            {isStep2Done ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-            ) : isStep2Active ? (
-              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
-            ) : (
-              <Circle className="w-5 h-5 text-slate-600 shrink-0" />
-            )}
-            <span className={isStep2Done ? "text-slate-400 line-through" : isStep2Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
-              Backfilling 24-Month EOD Historical Bars
-            </span>
-          </div>
+              {/* Step 2 */}
+              <div className="flex items-center space-x-3">
+                {isStep2Done ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                ) : isStep2Active ? (
+                  <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+                ) : (
+                  <Circle className="w-5 h-5 text-slate-600 shrink-0" />
+                )}
+                <span className={isStep2Done ? "text-slate-400 line-through" : isStep2Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
+                  Backfilling 24-Month EOD Historical Bars
+                </span>
+              </div>
 
-          {/* Step 3 */}
-          <div className="flex items-center space-x-3">
-            {isStep3Done ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-            ) : isStep3Active ? (
-              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
-            ) : (
-              <Circle className="w-5 h-5 text-slate-600 shrink-0" />
-            )}
-            <span className={isStep3Done ? "text-slate-400 line-through" : isStep3Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
-              Ingesting P&L & Balance Sheet Statements
-            </span>
-          </div>
+              {/* Step 3 */}
+              <div className="flex items-center space-x-3">
+                {isStep3Done ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                ) : isStep3Active ? (
+                  <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+                ) : (
+                  <Circle className="w-5 h-5 text-slate-600 shrink-0" />
+                )}
+                <span className={isStep3Done ? "text-slate-400 line-through" : isStep3Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
+                  Ingesting P&L & Balance Sheet Statements
+                </span>
+              </div>
 
-          {/* Step 4 */}
-          <div className="flex items-center space-x-3">
-            {isStep4Done ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-            ) : isStep4Active ? (
-              <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
-            ) : (
-              <Circle className="w-5 h-5 text-slate-600 shrink-0" />
-            )}
-            <span className={isStep4Done ? "text-slate-400 line-through" : isStep4Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
-              Computing 200-Day SMAs & Factor Analytics
-            </span>
-          </div>
-        </div>
+              {/* Step 4 */}
+              <div className="flex items-center space-x-3">
+                {isStep4Done ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                ) : isStep4Active ? (
+                  <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
+                ) : (
+                  <Circle className="w-5 h-5 text-slate-600 shrink-0" />
+                )}
+                <span className={isStep4Done ? "text-slate-400 line-through" : isStep4Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
+                  Computing 200-Day SMAs & Factor Analytics
+                </span>
+              </div>
+            </div>
 
-        <div className="text-center">
-          <p className="text-[11px] text-slate-500 font-mono">
-            Auto-refreshing every 1.5s · Background Worker Active
-          </p>
-        </div>
+            <div className="text-center">
+              <p className="text-[11px] text-slate-500 font-mono">
+                Auto-refreshing every 1.5s · Background Worker Active
+              </p>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -355,57 +361,70 @@ export default function StockTearsheetPage() {
   // Not Found Error Boundary
   if (notFound) {
     return (
-      <div className="p-8 rounded-2xl bg-slate-900/90 border border-rose-900/40 text-center space-y-4 max-w-lg mx-auto my-14 shadow-2xl backdrop-blur-md">
-        <div className="w-14 h-14 rounded-full bg-rose-950/60 border border-rose-800/60 flex items-center justify-center mx-auto text-rose-400">
-          <SearchX className="w-7 h-7" />
-        </div>
-        <div className="space-y-1">
-          <h2 className="text-xl font-bold text-white">Symbol Not Found on NSE</h2>
-          <p className="text-xs text-slate-400 font-mono">
-            The symbol <span className="text-rose-400 font-bold">{symbol}</span> is not listed or actively traded on the National Stock Exchange of India (series &apos;EQ&apos;).
-          </p>
-        </div>
-        <div className="pt-2">
-          <Link
-            href="/"
-            className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Return to Dashboard</span>
-          </Link>
-        </div>
+      <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
+        <Navbar />
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
+          <div className="p-8 rounded-2xl bg-slate-900/90 border border-rose-900/40 text-center space-y-4 max-w-lg w-full shadow-2xl backdrop-blur-md">
+            <div className="w-14 h-14 rounded-full bg-rose-950/60 border border-rose-800/60 flex items-center justify-center mx-auto text-rose-400">
+              <SearchX className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold text-white">Symbol Not Found on NSE</h2>
+              <p className="text-xs text-slate-400 font-mono">
+                The symbol <span className="text-rose-400 font-bold">{symbol}</span> is not listed or actively traded on the National Stock Exchange of India (series &apos;EQ&apos;).
+              </p>
+            </div>
+            <div className="pt-2">
+              <Link
+                href="/"
+                className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Return to Dashboard</span>
+              </Link>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-8 w-48 bg-slate-900 rounded" />
-        <div className="h-28 bg-slate-900/80 rounded-xl" />
-        <div className="h-96 bg-slate-900/80 rounded-xl" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-32 bg-slate-900/80 rounded-xl" />
-          ))}
-        </div>
+      <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
+        <Navbar />
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 pb-24 animate-pulse">
+          <div className="h-8 w-48 bg-slate-900 rounded" />
+          <div className="h-28 bg-slate-900/80 rounded-xl" />
+          <div className="h-96 bg-slate-900/80 rounded-xl" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-32 bg-slate-900/80 rounded-xl" />
+            ))}
+          </div>
+        </main>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="p-8 rounded-xl bg-slate-900/80 border border-slate-800 text-center space-y-4 max-w-xl mx-auto my-12">
-        <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
-        <h2 className="text-xl font-bold text-white">Stock Tearsheet Unavailable</h2>
-        <p className="text-xs text-slate-400 font-mono">{error || `Symbol ${symbol} not found.`}</p>
-        <Link
-          href="/"
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Return to Dashboard</span>
-        </Link>
+      <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
+        <Navbar />
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
+          <div className="p-8 rounded-xl bg-slate-900/80 border border-slate-800 text-center space-y-4 max-w-xl w-full shadow-2xl">
+            <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
+            <h2 className="text-xl font-bold text-white">Stock Tearsheet Unavailable</h2>
+            <p className="text-xs text-slate-400 font-mono">{error || `Symbol ${symbol} not found.`}</p>
+            <Link
+              href="/"
+              className="inline-flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-mono transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Return to Dashboard</span>
+            </Link>
+          </div>
+        </main>
       </div>
     );
   }
@@ -414,21 +433,23 @@ export default function StockTearsheetPage() {
   const isAboveSma200 = data.technicals.price_above_sma200;
 
   return (
-    <div className="space-y-6">
-      {/* Back Link & Navigation Bar */}
-      <div className="flex items-center justify-between">
-        <Link
-          href="/"
-          className="inline-flex items-center space-x-1.5 text-xs font-mono text-slate-400 hover:text-white transition-colors group"
-        >
-          <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
-          <span>Back to Terminal Dashboard</span>
-        </Link>
+    <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
+      <Navbar />
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-24">
+        {/* Back Link & Navigation Bar */}
+        <div className="flex items-center justify-between">
+          <Link
+            href="/"
+            className="inline-flex items-center space-x-1.5 text-xs font-mono text-slate-400 hover:text-white transition-colors group"
+          >
+            <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
+            <span>Back to Terminal Dashboard</span>
+          </Link>
 
-        <span className="text-xs text-slate-400 font-mono">
-          Settled Session: <strong className="text-slate-200">{data.as_of_date}</strong>
-        </span>
-      </div>
+          <span className="text-xs text-slate-400 font-mono">
+            Settled Session: <strong className="text-slate-200">{data.as_of_date}</strong>
+          </span>
+        </div>
 
       {/* Hero Header Card */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl backdrop-blur-sm">
@@ -833,6 +854,7 @@ export default function StockTearsheetPage() {
           </div>
         )}
       </section>
+      </main>
     </div>
   );
 }
