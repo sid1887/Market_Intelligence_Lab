@@ -163,9 +163,17 @@ class FactorScreener:
         """
         # 1. Fetch universe factors as of as_of_date
         with self.db.get_connection() as conn:
+            # Partitioned query: takes the latest available trading_date for each active instrument on or before as_of_date
             sql = """
+            WITH latest_factors AS (
+                SELECT *,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) as rn
+                FROM quant_factors_daily
+                WHERE (? IS NULL OR trading_date <= ?)
+            )
             SELECT 
                 q.symbol,
+                q.trading_date,
                 COALESCE(w.company_name, s.company_name, q.symbol) AS company_name,
                 COALESCE(w.sector, s.sector, 'Unclassified') AS sector,
                 o.close,
@@ -186,16 +194,16 @@ class FactorScreener:
                 q.debt_to_equity,
                 q.opm_pct,
                 CASE WHEN w.symbol IS NOT NULL THEN 1 ELSE 0 END AS is_watchlist
-            FROM quant_factors_daily q
+            FROM latest_factors q
             JOIN ohlcv_daily o 
               ON q.symbol = o.symbol AND q.trading_date = o.trading_date
             LEFT JOIN securities_master s 
               ON q.symbol = s.symbol
             LEFT JOIN user_watchlists w 
               ON q.symbol = w.symbol
-            WHERE q.trading_date = ?
+            WHERE q.rn = 1
             """
-            params: List[Any] = [as_of_date]
+            params: List[Any] = [as_of_date, as_of_date]
 
             if not include_watchlists:
                 sql += " AND (s.is_active = 1)"
