@@ -42,6 +42,7 @@ import { RiskRewardVectorBar } from "@/components/RiskRewardVectorBar";
 import { RadialConvictionGauge } from "@/components/RadialConvictionGauge";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
 import { SectorHeatmap } from "@/components/SectorHeatmap";
+import CopilotDrawer from "@/components/CopilotDrawer";
 
 // ─── Ambient Verdict Aura Styles ──────────────────────────────────────────────
 const VERDICT_CONFIG: Record<
@@ -1133,6 +1134,15 @@ export default function CockpitPage() {
           onClose={() => setShowCommandPalette(false)}
         />
       )}
+
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      {/* 4. QUANT COPILOT MULTI-AGENT DRAWER (TradingAgents ⌘J)             */}
+      {/* ─────────────────────────────────────────────────────────────────── */}
+      <CopilotDrawer
+        activeSymbol={activeCandidate?.symbol || inspector.symbol || "SUZLON"}
+        activePrice={currentPrice}
+        activeVerdict={activeVerdict}
+      />
     </div>
   );
 }

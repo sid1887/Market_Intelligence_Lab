@@ -20,9 +20,11 @@ import logging
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from src.copilot.deliberation import MultiAgentDeliberationEngine
 
 from src.storage.database import DatabaseManager
 from src.quant.screener import FactorScreener
@@ -322,6 +324,44 @@ def get_macro_telemetry():
             }
         ]
     })
+
+
+class CopilotStreamRequest(BaseModel):
+    symbol: str
+    prompt: Optional[str] = "Debate Bull vs Bear Thesis"
+    context_override: Optional[Dict[str, Any]] = None
+
+
+copilot_engine = MultiAgentDeliberationEngine()
+
+
+@app.post("/copilot/stream")
+@app.post("/api/v1/copilot/stream")
+async def stream_copilot_deliberation(request: CopilotStreamRequest):
+    """
+    Server-Sent Events (SSE) endpoint for multi-agent deliberation:
+    Bull Analyst -> Bear Analyst -> Portfolio Manager Judge.
+    """
+    sym = request.symbol.strip().upper()
+    user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
+
+    async def event_generator():
+        async for chunk in copilot_engine.run_deliberation_stream(
+            symbol=sym,
+            user_prompt=user_prompt,
+            context_override=request.context_override
+        ):
+            yield chunk
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 __all__ = [
