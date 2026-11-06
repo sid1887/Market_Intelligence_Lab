@@ -68,6 +68,41 @@ class MultiAgentDeliberationEngine:
             "macro_environment": macro
         }
 
+        # Check if conversational guidance is requested instead of full 3-agent committee
+        if self._is_conversational_prompt(user_prompt):
+            yield self._sse_event({
+                "stage": "conversational",
+                "status": f"Quant Copilot online for {sym}.",
+                "progress": 30
+            })
+            await asyncio.sleep(0.15)
+
+            conversational_reply = self._generate_conversational_guidance(quant_context, user_prompt)
+            for chunk in self._split_chunks(conversational_reply):
+                yield self._sse_event({
+                    "stage": "conversational",
+                    "delta": chunk,
+                    "progress": 70
+                })
+                await asyncio.sleep(0.02)
+
+            yield self._sse_event({
+                "stage": "complete",
+                "status": "Ready for quantitative inquiry.",
+                "progress": 100,
+                "conversational_response": conversational_reply,
+                "result": {
+                    "symbol": sym,
+                    "verdict": "READY",
+                    "conviction_score": 100,
+                    "entry_price": price,
+                    "target_price": forecast.get("expected_20d_price", round(price * 1.08, 2)),
+                    "stop_loss": forecast.get("lower_80", round(price * 0.94, 2)),
+                    "conversational_response": conversational_reply
+                }
+            })
+            return
+
         # Check if live LLM is configured
         live_llm = is_live_llm_configured()
 
@@ -389,3 +424,63 @@ class MultiAgentDeliberationEngine:
             "target_price": target,
             "stop_loss": stop
         }
+
+    @staticmethod
+    def _is_conversational_prompt(prompt: str) -> bool:
+        if not prompt or not prompt.strip():
+            return True
+        import re
+        clean = prompt.strip().lower()
+        clean_norm = re.sub(r"[^\w\s]", "", clean).strip()
+
+        greetings = {
+            "hi", "hello", "hey", "heya", "yo", "sup", "hola",
+            "good morning", "good afternoon", "good evening",
+            "who are you", "what is this", "what can you do", "help",
+            "how does this work", "how do you work", "explain yourself",
+            "what are you", "test", "ping"
+        }
+        if clean_norm in greetings:
+            return True
+
+        analytical_keywords = {
+            "bull", "bear", "debate", "thesis", "buy", "sell", "hold",
+            "target", "stop", "risk", "forecast", "pe", "roe", "opm", "debt",
+            "momentum", "valuation", "conviction", "verdict", "memo", "action",
+            "filing", "garch", "growth", "catalyst", "downside", "upside", "price",
+            "technicals", "fundamentals", "analyze", "evaluate", "check"
+        }
+        words = set(clean_norm.split())
+        if len(words) <= 3 and any(w in {"hi", "hello", "hey", "help"} for w in words):
+            if not words.intersection(analytical_keywords):
+                return True
+        return False
+
+    def _generate_conversational_guidance(self, quant_context: Dict[str, Any], user_prompt: str) -> str:
+        sym = quant_context["symbol"]
+        name = quant_context["company_name"]
+        price = quant_context["current_price"]
+        fund = quant_context.get("fundamentals", {})
+        tech = quant_context.get("technicals", {})
+        fc = quant_context.get("forecast_20d", {})
+        roe = fund.get("roe_pct")
+        roe_str = f"{roe:.1f}%" if roe is not None else "—"
+        de = fund.get("debt_to_equity")
+        de_str = f"{de:.2f}x" if de is not None else "—"
+        opm = fund.get("opm_pct")
+        opm_str = f"{opm:.1f}%" if opm is not None else "—"
+        mom = tech.get("ret_20d_pct", 0.0)
+        target = fc.get("expected_20d_price", price)
+
+        return (
+            f"Hello! I am your institutional Quant Copilot for Market Intelligence Lab.\n\n"
+            f"I am actively tracking **{sym}** ({name}) with verified settlement telemetry:\n"
+            f"• **Settled Price**: ₹{price:.2f}\n"
+            f"• **20D Momentum**: {mom:+.2f}%\n"
+            f"• **Return on Equity (ROE)**: {roe_str} | **Debt/Equity**: {de_str} | **OPM**: {opm_str}\n"
+            f"• **20D Econometric Target**: ₹{target:.2f}\n\n"
+            f"How can I assist your quantitative analysis today? You can prompt me to:\n"
+            f"1. **Debate Bull vs Bear Thesis** — Triggers the 3-agent committee (Bull Analyst, Bear Risk Analyst, and Portfolio Manager Judge).\n"
+            f"2. **Evaluate Downside Volatility** — Scrutinizes GARCH 80% & 95% confidence cones and stop loss invalidation.\n"
+            f"3. **Audit Exchange Disclosures** — Reviews corporate actions, shareholding patterns, and filing dates."
+        )

@@ -66,11 +66,11 @@ class MovementAttributionEngine:
         self._calendar_dates_cache: Optional[List[str]] = None
 
     def get_trading_calendar(self) -> List[str]:
-        """Returns sorted list of authoritative trading calendar dates from NIFTY 50 PRI."""
+        """Returns sorted list of authoritative trading calendar dates from authentic equity trading bars."""
         if self._calendar_dates_cache is None:
             with self.db.get_connection() as conn:
                 cur = conn.execute(
-                    "SELECT trading_date FROM index_daily WHERE index_name = 'NIFTY 50' AND index_type = 'PRI' ORDER BY trading_date ASC"
+                    "SELECT DISTINCT trading_date FROM ohlcv_daily WHERE series = 'EQ' AND COALESCE(is_synthetic, 0) = 0 ORDER BY trading_date ASC"
                 )
                 self._calendar_dates_cache = [r[0] for r in cur.fetchall()]
         return self._calendar_dates_cache

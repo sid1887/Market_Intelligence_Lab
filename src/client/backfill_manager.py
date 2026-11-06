@@ -277,7 +277,13 @@ class BackfillManager:
                 "volume": v,
                 "symbol": symbol,
                 "series": "EQ",
-                "_provenance_source": "offline_multi_regime_generator"
+                "_provenance_source": "offline_multi_regime_generator",
+                "provenance_class": "SYNTHETIC_TEST",
+                "is_synthetic": 1,
+                "is_eligible_for_live_analytics": 0,
+                "is_eligible_for_backtest": 0,
+                "is_eligible_for_training": 0,
+                "data_status": "quarantined_synthetic"
             })
 
         return records

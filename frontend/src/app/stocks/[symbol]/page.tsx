@@ -53,6 +53,7 @@ interface TearsheetData {
   sector: string;
   industry: string;
   is_watchlist: boolean;
+  is_nifty50?: boolean;
   target_price: number | null;
   stop_loss: number | null;
   notes: string | null;
@@ -179,46 +180,34 @@ export default function StockTearsheetPage() {
       const json = await res.json();
       setData(json);
 
-      // Fetch Walk-Forward Econometric Forecast (Milestone B7.0)
-      try {
-        const fRes = await fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`, {
-          headers: NGROK_HEADERS
-        });
-        if (fRes.ok) {
-          const fJson = await fRes.json();
+      // Fetch Forecast, News, and Memo concurrently in parallel (Milestones B7.0, B7.5, B9.0)
+      setNewsLoading(true);
+      const [fRes, nRes, mRes] = await Promise.allSettled([
+        fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`, { headers: NGROK_HEADERS }),
+        fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`, { headers: NGROK_HEADERS }),
+        fetch(`${API_BASE}/stocks/${symbol}/memo`, { headers: NGROK_HEADERS })
+      ]);
+
+      if (fRes.status === "fulfilled" && fRes.value.ok) {
+        try {
+          const fJson = await fRes.value.json();
           setForecast(fJson);
-        }
-      } catch (fErr) {
-        console.warn("Forecast fetch warning:", fErr);
+        } catch {}
       }
 
-      // Fetch Real-Time News & Directional Impact (Milestone B7.5)
-      try {
-        setNewsLoading(true);
-        const nRes = await fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`, {
-          headers: NGROK_HEADERS
-        });
-        if (nRes.ok) {
-          const nJson = await nRes.json();
+      if (nRes.status === "fulfilled" && nRes.value.ok) {
+        try {
+          const nJson = await nRes.value.json();
           setNewsArticles(nJson.articles || []);
-        }
-      } catch (nErr) {
-        console.warn("News fetch warning:", nErr);
-      } finally {
-        setNewsLoading(false);
+        } catch {}
       }
+      setNewsLoading(false);
 
-      // Fetch Institutional Investment Decision Memo (Milestone B9.0)
-      try {
-        const mRes = await fetch(`${API_BASE}/stocks/${symbol}/memo`, {
-          headers: NGROK_HEADERS
-        });
-        if (mRes.ok) {
-          const mJson = await mRes.json();
+      if (mRes.status === "fulfilled" && mRes.value.ok) {
+        try {
+          const mJson = await mRes.value.json();
           setMemo(mJson);
-        }
-      } catch (mErr) {
-        console.warn("Memo fetch warning:", mErr);
+        } catch {}
       }
 
       setIngestion({ isIngesting: false, progressPct: 100, step: "READY", detail: "Ready" });
@@ -470,11 +459,12 @@ export default function StockTearsheetPage() {
                   <Sparkles className="w-3 h-3 text-indigo-400" />
                   <span>WATCHLIST HOLDING</span>
                 </span>
-              ) : (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">
+              ) : null}
+              {data.is_nifty50 ? (
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono">
                   NIFTY 50 CONSTITUENT
                 </span>
-              )}
+              ) : null}
             </div>
 
             <p className="text-sm text-slate-300 mt-1 font-medium">{data.company_name}</p>
@@ -795,28 +785,40 @@ export default function StockTearsheetPage() {
         ) : (
           <div className="space-y-3">
             {data.recent_disclosures.map(d => {
+              const isQuarantined = d.verification_status === "SYNTHETIC_SEED_QUARANTINED";
               const isVerified = d.verification_status === "VERIFIED";
               const isFlagged = d.verification_status === "SOURCE_UNVERIFIED";
 
               return (
                 <div
                   key={d.disclosure_id}
-                  className="bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 rounded-lg p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono"
+                  className={`border rounded-lg p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono ${
+                    isQuarantined
+                      ? "bg-rose-950/20 border-rose-900/60"
+                      : "bg-slate-950/80 border-slate-800/80 hover:border-slate-700"
+                  }`}
                 >
                   <div className="space-y-1 max-w-3xl">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-bold text-slate-200 text-sm">{d.category}</span>
                       <span
                         className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                          isVerified
+                          isQuarantined
+                            ? "bg-rose-950 text-rose-300 border border-rose-800"
+                            : isVerified
                             ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
                             : isFlagged
                             ? "bg-amber-950 text-amber-300 border border-amber-800"
                             : "bg-slate-800 text-slate-400"
                         }`}
                       >
-                        {d.verification_status}
+                        {isQuarantined ? "SYNTHETIC_SEED_QUARANTINED" : d.verification_status}
                       </span>
+                      {isQuarantined && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 font-mono">
+                          ⚠ QUARANTINED SEED · EXCLUDED FROM FACTOR / TRUTH LAYER
+                        </span>
+                      )}
                       {d.audit_status && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
                           {d.audit_status}
@@ -835,7 +837,11 @@ export default function StockTearsheetPage() {
                   </div>
 
                   {/* Direct Document Action Link */}
-                  {d.source_url ? (
+                  {isQuarantined ? (
+                    <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs font-mono font-medium opacity-80 cursor-not-allowed shrink-0">
+                      <span>Quarantined Filing</span>
+                    </span>
+                  ) : d.source_url ? (
                     <a
                       href={d.source_url}
                       target="_blank"

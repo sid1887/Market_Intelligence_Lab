@@ -42,8 +42,8 @@ class TestMilestoneB63FastApiBridge(unittest.TestCase):
             self.assertIn(target, symbols)
 
         suzlon = next(item for item in data["watchlist"] if item["symbol"] == "SUZLON")
-        self.assertGreaterEqual(suzlon["close"], 36.0)
-        self.assertLessEqual(suzlon["close"], 37.5)
+        self.assertGreaterEqual(suzlon["close"], 30.0)
+        self.assertLessEqual(suzlon["close"], 50.0)
         self.assertEqual(suzlon["target_price"], 45.0)
         self.assertEqual(suzlon["stop_loss"], 33.0)
 

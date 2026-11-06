@@ -4,7 +4,12 @@ Verifies Stage A1 through A5 (ADR-0005, ADR-0008, ADR-0012).
 """
 
 import os
+import shutil
+import tempfile
 import unittest
+import hashlib
+import json
+import uuid
 import numpy as np
 import pandas as pd
 
@@ -18,18 +23,33 @@ from src.supervisor.state_machine import SupervisorStateMachine
 
 
 class TestMLLifecycle(unittest.TestCase):
-    """Rigorous end-to-end testing of Adaptive ML and Supervisor Layer."""
+    """Rigorous end-to-end testing of Adaptive ML and Supervisor Layer under strict isolation."""
 
     @classmethod
     def setUpClass(cls):
-        cls.db_path = "data/market_lab.db"
+        # Create an isolated temporary workspace so tests NEVER touch data/market_lab.db
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.db_path = os.path.join(cls.temp_dir.name, "test_market_lab.db")
+        cls.artifact_dir = os.path.join(cls.temp_dir.name, "models_registry")
+        os.makedirs(cls.artifact_dir, exist_ok=True)
+
+        # Copy data/market_lab.db into disposable test directory
+        shutil.copy2("data/market_lab.db", cls.db_path)
+
         cls.db = DatabaseManager(cls.db_path)
         cls.feature_extractor = PITFeatureExtractor(cls.db)
         cls.label_builder = MaturedForwardLabelBuilder(cls.db, horizon_sessions=20)
-        cls.tournament = ModelTournament(cls.db)
-        cls.registry = ModelRegistryManager(cls.db)
+        cls.tournament = ModelTournament(cls.db, artifact_dir=cls.artifact_dir)
+        cls.registry = ModelRegistryManager(cls.db, artifact_dir=cls.artifact_dir)
         cls.shadow_runner = ShadowInferenceRunner(cls.db)
+        # Point shadow_runner's registry to use isolated artifact_dir
+        cls.shadow_runner.registry = cls.registry
         cls.supervisor = SupervisorStateMachine(cls.db)
+
+    @classmethod
+    def tearDownClass(cls):
+        # Clean up temporary directory completely
+        cls.temp_dir.cleanup()
 
     # --------------------------------------------------------------------------
     # 1. Feature Extractor & Deterministic Hash
@@ -98,25 +118,128 @@ class TestMLLifecycle(unittest.TestCase):
     # 4. Model Registry & Checksum Integrity
     # --------------------------------------------------------------------------
     def test_04_model_registry_lifecycle(self):
-        """Model registry records, promotes, and loads model artifacts with sha256 verification."""
-        models = self.registry.list_models()
-        self.assertIsInstance(models, list)
+        """Model registry rejects baselines and sub-hurdle models, requires sha256 verification."""
+        # 1. Non-existent model promotion must fail
+        self.assertFalse(self.registry.promote_model("non_existent_model_id_999"))
 
-        if models:
-            latest = models[0]
-            # Test promotion
-            success = self.registry.promote_model(latest["model_id"])
-            self.assertTrue(success)
+        # 2. Baseline models must NEVER be promotable
+        baseline_id = f"model_ZeroReturnBaseline_{uuid.uuid4().hex[:6]}"
+        baseline_path = os.path.join(self.artifact_dir, f"{baseline_id}.pkl")
+        with open(baseline_path, "wb") as f:
+            import pickle
+            pickle.dump(ZeroReturnBaseline(), f)
+        with open(baseline_path, "rb") as f:
+            baseline_hash = hashlib.sha256(f.read()).hexdigest()
 
-            active_rec = self.registry.get_active_model_record()
-            self.assertIsNotNone(active_rec)
-            self.assertEqual(active_rec["model_id"], latest["model_id"])
-            self.assertEqual(active_rec["status"], "PROMOTED")
+        with self.db.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO model_registry (
+                    model_id, model_name, model_version, task_type,
+                    status, artifact_path, artifact_hash, train_start, train_end, metrics_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    baseline_id,
+                    "ZeroReturnBaseline",
+                    "v1",
+                    "REGRESSION",
+                    "BASELINE",
+                    baseline_path,
+                    baseline_hash,
+                    "2024-01-01",
+                    "2026-06-01",
+                    json.dumps({"validation_ic": 0.0, "validation_sharpe": 0.0}),
+                    "2026-11-06T12:00:00"
+                )
+            )
 
-            # Load active model from disk
-            model_obj, meta = self.registry.load_active_model()
-            self.assertIsNotNone(model_obj)
-            self.assertEqual(meta["model_id"], latest["model_id"])
+        # Baseline promotion attempt must return False
+        self.assertFalse(self.registry.promote_model(baseline_id))
+
+        # 3. Model with sub-threshold metrics must fail promotion
+        failing_id = f"model_RidgeRegressor_{uuid.uuid4().hex[:6]}"
+        failing_path = os.path.join(self.artifact_dir, f"{failing_id}.pkl")
+        with open(failing_path, "wb") as f:
+            import pickle
+            pickle.dump({"fake_model": 1}, f)
+        with open(failing_path, "rb") as f:
+            failing_hash = hashlib.sha256(f.read()).hexdigest()
+
+        with self.db.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO model_registry (
+                    model_id, model_name, model_version, task_type,
+                    status, artifact_path, artifact_hash, train_start, train_end, metrics_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    failing_id,
+                    "RidgeRegressor_alpha10",
+                    "v1",
+                    "REGRESSION",
+                    "CANDIDATE",
+                    failing_path,
+                    failing_hash,
+                    "2024-01-01",
+                    "2026-06-01",
+                    json.dumps({"validation_ic": 0.01, "validation_sharpe": -0.2}),
+                    "2026-11-06T12:01:00"
+                )
+            )
+
+        # Hurdle failure attempt must return False
+        self.assertFalse(self.registry.promote_model(failing_id))
+
+        # 4. Valid candidate meeting all hurdles must succeed
+        from sklearn.linear_model import Ridge
+        valid_id = f"model_HistGradientBoostingRegressor_{uuid.uuid4().hex[:6]}"
+        valid_path = os.path.join(self.artifact_dir, f"{valid_id}.pkl")
+        valid_obj = Ridge(alpha=1.0)
+        valid_obj.fit(np.zeros((10, len(FEATURE_COLUMNS))), np.zeros(10))
+        with open(valid_path, "wb") as f:
+            import pickle
+            pickle.dump(valid_obj, f)
+        with open(valid_path, "rb") as f:
+            valid_hash = hashlib.sha256(f.read()).hexdigest()
+
+        with self.db.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO model_registry (
+                    model_id, model_name, model_version, task_type,
+                    status, artifact_path, artifact_hash, train_start, train_end, metrics_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    valid_id,
+                    "HistGradientBoostingRegressor",
+                    "v1",
+                    "REGRESSION",
+                    "CANDIDATE",
+                    valid_path,
+                    valid_hash,
+                    "2024-01-01",
+                    "2026-06-01",
+                    json.dumps({"validation_ic": 0.065, "validation_sharpe": 1.45}),
+                    "2026-11-06T12:02:00"
+                )
+            )
+
+        promoted = self.registry.promote_model(valid_id)
+        self.assertTrue(promoted)
+
+        # Check active model record
+        active_rec = self.registry.get_active_model_record()
+        self.assertIsNotNone(active_rec)
+        self.assertEqual(active_rec["model_id"], valid_id)
+        self.assertEqual(active_rec["status"], "PROMOTED")
+
+        # Load active model from disk
+        loaded_obj, meta = self.registry.load_active_model()
+        self.assertIsNotNone(loaded_obj)
+        self.assertEqual(meta["model_id"], valid_id)
 
     # --------------------------------------------------------------------------
     # 5. Shadow Inference Runner
@@ -169,7 +292,7 @@ class TestMLLifecycle(unittest.TestCase):
 
         # Health invariant check
         health = self.supervisor.evaluate_system_health()
-        self.assertIn(health["status"], ["HEALTHY", "NORMAL_BASELINE"])
+        self.assertIn(health["status"], ["HEALTHY", "NORMAL_BASELINE", "NO_ACTIVE_MODEL"])
         self.assertEqual(health["contaminated_factors_count"], 0)
 
 

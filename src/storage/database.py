@@ -5,7 +5,10 @@ import json
 import math
 import uuid
 import datetime
+import logging
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     """Manages SQLite database connections, additive schema migrations, and transactional persistence."""
@@ -28,6 +31,7 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA busy_timeout = 10000;")
         return conn
 
     def get_readonly_connection(self) -> sqlite3.Connection:
@@ -37,6 +41,8 @@ class DatabaseManager:
         abs_path = os.path.abspath(self.db_path)
         conn = sqlite3.connect(f"file:{abs_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 10000;")
+        conn.execute("PRAGMA query_only = ON;")
         return conn
 
     def init_schema(self) -> None:
@@ -59,6 +65,16 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN trades_count INTEGER DEFAULT NULL;")
             if "data_status" not in existing_cols:
                 conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN data_status TEXT NOT NULL DEFAULT 'final_settled';")
+            if "provenance_class" not in existing_cols:
+                conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN provenance_class TEXT NOT NULL DEFAULT 'EXCHANGE_OFFICIAL';")
+            if "is_synthetic" not in existing_cols:
+                conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_synthetic INTEGER NOT NULL DEFAULT 0;")
+            if "is_eligible_for_live_analytics" not in existing_cols:
+                conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_eligible_for_live_analytics INTEGER NOT NULL DEFAULT 1;")
+            if "is_eligible_for_backtest" not in existing_cols:
+                conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_eligible_for_backtest INTEGER NOT NULL DEFAULT 1;")
+            if "is_eligible_for_training" not in existing_cols:
+                conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_eligible_for_training INTEGER NOT NULL DEFAULT 1;")
 
             # 3. Phase 2 Schema Extension
             if os.path.exists(schema_v2_path):
@@ -187,8 +203,8 @@ class DatabaseManager:
                 from src.storage.migrations import run_all_migrations
                 run_all_migrations(conn)
             except Exception as e:
-                # In in-memory or minimal test contexts, log and continue
-                pass
+                logger.error(f"FATAL: Database migration execution failed: {e}")
+                raise
 
     def _migrate_corporate_actions_pk(self, conn: sqlite3.Connection) -> None:
         """Migrates corporate_actions table so PRIMARY KEY includes purpose (symbol, action_type, ex_date, purpose)."""
@@ -299,17 +315,36 @@ class DatabaseManager:
                 item["trades_count"] = None
             if "data_status" not in item:
                 item["data_status"] = "final_settled"
+            
+            # Provenance and eligibility invariants
+            src_str = str(item.get("source", "")).lower()
+            is_synth = 1 if ("synthetic" in src_str or src_str in ("offline_multi_regime_generator", "watchlist_backfill_24m", "dynamic_ingestion_24m")) else 0
+            if "is_synthetic" not in item:
+                item["is_synthetic"] = is_synth
+            if "provenance_class" not in item:
+                item["provenance_class"] = "SYNTHETIC_TEST" if item["is_synthetic"] == 1 else "EXCHANGE_OFFICIAL"
+            if "is_eligible_for_live_analytics" not in item:
+                item["is_eligible_for_live_analytics"] = 0 if item["is_synthetic"] == 1 else 1
+            if "is_eligible_for_backtest" not in item:
+                item["is_eligible_for_backtest"] = 0 if item["is_synthetic"] == 1 else 1
+            if "is_eligible_for_training" not in item:
+                item["is_eligible_for_training"] = 0 if item["is_synthetic"] == 1 else 1
+
             normalized.append(item)
 
         sql = """
         INSERT INTO ohlcv_daily (
             symbol, trading_date, series, open, high, low, close,
             ltp, prev_close, volume, turnover, delivery_qty,
-            source, retrieval_timestamp, trades_count, data_status
+            source, retrieval_timestamp, trades_count, data_status,
+            provenance_class, is_synthetic, is_eligible_for_live_analytics,
+            is_eligible_for_backtest, is_eligible_for_training
         ) VALUES (
             :symbol, :trading_date, :series, :open, :high, :low, :close,
             :ltp, :prev_close, :volume, :turnover, :delivery_qty,
-            :source, :retrieval_timestamp, :trades_count, :data_status
+            :source, :retrieval_timestamp, :trades_count, :data_status,
+            :provenance_class, :is_synthetic, :is_eligible_for_live_analytics,
+            :is_eligible_for_backtest, :is_eligible_for_training
         )
         ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
             open = excluded.open,
@@ -324,7 +359,12 @@ class DatabaseManager:
             source = excluded.source,
             retrieval_timestamp = excluded.retrieval_timestamp,
             trades_count = excluded.trades_count,
-            data_status = excluded.data_status
+            data_status = excluded.data_status,
+            provenance_class = excluded.provenance_class,
+            is_synthetic = excluded.is_synthetic,
+            is_eligible_for_live_analytics = excluded.is_eligible_for_live_analytics,
+            is_eligible_for_backtest = excluded.is_eligible_for_backtest,
+            is_eligible_for_training = excluded.is_eligible_for_training
         WHERE ohlcv_daily.data_status != 'final_settled' OR excluded.data_status = 'final_settled';
         """
 
@@ -731,6 +771,7 @@ class DatabaseManager:
             row.setdefault("roe_pct", None)
             row.setdefault("debt_to_equity", None)
             row.setdefault("opm_pct", None)
+            row.setdefault("is_orphaned", 0)
             row.setdefault("updated_at", now_ts)
             sanitized.append(row)
 
@@ -741,14 +782,14 @@ class DatabaseManager:
             volume_ratio_20d, volume_zscore_50d, volume_log_zscore_50d,
             is_volume_spike_ratio, is_volume_spike_zscore,
             distance_52w_high, distance_52w_low,
-            ttm_pe, roe_pct, debt_to_equity, opm_pct, updated_at
+            ttm_pe, roe_pct, debt_to_equity, opm_pct, is_orphaned, updated_at
         ) VALUES (
             :symbol, :trading_date, :ret_1d, :ret_5d, :ret_20d, :vol_20d_annualized,
             :volatility_annualized, :sma_20, :sma_50, :sma_200, :beta_60d_nifty,
             :volume_ratio_20d, :volume_zscore_50d, :volume_log_zscore_50d,
             :is_volume_spike_ratio, :is_volume_spike_zscore,
             :distance_52w_high, :distance_52w_low,
-            :ttm_pe, :roe_pct, :debt_to_equity, :opm_pct, :updated_at
+            :ttm_pe, :roe_pct, :debt_to_equity, :opm_pct, :is_orphaned, :updated_at
         )
         ON CONFLICT(symbol, trading_date) DO UPDATE SET
             ret_1d = excluded.ret_1d,
@@ -771,6 +812,7 @@ class DatabaseManager:
             roe_pct = excluded.roe_pct,
             debt_to_equity = excluded.debt_to_equity,
             opm_pct = excluded.opm_pct,
+            is_orphaned = excluded.is_orphaned,
             updated_at = excluded.updated_at;
         """
         with self.get_connection() as conn:

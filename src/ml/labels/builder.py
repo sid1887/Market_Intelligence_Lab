@@ -24,9 +24,18 @@ class MaturedForwardLabelBuilder:
         self.friction_drag = friction_bps / 10000.0
 
     def get_trading_calendar(self) -> List[str]:
-        """Returns sorted unique settled trading dates across the universe."""
+        """Returns sorted unique settled trading dates for eligible EQ series across the universe."""
         with self.db.get_connection() as conn:
-            cur = conn.execute("SELECT DISTINCT trading_date FROM ohlcv_daily ORDER BY trading_date ASC")
+            cur = conn.execute(
+                """
+                SELECT DISTINCT trading_date 
+                FROM ohlcv_daily 
+                WHERE series = 'EQ' 
+                  AND COALESCE(is_synthetic, 0) = 0 
+                  AND COALESCE(is_eligible_for_training, 1) = 1 
+                ORDER BY trading_date ASC
+                """
+            )
             return [r["trading_date"] for r in cur.fetchall()]
 
     def build_labels(
@@ -37,30 +46,35 @@ class MaturedForwardLabelBuilder:
         """
         Builds matured forward returns for all observations.
         Observations whose T + horizon_sessions > max_settled_date are flagged matured=False.
+        Strictly requires series = 'EQ', non-synthetic, and is_eligible_for_training = 1.
         """
         calendar = self.get_trading_calendar()
         if not calendar or len(calendar) <= self.horizon_sessions:
             return pd.DataFrame(columns=[
                 "symbol", "trading_date", "target_date", "matured",
-                "stock_fwd_ret", "bench_fwd_ret", "label_excess_ret_net", "label_up"
+                "stock_fwd_ret", "bench_fwd_ret", "label_excess_ret_net", "label_up", "status"
             ])
 
         date_to_idx = {d: i for i, d in enumerate(calendar)}
         max_idx = len(calendar) - 1
         max_evaluable_idx = max_idx - self.horizon_sessions
 
-        # Fetch stock close prices
-        sym_clause = ""
+        # Fetch stock close prices strictly requiring EQ series & training eligibility
+        where_clauses = [
+            "series = 'EQ'",
+            "COALESCE(is_synthetic, 0) = 0",
+            "COALESCE(is_eligible_for_training, 1) = 1"
+        ]
         params: List[Any] = []
         if symbols:
             placeholders = ",".join(["?"] * len(symbols))
-            sym_clause = f"WHERE symbol IN ({placeholders})"
+            where_clauses.append(f"symbol IN ({placeholders})")
             params.extend(symbols)
 
         sql_stocks = f"""
         SELECT symbol, trading_date, close
         FROM ohlcv_daily
-        {sym_clause}
+        WHERE {' AND '.join(where_clauses)}
         ORDER BY symbol, trading_date ASC
         """
 
@@ -68,16 +82,29 @@ class MaturedForwardLabelBuilder:
             cur = conn.execute(sql_stocks, params)
             stock_rows = [dict(r) for r in cur.fetchall()]
 
-            # Fetch NIFTY 50 TRI benchmark
+            # Fetch NIFTY 50 TRI benchmark (primary: index_name='NIFTY 50' AND index_type='TRI')
             cur_b = conn.execute(
                 """
                 SELECT trading_date, close 
                 FROM index_daily 
-                WHERE index_name = 'NIFTY 50 TRI'
+                WHERE (index_name = 'NIFTY 50' AND index_type = 'TRI')
+                   OR index_name = 'NIFTY 50 TRI'
                 ORDER BY trading_date ASC
                 """
             )
-            bench_map = {r["trading_date"]: r["close"] for r in cur_b.fetchall()}
+            tri_map = {r["trading_date"]: r["close"] for r in cur_b.fetchall()}
+
+            # Keep PRI separate: NEVER combine or mix TRI with PRI endpoints (P0-05)
+            cur_pri = conn.execute(
+                """
+                SELECT trading_date, close 
+                FROM index_daily 
+                WHERE (index_name = 'NIFTY 50' AND index_type = 'PRI')
+                   OR (index_name = 'NIFTY 50' AND index_type IS NULL)
+                ORDER BY trading_date ASC
+                """
+            )
+            pri_map = {r["trading_date"]: r["close"] for r in cur_pri.fetchall()}
 
         if not stock_rows:
             return pd.DataFrame()
@@ -110,30 +137,52 @@ class MaturedForwardLabelBuilder:
                 bench_fwd_ret = None
                 net_excess = None
                 label_up = None
+                status = "IN_FLIGHT"
             else:
                 target_date = calendar[target_idx]
                 future_price = price_lookup.get((sym, target_date))
-                if future_price is not None and curr_price and curr_price > 0:
-                    matured = True
-                    fwd_ret = (future_price / curr_price) - 1.0
 
-                    # Benchmark return
-                    bench_curr = bench_map.get(d)
-                    bench_target = bench_map.get(target_date)
-                    if bench_curr and bench_target and bench_curr > 0:
-                        bench_fwd_ret = (bench_target / bench_curr) - 1.0
-                    else:
-                        bench_fwd_ret = 0.0
-
-                    gross_excess = fwd_ret - bench_fwd_ret
-                    net_excess = round(gross_excess - self.friction_drag, 6)
-                    label_up = 1 if net_excess > 0 else 0
+                # Benchmark Consistency (P0-05): Endpoints must NOT mix TRI and PRI
+                # 1. Both endpoints must have valid TRI
+                if (
+                    d in tri_map and target_date in tri_map
+                    and tri_map[d] is not None and tri_map[target_date] is not None
+                    and tri_map[d] > 0 and tri_map[target_date] > 0
+                ):
+                    bench_fwd_ret = (tri_map[target_date] / tri_map[d]) - 1.0
+                # 2. Or both endpoints must have valid PRI
+                elif (
+                    d in pri_map and target_date in pri_map
+                    and pri_map[d] is not None and pri_map[target_date] is not None
+                    and pri_map[d] > 0 and pri_map[target_date] > 0
+                ):
+                    bench_fwd_ret = (pri_map[target_date] / pri_map[d]) - 1.0
                 else:
+                    bench_fwd_ret = None
+
+                if future_price is None or not curr_price or curr_price <= 0:
                     matured = False
                     fwd_ret = None
                     bench_fwd_ret = None
                     net_excess = None
                     label_up = None
+                    status = "MISSING_PRICE"
+                elif bench_fwd_ret is None:
+                    # ML Correctness (P0-05): Unobservable benchmark!
+                    # Do NOT default to 0.0, and NEVER mix TRI with PRI across endpoints.
+                    matured = False
+                    fwd_ret = round((future_price / curr_price) - 1.0, 6)
+                    bench_fwd_ret = None
+                    net_excess = None
+                    label_up = None
+                    status = "UNOBSERVABLE_BENCHMARK"
+                else:
+                    matured = True
+                    fwd_ret = (future_price / curr_price) - 1.0
+                    gross_excess = fwd_ret - bench_fwd_ret
+                    net_excess = round(gross_excess - self.friction_drag, 6)
+                    label_up = 1 if net_excess > 0 else 0
+                    status = "MATURED"
 
             records.append({
                 "symbol": sym,
@@ -143,7 +192,8 @@ class MaturedForwardLabelBuilder:
                 "stock_fwd_ret": fwd_ret,
                 "bench_fwd_ret": bench_fwd_ret,
                 "label_excess_ret_net": net_excess,
-                "label_up": label_up
+                "label_up": label_up,
+                "status": status
             })
 
         return pd.DataFrame(records)

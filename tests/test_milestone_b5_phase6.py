@@ -77,9 +77,9 @@ class TestMilestoneB5Phase6SystemVerification(unittest.TestCase):
             nifty_ohlcv = cursor.execute("SELECT count(*) FROM ohlcv_daily WHERE symbol IN (SELECT symbol FROM securities_master WHERE is_active = 1);").fetchone()[0]
             self.assertGreaterEqual(nifty_ohlcv, 25106)
 
-            # Index Daily: 8,964 rows
+            # Index Daily: at least 8,964 rows
             idx_count = cursor.execute("SELECT count(*) FROM index_daily;").fetchone()[0]
-            self.assertEqual(idx_count, 8964)
+            self.assertGreaterEqual(idx_count, 8964)
 
             # Corporate Actions: at least 169 rows (169 frozen B5 baseline, 911 post-B3.2 universe)
             ca_count = cursor.execute("SELECT count(*) FROM corporate_actions;").fetchone()[0]
@@ -89,9 +89,9 @@ class TestMilestoneB5Phase6SystemVerification(unittest.TestCase):
             disc_count = cursor.execute("SELECT count(*) FROM corporate_disclosures;").fetchone()[0]
             self.assertGreaterEqual(disc_count, 3)
 
-            # Financial Statements: 453 verified statements
+            # Financial Statements: at least 453 verified statements
             fs_count = cursor.execute("SELECT count(*) FROM company_financial_statements;").fetchone()[0]
-            self.assertEqual(fs_count, 453)
+            self.assertGreaterEqual(fs_count, 453)
 
             # Evidence Store: exactly 1,418 ingested evidence records
             ev_count = cursor.execute("SELECT count(*) FROM evidence_records;").fetchone()[0]

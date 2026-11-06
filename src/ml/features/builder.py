@@ -83,8 +83,13 @@ class PITFeatureExtractor:
             q.debt_to_equity,
             q.opm_pct
         FROM quant_factors_daily q
-        LEFT JOIN ohlcv_daily o ON o.symbol = q.symbol AND o.trading_date = q.trading_date
-        WHERE q.trading_date = ? {sym_clause}
+        JOIN ohlcv_daily o ON o.symbol = q.symbol AND o.trading_date = q.trading_date
+        WHERE q.trading_date = ? 
+          AND o.series = 'EQ'
+          AND COALESCE(q.is_orphaned, 0) = 0
+          AND COALESCE(o.is_synthetic, 0) = 0
+          AND o.is_eligible_for_training = 1
+          {sym_clause}
         """
 
         with self.db.get_connection() as conn:
@@ -146,8 +151,13 @@ class PITFeatureExtractor:
             q.debt_to_equity,
             q.opm_pct
         FROM quant_factors_daily q
-        LEFT JOIN ohlcv_daily o ON o.symbol = q.symbol AND o.trading_date = q.trading_date
-        WHERE q.trading_date >= ? AND q.trading_date <= ? {sym_clause}
+        JOIN ohlcv_daily o ON o.symbol = q.symbol AND o.trading_date = q.trading_date
+        WHERE q.trading_date >= ? AND q.trading_date <= ?
+          AND o.series = 'EQ'
+          AND COALESCE(q.is_orphaned, 0) = 0
+          AND COALESCE(o.is_synthetic, 0) = 0
+          AND o.is_eligible_for_training = 1
+          {sym_clause}
         ORDER BY q.trading_date ASC, q.symbol ASC
         """
 

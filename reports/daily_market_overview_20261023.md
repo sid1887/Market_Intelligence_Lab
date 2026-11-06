@@ -1,5 +1,5 @@
 # Daily Market Overview — NIFTY 50
-**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-05 12:04:30 UTC`  
+**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-06 17:28:38 UTC`  
 **Benchmark Mode:** Official `PRI` (Price Return Index) | **Coverage:** 50 Constituents (100%)  
 **System Status:** Local-First SQLite (`data/market_lab.db`) | **Trading Operations:** Strictly Disabled  
 
@@ -36,9 +36,9 @@
 
 | Category | Symbol | Stock Return (1M) | Benchmark Return (1M) | Excess Return | 60D Beta |
 | :--- | :--- | :---: | :---: | :---: | :---: |
-| Outperformer | **TCS** | `+20.19%` | `-3.12%` | **`+23.31%`** | `1.12` |
+| Outperformer | **TCS** | `+20.83%` | `-3.12%` | **`+23.95%`** | `1.11` |
 | Outperformer | **TECHM** | `+15.36%` | `-3.12%` | **`+18.49%`** | `1.02` |
-| Outperformer | **INFY** | `+12.08%` | `-3.12%` | **`+15.21%`** | `1.07` |
+| Outperformer | **INFY** | `+14.65%` | `-3.12%` | **`+17.78%`** | `1.05` |
 | Outperformer | **HCLTECH** | `+11.95%` | `-3.12%` | **`+15.07%`** | `1.07` |
 | Outperformer | **KOTAKBANK** | `+4.33%` | `-3.12%` | **`+7.45%`** | `0.72` |
 | Underperformer | **MAXHEALTH** | `-22.86%` | `-3.12%` | **`-19.73%`** | `0.45` |
@@ -53,9 +53,9 @@
 | :--- | :--- | :---: | :---: | :---: | :---: |
 | Outperformer | **TECHM** | `+15.05%` | `-5.32%` | **`+20.37%`** | `1.02` |
 | Outperformer | **HCLTECH** | `+14.26%` | `-5.32%` | **`+19.58%`** | `1.07` |
-| Outperformer | **TCS** | `+12.80%` | `-5.32%` | **`+18.12%`** | `1.12` |
+| Outperformer | **TCS** | `+13.40%` | `-5.32%` | **`+18.72%`** | `1.11` |
+| Outperformer | **INFY** | `+12.68%` | `-5.32%` | **`+18.00%`** | `1.05` |
 | Outperformer | **KOTAKBANK** | `+12.30%` | `-5.32%` | **`+17.62%`** | `0.72` |
-| Outperformer | **ETERNAL** | `+10.55%` | `-5.32%` | **`+15.87%`** | `1.14` |
 | Underperformer | **MAXHEALTH** | `-24.83%` | `-5.32%` | **`-19.51%`** | `0.45` |
 | Underperformer | **NESTLEIND** | `-18.85%` | `-5.32%` | **`-13.53%`** | `0.44` |
 | Underperformer | **TMPV** | `-18.41%` | `-5.32%` | **`-13.09%`** | `1.12` |

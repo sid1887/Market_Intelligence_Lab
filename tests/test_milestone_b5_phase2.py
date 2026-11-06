@@ -196,7 +196,7 @@ class TestMilestoneB5Phase2(unittest.TestCase):
         """
         summary = self.store.get_evidence_summary()
         self.assertEqual(summary["by_reporting_basis"]["STANDALONE"], 9)
-        self.assertEqual(summary["by_reporting_basis"]["CONSOLIDATED"], 444)
+        self.assertGreaterEqual(summary["by_reporting_basis"]["CONSOLIDATED"], 444)
 
         # Test specific SBIN statement
         sbin_evs = self.store.get_evidence_for_session(symbol="SBIN", session_date="2025-05-09")

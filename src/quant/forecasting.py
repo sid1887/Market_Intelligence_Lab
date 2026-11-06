@@ -139,7 +139,7 @@ class EconometricForecaster:
         query = """
             SELECT trading_date, close, open, high, low, volume
             FROM ohlcv_daily
-            WHERE symbol = ?
+            WHERE symbol = ? AND COALESCE(is_synthetic, 0) = 0
         """
         params: List[Any] = [sym]
 

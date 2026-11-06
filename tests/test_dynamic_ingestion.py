@@ -9,6 +9,9 @@ Verifies:
 5. Error handling: Unknown/invalid NSE tickers return HTTP 404.
 """
 
+import os
+import shutil
+import tempfile
 import unittest
 from fastapi.testclient import TestClient
 
@@ -17,17 +20,36 @@ from src.client.symbol_resolver import SymbolResolver
 from src.pipeline.dynamic_ingestion import DynamicIngestionManager
 from src.quant.breadth import MarketBreadthEngine
 from src.api.main import app
+import src.api.main
+import src.api.utils
+import src.api.routes_market
 
 
 class TestDynamicIngestionEngine(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.db = DatabaseManager("data/market_lab.db")
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.db_path = os.path.join(cls.temp_dir.name, "test_market_lab.db")
+        shutil.copy2("data/market_lab.db", cls.db_path)
+        cls.db = DatabaseManager(cls.db_path)
         cls.db.init_schema()
         cls.resolver = SymbolResolver(cls.db)
         cls.manager = DynamicIngestionManager(cls.db)
         cls.breadth_engine = MarketBreadthEngine(cls.db)
+
+        # Ensure app uses isolated test database
+        cls.orig_db_path = src.api.main.DATABASE_PATH
+        src.api.main.DATABASE_PATH = cls.db_path
+        src.api.utils.DATABASE_PATH = cls.db_path
+        src.api.routes_market.DATABASE_PATH = cls.db_path
         cls.client = TestClient(app)
+
+    @classmethod
+    def tearDownClass(cls):
+        src.api.main.DATABASE_PATH = cls.orig_db_path
+        src.api.utils.DATABASE_PATH = cls.orig_db_path
+        src.api.routes_market.DATABASE_PATH = cls.orig_db_path
+        cls.temp_dir.cleanup()
 
     def test_01_symbol_resolution_valid_and_invalid(self):
         """Tests that valid NSE equities resolve and invalid strings fail."""

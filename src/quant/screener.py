@@ -202,6 +202,7 @@ class FactorScreener:
                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) as rn
                 FROM quant_factors_daily
                 WHERE (? IS NULL OR trading_date <= ?)
+                  AND COALESCE(is_orphaned, 0) = 0
             )
             SELECT 
                 q.symbol,
@@ -234,6 +235,9 @@ class FactorScreener:
             LEFT JOIN user_watchlists w 
               ON q.symbol = w.symbol
             WHERE q.rn = 1
+              AND o.series = 'EQ'
+              AND COALESCE(o.is_synthetic, 0) = 0
+              AND o.is_eligible_for_live_analytics = 1
             """
             params: List[Any] = [as_of_date, as_of_date]
 

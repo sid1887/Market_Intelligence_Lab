@@ -1,0 +1,1026 @@
+.
+├── AUDIT_BASELINE.md
+├── backups
+│   ├── b3_1_budget_investigation
+│   │   └── market_lab_pre_budget_check.db
+│   ├── b3_1_pre_patch
+│   │   ├── market_lab_pre_patch.db
+│   │   ├── scripts
+│   │   │   └── backfill_universe_24m.py
+│   │   ├── src
+│   │   │   ├── client
+│   │   │   │   ├── backfill_manager.py
+│   │   │   │   └── index_client.py
+│   │   │   └── storage
+│   │   │       ├── database.py
+│   │   │       └── schema_v2.sql
+│   │   └── tests
+│   │       └── test_milestone_b3_1.py
+│   ├── b3_2_pre_implementation
+│   │   └── market_lab_pre_b3_2.db
+│   ├── b4_1_pre_implementation
+│   │   └── market_lab_pre_b4_1.db
+│   ├── b4_final
+│   │   └── market_lab_b4_final.db
+│   ├── b4_phase3
+│   │   └── market_lab_post_phase3.db
+│   ├── b4_pilot
+│   │   └── market_lab_pre_pilot.db
+│   ├── b4_pre_implementation
+│   │   └── market_lab_pre_b4.db
+│   ├── b5_final
+│   │   └── market_lab_b5_final.db
+│   ├── b5_phase2
+│   │   └── market_lab_post_phase2.db
+│   ├── b5_phase3
+│   │   └── market_lab_post_phase3.db
+│   ├── b5_phase4
+│   │   └── market_lab_post_phase4.db
+│   ├── b5_phase5
+│   │   └── market_lab_post_phase5.db
+│   └── market_lab_pre_b3_2_directive.db
+├── config
+│   └── settings.json
+├── data
+│   ├── backups
+│   │   └── market_lab_pre_truth_audit.db
+│   ├── cron.log
+│   ├── cron_recovery.log
+│   ├── crontab.backup
+│   ├── crontab_backup_20261025_212424.txt
+│   ├── crontab_backup_20261025_212428.txt
+│   ├── crontab_backup_20261101_152323.txt
+│   ├── crontab_backup_20261101_152618.txt
+│   ├── crontab_backup_20261101_152640.txt
+│   ├── macro_telemetry.json
+│   ├── market_lab.db
+│   ├── market_lab.db-shm
+│   ├── market_lab.db-wal
+│   ├── market_lab_pre_b3_backup_20261025_220344.db
+│   ├── market_lab_pre_b3_backup.db
+│   ├── raw
+│   │   ├── ADANIENT_history_20261025T131338Z.json
+│   │   ├── ADANIENT_history_20261025T164326Z.json
+│   │   ├── ADANIPORTS_history_20261025T131343Z.json
+│   │   ├── ADANIPORTS_history_20261025T164334Z.json
+│   │   ├── APOLLOHOSP_history_20261025T131347Z.json
+│   │   ├── APOLLOHOSP_history_20261025T164344Z.json
+│   │   ├── ASIANPAINT_history_20261025T131351Z.json
+│   │   ├── ASIANPAINT_history_20261025T164351Z.json
+│   │   ├── AXISBANK_history_20261025T131353Z.json
+│   │   ├── AXISBANK_history_20261025T163944Z.json
+│   │   ├── AXISBANK_history_20261025T164358Z.json
+│   │   ├── BAJAJ-AUTO_history_20261025T131527Z.json
+│   │   ├── BAJAJ-AUTO_history_20261025T164409Z.json
+│   │   ├── BAJAJFINSV_history_20261025T131529Z.json
+│   │   ├── BAJAJFINSV_history_20261025T164417Z.json
+│   │   ├── BAJFINANCE_history_20261025T131532Z.json
+│   │   ├── BAJFINANCE_history_20261025T164424Z.json
+│   │   ├── BEL_history_20261025T131535Z.json
+│   │   ├── BEL_history_20261025T164431Z.json
+│   │   ├── BHARTIARTL_history_20261025T131538Z.json
+│   │   ├── BHARTIARTL_history_20261025T164442Z.json
+│   │   ├── BSE_history_20261025T131540Z.json
+│   │   ├── BSE_history_20261026T141601Z.json
+│   │   ├── CIPLA_history_20261025T131545Z.json
+│   │   ├── CIPLA_history_20261026T141612Z.json
+│   │   ├── COALINDIA_history_20261025T131549Z.json
+│   │   ├── COALINDIA_history_20261026T141615Z.json
+│   │   ├── corporate_actions
+│   │   │   ├── ADANIENT_actions_20261103T164752Z.json
+│   │   │   ├── ADANIENT_corporate_actions_20261026T155125Z.json
+│   │   │   ├── ADANIENT_corporate_actions_20261026T155232Z.json
+│   │   │   ├── ADANIPORTS_actions_20261103T164754Z.json
+│   │   │   ├── ADANIPORTS_corporate_actions_20261026T155233Z.json
+│   │   │   ├── APOLLOHOSP_actions_20261103T164756Z.json
+│   │   │   ├── APOLLOHOSP_corporate_actions_20261026T155234Z.json
+│   │   │   ├── ASIANPAINT_actions_20261103T164758Z.json
+│   │   │   ├── ASIANPAINT_corporate_actions_20261026T155235Z.json
+│   │   │   ├── AXISBANK_actions_20261103T164800Z.json
+│   │   │   ├── AXISBANK_corporate_actions_20261026T155236Z.json
+│   │   │   ├── BAJAJ-AUTO_actions_20261103T164802Z.json
+│   │   │   ├── BAJAJ-AUTO_corporate_actions_20261026T155237Z.json
+│   │   │   ├── BAJAJFINSV_actions_20261103T164804Z.json
+│   │   │   ├── BAJAJFINSV_corporate_actions_20261026T155238Z.json
+│   │   │   ├── BAJFINANCE_actions_20261103T164806Z.json
+│   │   │   ├── BAJFINANCE_corporate_actions_20261026T155238Z.json
+│   │   │   ├── BEL_actions_20261103T164808Z.json
+│   │   │   ├── BEL_corporate_actions_20261026T155239Z.json
+│   │   │   ├── BHARTIARTL_actions_20261103T164810Z.json
+│   │   │   ├── BHARTIARTL_corporate_actions_20261026T155241Z.json
+│   │   │   ├── BSE_actions_20261103T164812Z.json
+│   │   │   ├── BSE_corporate_actions_20261026T155241Z.json
+│   │   │   ├── CIPLA_actions_20261103T164813Z.json
+│   │   │   ├── CIPLA_corporate_actions_20261026T155242Z.json
+│   │   │   ├── COALINDIA_actions_20261103T164815Z.json
+│   │   │   ├── COALINDIA_corporate_actions_20261026T155243Z.json
+│   │   │   ├── DRREDDY_actions_20261103T164818Z.json
+│   │   │   ├── DRREDDY_corporate_actions_20261026T155245Z.json
+│   │   │   ├── EICHERMOT_actions_20261103T164820Z.json
+│   │   │   ├── EICHERMOT_corporate_actions_20261026T155246Z.json
+│   │   │   ├── ETERNAL_actions_20261103T164639Z.json
+│   │   │   ├── ETERNAL_actions_20261103T164718Z.json
+│   │   │   ├── ETERNAL_actions_20261103T164728Z.json
+│   │   │   ├── ETERNAL_actions_20261103T164822Z.json
+│   │   │   ├── ETERNAL_corporate_actions_20261026T155246Z.json
+│   │   │   ├── GRASIM_actions_20261103T164824Z.json
+│   │   │   ├── GRASIM_corporate_actions_20261026T155248Z.json
+│   │   │   ├── HCLTECH_actions_20261103T164826Z.json
+│   │   │   ├── HCLTECH_corporate_actions_20261026T155249Z.json
+│   │   │   ├── HDFCBANK_actions_20261103T164828Z.json
+│   │   │   ├── HDFCBANK_corporate_actions_20261026T155251Z.json
+│   │   │   ├── HDFCLIFE_actions_20261103T164830Z.json
+│   │   │   ├── HDFCLIFE_corporate_actions_20261026T155253Z.json
+│   │   │   ├── HINDALCO_actions_20261103T164832Z.json
+│   │   │   ├── HINDALCO_corporate_actions_20261026T155254Z.json
+│   │   │   ├── HINDUNILVR_actions_20261103T164834Z.json
+│   │   │   ├── HINDUNILVR_corporate_actions_20261026T155256Z.json
+│   │   │   ├── ICICIBANK_actions_20261103T164836Z.json
+│   │   │   ├── ICICIBANK_corporate_actions_20261026T155256Z.json
+│   │   │   ├── INDIGO_actions_20261103T164839Z.json
+│   │   │   ├── INDIGO_corporate_actions_20261026T155257Z.json
+│   │   │   ├── INFY_actions_20261103T164636Z.json
+│   │   │   ├── INFY_actions_20261103T164716Z.json
+│   │   │   ├── INFY_actions_20261103T164726Z.json
+│   │   │   ├── INFY_actions_20261103T164841Z.json
+│   │   │   ├── INFY_corporate_actions_20261026T155258Z.json
+│   │   │   ├── ITC_actions_20261103T164842Z.json
+│   │   │   ├── ITC_corporate_actions_20261026T155259Z.json
+│   │   │   ├── JIOFIN_actions_20261103T164844Z.json
+│   │   │   ├── JIOFIN_corporate_actions_20261026T155259Z.json
+│   │   │   ├── JSWSTEEL_actions_20261103T164846Z.json
+│   │   │   ├── JSWSTEEL_corporate_actions_20261026T155301Z.json
+│   │   │   ├── KOTAKBANK_actions_20261103T164849Z.json
+│   │   │   ├── KOTAKBANK_corporate_actions_20261026T155302Z.json
+│   │   │   ├── LT_actions_20261103T164851Z.json
+│   │   │   ├── LT_corporate_actions_20261026T155302Z.json
+│   │   │   ├── M_AND_M_actions_20261103T164853Z.json
+│   │   │   ├── MARUTI_actions_20261103T164855Z.json
+│   │   │   ├── MARUTI_corporate_actions_20261026T155304Z.json
+│   │   │   ├── MAXHEALTH_actions_20261103T164857Z.json
+│   │   │   ├── MAXHEALTH_corporate_actions_20261026T155305Z.json
+│   │   │   ├── M&M_corporate_actions_20261026T155303Z.json
+│   │   │   ├── M&M_corporate_actions_20261026T155512Z.json
+│   │   │   ├── NESTLEIND_actions_20261103T164859Z.json
+│   │   │   ├── NESTLEIND_corporate_actions_20261026T155306Z.json
+│   │   │   ├── NTPC_actions_20261103T164901Z.json
+│   │   │   ├── NTPC_corporate_actions_20261026T155307Z.json
+│   │   │   ├── ONGC_actions_20261103T164903Z.json
+│   │   │   ├── ONGC_corporate_actions_20261026T155308Z.json
+│   │   │   ├── POWERGRID_actions_20261103T164904Z.json
+│   │   │   ├── POWERGRID_corporate_actions_20261026T155308Z.json
+│   │   │   ├── RELIANCE_actions_20261103T164906Z.json
+│   │   │   ├── RELIANCE_corporate_actions_20261026T155309Z.json
+│   │   │   ├── SBILIFE_actions_20261103T164908Z.json
+│   │   │   ├── SBILIFE_corporate_actions_20261026T155310Z.json
+│   │   │   ├── SBIN_actions_20261103T164910Z.json
+│   │   │   ├── SBIN_corporate_actions_20261026T155311Z.json
+│   │   │   ├── SHRIRAMFIN_actions_20261103T164912Z.json
+│   │   │   ├── SHRIRAMFIN_corporate_actions_20261026T155312Z.json
+│   │   │   ├── SUNPHARMA_actions_20261103T164915Z.json
+│   │   │   ├── SUNPHARMA_corporate_actions_20261026T155313Z.json
+│   │   │   ├── TATACONSUM_actions_20261103T164917Z.json
+│   │   │   ├── TATACONSUM_corporate_actions_20261026T155314Z.json
+│   │   │   ├── TATASTEEL_actions_20261103T164919Z.json
+│   │   │   ├── TATASTEEL_corporate_actions_20261026T155315Z.json
+│   │   │   ├── TCS_actions_20261103T164921Z.json
+│   │   │   ├── TCS_corporate_actions_20261026T155316Z.json
+│   │   │   ├── TECHM_actions_20261103T164923Z.json
+│   │   │   ├── TECHM_corporate_actions_20261026T155317Z.json
+│   │   │   ├── TITAN_actions_20261103T164925Z.json
+│   │   │   ├── TITAN_corporate_actions_20261026T155318Z.json
+│   │   │   ├── TMPV_actions_20261103T164927Z.json
+│   │   │   ├── TMPV_corporate_actions_20261026T155320Z.json
+│   │   │   ├── TRENT_actions_20261103T164929Z.json
+│   │   │   ├── TRENT_corporate_actions_20261026T155321Z.json
+│   │   │   ├── ULTRACEMCO_actions_20261103T164932Z.json
+│   │   │   ├── ULTRACEMCO_corporate_actions_20261026T155322Z.json
+│   │   │   └── ZOMATO_corporate_actions_20261026T155247Z.json
+│   │   ├── corporate_disclosures
+│   │   │   ├── ADANIENT_disclosures_20261103T164753Z.json
+│   │   │   ├── ADANIPORTS_disclosures_20261103T164755Z.json
+│   │   │   ├── APOLLOHOSP_disclosures_20261103T164757Z.json
+│   │   │   ├── ASIANPAINT_disclosures_20261103T164759Z.json
+│   │   │   ├── AXISBANK_disclosures_20261103T164801Z.json
+│   │   │   ├── BAJAJ-AUTO_disclosures_20261103T164803Z.json
+│   │   │   ├── BAJAJFINSV_disclosures_20261103T164805Z.json
+│   │   │   ├── BAJFINANCE_disclosures_20261103T164807Z.json
+│   │   │   ├── BEL_disclosures_20261103T164809Z.json
+│   │   │   ├── BHARTIARTL_disclosures_20261103T164811Z.json
+│   │   │   ├── BSE_disclosures_20261103T164813Z.json
+│   │   │   ├── CIPLA_disclosures_20261103T164815Z.json
+│   │   │   ├── COALINDIA_disclosures_20261103T164817Z.json
+│   │   │   ├── DRREDDY_disclosures_20261103T164820Z.json
+│   │   │   ├── EICHERMOT_disclosures_20261103T164822Z.json
+│   │   │   ├── ETERNAL_disclosures_20261103T164640Z.json
+│   │   │   ├── ETERNAL_disclosures_20261103T164718Z.json
+│   │   │   ├── ETERNAL_disclosures_20261103T164729Z.json
+│   │   │   ├── ETERNAL_disclosures_20261103T164824Z.json
+│   │   │   ├── GRASIM_disclosures_20261103T164825Z.json
+│   │   │   ├── HCLTECH_disclosures_20261103T164827Z.json
+│   │   │   ├── HDFCBANK_disclosures_20261103T164829Z.json
+│   │   │   ├── HDFCLIFE_disclosures_20261103T164831Z.json
+│   │   │   ├── HINDALCO_disclosures_20261103T164833Z.json
+│   │   │   ├── HINDUNILVR_disclosures_20261103T164835Z.json
+│   │   │   ├── ICICIBANK_disclosures_20261103T164838Z.json
+│   │   │   ├── INDIGO_disclosures_20261103T164840Z.json
+│   │   │   ├── INFY_disclosures_20261103T164638Z.json
+│   │   │   ├── INFY_disclosures_20261103T164717Z.json
+│   │   │   ├── INFY_disclosures_20261103T164727Z.json
+│   │   │   ├── INFY_disclosures_20261103T164842Z.json
+│   │   │   ├── ITC_disclosures_20261103T164844Z.json
+│   │   │   ├── JIOFIN_disclosures_20261103T164846Z.json
+│   │   │   ├── JSWSTEEL_disclosures_20261103T164848Z.json
+│   │   │   ├── KOTAKBANK_disclosures_20261103T164850Z.json
+│   │   │   ├── LT_disclosures_20261103T164852Z.json
+│   │   │   ├── M_AND_M_disclosures_20261103T164854Z.json
+│   │   │   ├── MARUTI_disclosures_20261103T164857Z.json
+│   │   │   ├── MAXHEALTH_disclosures_20261103T164859Z.json
+│   │   │   ├── NESTLEIND_disclosures_20261103T164900Z.json
+│   │   │   ├── NTPC_disclosures_20261103T164902Z.json
+│   │   │   ├── ONGC_disclosures_20261103T164903Z.json
+│   │   │   ├── POWERGRID_disclosures_20261103T164905Z.json
+│   │   │   ├── RELIANCE_disclosures_20261103T164907Z.json
+│   │   │   ├── SBILIFE_disclosures_20261103T164909Z.json
+│   │   │   ├── SBIN_disclosures_20261103T164911Z.json
+│   │   │   ├── SHRIRAMFIN_disclosures_20261103T164914Z.json
+│   │   │   ├── SUNPHARMA_disclosures_20261103T164916Z.json
+│   │   │   ├── TATACONSUM_disclosures_20261103T164918Z.json
+│   │   │   ├── TATASTEEL_disclosures_20261103T164920Z.json
+│   │   │   ├── TCS_disclosures_20261103T164922Z.json
+│   │   │   ├── TECHM_disclosures_20261103T164924Z.json
+│   │   │   ├── TITAN_disclosures_20261103T164926Z.json
+│   │   │   ├── TMPV_disclosures_20261103T164928Z.json
+│   │   │   ├── TRENT_disclosures_20261103T164931Z.json
+│   │   │   └── ULTRACEMCO_disclosures_20261103T164933Z.json
+│   │   ├── DRREDDY_history_20261025T131551Z.json
+│   │   ├── DRREDDY_history_20261026T141628Z.json
+│   │   ├── EICHERMOT_history_20261025T131554Z.json
+│   │   ├── EICHERMOT_history_20261026T141642Z.json
+│   │   ├── ETERNAL_corporate_actions_20261026T154653Z.json
+│   │   ├── ETERNAL_history_20261025T131558Z.json
+│   │   ├── ETERNAL_history_20261026T141507Z.json
+│   │   ├── financial_statements
+│   │   │   ├── ADANIENT_financial_statements.json
+│   │   │   ├── ADANIPORTS_financial_statements.json
+│   │   │   ├── APOLLOHOSP_financial_statements.json
+│   │   │   ├── ASIANPAINT_financial_statements.json
+│   │   │   ├── AXISBANK_financial_statements.json
+│   │   │   ├── BAJAJ-AUTO_financial_statements.json
+│   │   │   ├── BAJAJFINSV_financial_statements.json
+│   │   │   ├── BAJFINANCE_financial_statements.json
+│   │   │   ├── BEL_financial_statements.json
+│   │   │   ├── BHARTIARTL_financial_statements.json
+│   │   │   ├── BSE_financial_statements.json
+│   │   │   ├── CIPLA_financial_statements.json
+│   │   │   ├── COALINDIA_financial_statements.json
+│   │   │   ├── DRREDDY_financial_statements.json
+│   │   │   ├── EICHERMOT_financial_statements.json
+│   │   │   ├── ETERNAL_financial_statements.json
+│   │   │   ├── GRASIM_financial_statements.json
+│   │   │   ├── HCLTECH_financial_statements.json
+│   │   │   ├── HDFCBANK_financial_statements.json
+│   │   │   ├── HDFCLIFE_financial_statements_pilot.json
+│   │   │   ├── HINDALCO_financial_statements.json
+│   │   │   ├── HINDUNILVR_financial_statements.json
+│   │   │   ├── ICICIBANK_financial_statements.json
+│   │   │   ├── INDIGO_financial_statements.json
+│   │   │   ├── INFY_financial_statements_pilot.json
+│   │   │   ├── ITC_financial_statements.json
+│   │   │   ├── JIOFIN_financial_statements.json
+│   │   │   ├── JSWSTEEL_financial_statements.json
+│   │   │   ├── KOTAKBANK_financial_statements.json
+│   │   │   ├── LT_financial_statements.json
+│   │   │   ├── MARUTI_financial_statements.json
+│   │   │   ├── MAXHEALTH_financial_statements.json
+│   │   │   ├── M&M_financial_statements.json
+│   │   │   ├── NESTLEIND_financial_statements_pilot.json
+│   │   │   ├── NTPC_financial_statements.json
+│   │   │   ├── ONGC_financial_statements.json
+│   │   │   ├── POWERGRID_financial_statements.json
+│   │   │   ├── RELIANCE_financial_statements_pilot.json
+│   │   │   ├── SBILIFE_financial_statements.json
+│   │   │   ├── SBIN_financial_statements_pilot.json
+│   │   │   ├── SHRIRAMFIN_financial_statements.json
+│   │   │   ├── SUNPHARMA_financial_statements.json
+│   │   │   ├── TATACONSUM_financial_statements.json
+│   │   │   ├── TATASTEEL_financial_statements.json
+│   │   │   ├── TCS_financial_statements_pilot.json
+│   │   │   ├── TECHM_financial_statements.json
+│   │   │   ├── TITAN_financial_statements.json
+│   │   │   ├── TMPV_financial_statements.json
+│   │   │   ├── TRENT_financial_statements.json
+│   │   │   └── ULTRACEMCO_financial_statements.json
+│   │   ├── GRASIM_history_20261025T131602Z.json
+│   │   ├── GRASIM_history_20261026T141650Z.json
+│   │   ├── HCLTECH_history_20261025T131603Z.json
+│   │   ├── HCLTECH_history_20261026T141702Z.json
+│   │   ├── HDFCBANK_corporate_actions_20261026T154625Z.json
+│   │   ├── HDFCBANK_corporate_actions_20261026T155025Z.json
+│   │   ├── HDFCBANK_history_20261025T131049Z.json
+│   │   ├── HDFCBANK_history_20261025T131606Z.json
+│   │   ├── HDFCBANK_history_20261025T163959Z.json
+│   │   ├── HDFCBANK_history_20261026T141711Z.json
+│   │   ├── HDFCLIFE_history_20261025T131612Z.json
+│   │   ├── HDFCLIFE_history_20261026T141717Z.json
+│   │   ├── HINDALCO_history_20261025T131618Z.json
+│   │   ├── HINDALCO_history_20261026T141724Z.json
+│   │   ├── HINDUNILVR_history_20261025T131621Z.json
+│   │   ├── HINDUNILVR_history_20261026T141734Z.json
+│   │   ├── ICICIBANK_history_20261025T131052Z.json
+│   │   ├── ICICIBANK_history_20261025T131623Z.json
+│   │   ├── ICICIBANK_history_20261026T141739Z.json
+│   │   ├── index_valuations
+│   │   │   ├── NIFTY_50_valuation_history.json
+│   │   │   ├── NIFTY_AUTO_valuation_history.json
+│   │   │   ├── NIFTY_BANK_valuation_history.json
+│   │   │   ├── NIFTY_FINANCIAL_SERVICES_valuation_history.json
+│   │   │   ├── NIFTY_FMCG_valuation_history.json
+│   │   │   ├── NIFTY_IT_valuation_history.json
+│   │   │   ├── NIFTY_METAL_valuation_history.json
+│   │   │   ├── NIFTY_PHARMA_valuation_history.json
+│   │   │   └── NIFTY_REALTY_valuation_history.json
+│   │   ├── indices
+│   │   │   ├── PRI_Nifty_50_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_50_2025-10-27_2026-10-23.json
+│   │   │   ├── PRI_Nifty_Auto_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_Bank_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_Financial_Services_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_FMCG_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_IT_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_IT_2025-10-24_2026-10-23.json
+│   │   │   ├── PRI_Nifty_Metal_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_Pharma_2024-10-21_2026-10-23.json
+│   │   │   ├── PRI_Nifty_Realty_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_50_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_50_2025-10-27_2026-10-23.json
+│   │   │   ├── TRI_Nifty_Auto_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_Bank_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_Financial_Services_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_FMCG_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_IT_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_IT_2025-10-24_2026-10-23.json
+│   │   │   ├── TRI_Nifty_Metal_2024-10-21_2026-10-23.json
+│   │   │   ├── TRI_Nifty_Pharma_2024-10-21_2026-10-23.json
+│   │   │   └── TRI_Nifty_Realty_2024-10-21_2026-10-23.json
+│   │   ├── INDIGO_history_20261025T131628Z.json
+│   │   ├── INDIGO_history_20261026T141750Z.json
+│   │   ├── INFY_corporate_actions_20261025T120325Z.json
+│   │   ├── INFY_corporate_actions_20261025T121341Z.json
+│   │   ├── INFY_corporate_actions_20261025T121433Z.json
+│   │   ├── INFY_corporate_actions_20261025T122223Z.json
+│   │   ├── INFY_corporate_actions_20261025T140120Z.json
+│   │   ├── INFY_corporate_actions_20261025T140130Z.json
+│   │   ├── INFY_corporate_actions_20261025T163439Z.json
+│   │   ├── INFY_corporate_actions_20261026T154517Z.json
+│   │   ├── INFY_corporate_actions_20261026T154625Z.json
+│   │   ├── infy_disclosures_audit_20261025.json
+│   │   ├── INFY_history_20261025T120321Z.json
+│   │   ├── INFY_history_20261025T121340Z.json
+│   │   ├── INFY_history_20261025T121433Z.json
+│   │   ├── INFY_history_20261025T122222Z.json
+│   │   ├── INFY_history_20261025T140025Z.json
+│   │   ├── INFY_history_20261025T140053Z.json
+│   │   ├── ITC_history_20261025T131628Z.json
+│   │   ├── ITC_history_20261026T141805Z.json
+│   │   ├── JIOFIN_history_20261025T131629Z.json
+│   │   ├── JIOFIN_history_20261026T141817Z.json
+│   │   ├── JSWSTEEL_history_20261025T131631Z.json
+│   │   ├── JSWSTEEL_history_20261026T141829Z.json
+│   │   ├── KOTAKBANK_history_20261025T131633Z.json
+│   │   ├── KOTAKBANK_history_20261026T141837Z.json
+│   │   ├── LT_corporate_actions_20261026T154625Z.json
+│   │   ├── LT_history_20261025T131634Z.json
+│   │   ├── LT_history_20261026T141853Z.json
+│   │   ├── M%26M_corporate_actions_20261026T155425Z.json
+│   │   ├── MARUTI_history_20261025T131640Z.json
+│   │   ├── MARUTI_history_20261026T141911Z.json
+│   │   ├── MAXHEALTH_history_20261025T131643Z.json
+│   │   ├── MAXHEALTH_history_20261026T141918Z.json
+│   │   ├── M&M_corporate_actions_20261026T155424Z.json
+│   │   ├── M&M_history_20261025T131636Z.json
+│   │   ├── M&M_history_20261026T141904Z.json
+│   │   ├── NESTLEIND_history_20261025T131658Z.json
+│   │   ├── NESTLEIND_history_20261026T141923Z.json
+│   │   ├── NTPC_history_20261025T131702Z.json
+│   │   ├── NTPC_history_20261026T141934Z.json
+│   │   ├── ONGC_history_20261025T131705Z.json
+│   │   ├── ONGC_history_20261026T141941Z.json
+│   │   ├── POWERGRID_history_20261025T131708Z.json
+│   │   ├── POWERGRID_history_20261026T141948Z.json
+│   │   ├── RELIANCE_corporate_actions_20261026T154624Z.json
+│   │   ├── RELIANCE_corporate_actions_20261026T155024Z.json
+│   │   ├── RELIANCE_history_20261025T131046Z.json
+│   │   ├── RELIANCE_history_20261025T131711Z.json
+│   │   ├── RELIANCE_history_20261026T141955Z.json
+│   │   ├── SBILIFE_history_20261025T131713Z.json
+│   │   ├── SBILIFE_history_20261026T142006Z.json
+│   │   ├── SBIN_history_20261025T131721Z.json
+│   │   ├── SBIN_history_20261025T163914Z.json
+│   │   ├── SBIN_history_20261026T142013Z.json
+│   │   ├── SBIN_history_20261026T142022Z.json
+│   │   ├── SBIN_history_20261026T142038Z.json
+│   │   ├── SHRIRAMFIN_history_20261025T131731Z.json
+│   │   ├── SHRIRAMFIN_history_20261026T142052Z.json
+│   │   ├── SUNPHARMA_history_20261025T131734Z.json
+│   │   ├── SUNPHARMA_history_20261026T142120Z.json
+│   │   ├── TATACONSUM_history_20261025T131737Z.json
+│   │   ├── TATACONSUM_history_20261026T142133Z.json
+│   │   ├── TATASTEEL_history_20261025T131739Z.json
+│   │   ├── TATASTEEL_history_20261026T142139Z.json
+│   │   ├── TCS_corporate_actions_20261025T163439Z.json
+│   │   ├── TCS_corporate_actions_20261026T154623Z.json
+│   │   ├── TCS_corporate_actions_20261026T155024Z.json
+│   │   ├── TCS_history_20261025T131026Z.json
+│   │   ├── TCS_history_20261025T131744Z.json
+│   │   ├── TCS_history_20261025T163412Z.json
+│   │   ├── TCS_history_20261026T142147Z.json
+│   │   ├── TECHM_history_20261025T131747Z.json
+│   │   ├── TECHM_history_20261026T142157Z.json
+│   │   ├── TITAN_history_20261025T131750Z.json
+│   │   ├── TITAN_history_20261026T142204Z.json
+│   │   ├── TMPV_history_20261025T131753Z.json
+│   │   ├── TRENT_history_20261025T131758Z.json
+│   │   ├── TRENT_history_20261026T142212Z.json
+│   │   ├── udiff
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20241217_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20241218_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250108_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250109_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250201_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250408_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250527_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250623_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250707_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250711_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250718_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250721_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250814_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250818_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250822_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250828_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20250924_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251003_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251010_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251013_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251015_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251016_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251020_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251027_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251030_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20251031_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20260201_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20261023_F_0000.csv.zip
+│   │   │   ├── BhavCopy_NSE_CM_0_0_0_20261027_F_0000.csv.zip
+│   │   │   └── BhavCopy_NSE_CM_0_0_0_20261028_F_0000.csv.zip
+│   │   ├── ULTRACEMCO_history_20261025T131803Z.json
+│   │   ├── ULTRACEMCO_history_20261026T142222Z.json
+│   │   ├── ZOMATO_corporate_actions_20261026T154653Z.json
+│   │   ├── ZOMATO_corporate_actions_20261026T154705Z.json
+│   │   ├── ZOMATO_history_20261026T141206Z.json
+│   │   └── ZOMATO_history_20261026T141531Z.json
+│   └── universe
+│       ├── ind_nifty500list.csv
+│       └── ind_nifty50list.csv
+├── dir.txt
+├── docs
+│   ├── architecture
+│   │   └── decisions
+│   │       └── ADR-0001-truth-and-architecture-decisions.md
+│   └── b3_2_ingestion_design.md
+├── frontend
+│   ├── next.config.mjs
+│   ├── next-env.d.ts
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.mjs
+│   ├── README.md
+│   ├── src
+│   │   ├── app
+│   │   │   ├── backtest
+│   │   │   │   └── page.tsx
+│   │   │   ├── favicon.ico
+│   │   │   ├── fonts
+│   │   │   │   ├── GeistMonoVF.woff
+│   │   │   │   └── GeistVF.woff
+│   │   │   ├── globals.css
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx
+│   │   │   └── stocks
+│   │   │       └── [symbol]
+│   │   │           └── page.tsx
+│   │   ├── components
+│   │   │   ├── BacktestChart.tsx
+│   │   │   ├── CommandPaletteModal.tsx
+│   │   │   ├── CopilotDrawer.tsx
+│   │   │   ├── FactorPentagonRadar.tsx
+│   │   │   ├── InvestmentMemoCard.tsx
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── NewsImpactCard.tsx
+│   │   │   ├── QuickInspectDrawer.tsx
+│   │   │   ├── RadialConvictionGauge.tsx
+│   │   │   ├── RiskRewardVectorBar.tsx
+│   │   │   ├── ScreenerScoreCell.tsx
+│   │   │   ├── ScreenerTable.tsx
+│   │   │   ├── SectorHeatmap.tsx
+│   │   │   ├── StockChart.tsx
+│   │   │   └── WatchlistPanel.tsx
+│   │   └── lib
+│   │       └── api.ts
+│   ├── tailwind.config.ts
+│   └── tsconfig.json
+├── logs
+├── market_intelligence_lab.egg-info
+│   ├── dependency_links.txt
+│   ├── PKG-INFO
+│   ├── requires.txt
+│   ├── SOURCES.txt
+│   └── top_level.txt
+├── milestone_b5_final_verification_report.md
+├── milestone_b5_phase6_verification_report.md
+├── models
+│   └── registry
+│       ├── model_HistGradientBoostingRegressor_20261105_172423_cffa0c.pkl
+│       ├── model_HistGradientBoostingRegressor_20261105_172738_bd115f.pkl
+│       ├── model_HistGradientBoostingRegressor_20261105_173044_e4a1c0.pkl
+│       ├── model_HistGradientBoostingRegressor_20261105_173429_cb759d.pkl
+│       ├── model_ZeroReturnBaseline_20261105_182509_ab3b15.pkl
+│       ├── model_ZeroReturnBaseline_20261106_155247_263040.pkl
+│       ├── model_ZeroReturnBaseline_20261106_160750_0b852c.pkl
+│       └── model_ZeroReturnBaseline_20261106_162702_d1ab26.pkl
+├── pyproject.toml
+├── README.md
+├── reports
+│   ├── daily_market_overview_20261023.md
+│   ├── daily_market_overview_20261027.md
+│   ├── daily_market_overview_20261028.md
+│   ├── INFY_performance_report.md
+│   ├── INFY_tearsheet_20261023.md
+│   ├── investigations
+│   │   ├── INFY_20261016
+│   │   │   ├── report.html
+│   │   │   ├── report.json
+│   │   │   └── report.md
+│   │   ├── INFY_20261023
+│   │   │   ├── report.html
+│   │   │   ├── report.json
+│   │   │   └── report.md
+│   │   ├── INFY_20261027
+│   │   │   ├── report.html
+│   │   │   ├── report.json
+│   │   │   └── report.md
+│   │   ├── INFY_20261028
+│   │   │   ├── report.html
+│   │   │   ├── report.json
+│   │   │   └── report.md
+│   │   ├── NESTLEIND_20250808
+│   │   │   ├── report.html
+│   │   │   ├── report.json
+│   │   │   └── report.md
+│   │   ├── SBIN_20250808
+│   │   │   ├── report.html
+│   │   │   ├── report.json
+│   │   │   └── report.md
+│   │   └── TMPV_20251110
+│   │       ├── report.html
+│   │       ├── report.json
+│   │       └── report.md
+│   ├── market_breadth_and_relative_strength.md
+│   ├── milestone_b3_2_live_ingestion_report.md
+│   ├── milestone_b3_3_fundamentals_report.md
+│   ├── milestone_b4_1_factor_audit.md
+│   ├── milestone_b4_2_screener_report.md
+│   ├── milestone_b5_attribution_report.md
+│   ├── milestone_b6_3_frontend_audit.md
+│   ├── milestone_b6_4_1_hotfix_report.md
+│   ├── milestone_b6_4_dynamic_ingestion_report.md
+│   ├── milestone_b7_5_news_report.md
+│   ├── milestone_b7_forecasting_report.md
+│   ├── milestone_b8_backtest_report.md
+│   ├── milestone_b9_compounding_report.md
+│   ├── SUZLON_tearsheet_20261028.md
+│   └── SUZLON_tearsheet.md
+├── requirements.txt
+├── scripts
+│   ├── audit_database_coverage.py
+│   ├── backfill_full_universe.py
+│   ├── backfill_index_valuations.py
+│   ├── backfill_universe_24m.py
+│   ├── backfill_universe.py
+│   ├── batch_ingest_universe.py
+│   ├── compute_daily_factors.py
+│   ├── cron_market_lab.sh
+│   ├── generate_milestone2_4_reports.py
+│   ├── ingest_b3_2_corporate_data.py
+│   ├── ingest_b3_3_fundamentals.py
+│   ├── ingest_batch_1_financials.py
+│   ├── ingest_batch_2_automotive_industry.py
+│   ├── ingest_batch_3_metals_energy_power.py
+│   ├── ingest_batch_4_healthcare_defense_telecom.py
+│   ├── ingest_batch_5_consumer_fmcg.py
+│   ├── ingest_batch_6_services_it_insurance.py
+│   ├── ingest_budget_sessions.py
+│   ├── ingest_pilot_financial_statements.py
+│   ├── ingest_universe_fundamentals.py
+│   ├── install_cron_schedules.py
+│   ├── onboard_watchlist.py
+│   ├── playwright_copilot_test.js
+│   ├── playwright_screener_universe_test.js
+│   ├── playwright_visual_qa.js
+│   ├── __pycache__
+│   │   ├── ingest_universe_fundamentals.cpython-313.pyc
+│   │   └── onboard_watchlist.cpython-312.pyc
+│   ├── reconcile_cdsl_nse.py
+│   ├── reconcile_tmpv_and_missing_q4.py
+│   ├── reconcile_universe_ohlcv.py
+│   ├── recover_early_index_valuations.py
+│   ├── run_attribution_study.py
+│   ├── run_eod_daemon.sh
+│   ├── run_event_study_infy.py
+│   ├── run_milestone1.py
+│   ├── run_milestone2_1.py
+│   ├── run_milestone2_2.py
+│   ├── run_production_pipeline.py
+│   ├── run_screener.py
+│   ├── seed_nifty500.py
+│   ├── setup_permanent_tunnel.sh
+│   ├── start_platform.sh
+│   ├── sync_corporate_actions_universe.py
+│   ├── sync_sectoral_indices.py
+│   ├── sync_universe_and_cdsl.py
+│   └── verify_tearsheet_scroll.js
+├── src
+│   ├── api
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── __init__.cpython-313.pyc
+│   │   │   ├── main.cpython-312.pyc
+│   │   │   ├── main.cpython-313.pyc
+│   │   │   ├── routes_market.cpython-312.pyc
+│   │   │   ├── routes_market.cpython-313.pyc
+│   │   │   ├── utils.cpython-312.pyc
+│   │   │   └── utils.cpython-313.pyc
+│   │   ├── routes_market.py
+│   │   └── utils.py
+│   ├── attribution
+│   │   ├── engine.py
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── engine.cpython-312.pyc
+│   │   │   ├── engine.cpython-313.pyc
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── __init__.cpython-313.pyc
+│   │   │   ├── ranking.cpython-312.pyc
+│   │   │   └── ranking.cpython-313.pyc
+│   │   └── ranking.py
+│   ├── client
+│   │   ├── backfill_manager.py
+│   │   ├── corporate_client.py
+│   │   ├── fundamentals_client.py
+│   │   ├── index_client.py
+│   │   ├── macro_client.py
+│   │   ├── news_client.py
+│   │   ├── nse_mcp_client.py
+│   │   ├── __pycache__
+│   │   │   ├── backfill_manager.cpython-312.pyc
+│   │   │   ├── backfill_manager.cpython-313.pyc
+│   │   │   ├── corporate_client.cpython-312.pyc
+│   │   │   ├── corporate_client.cpython-313.pyc
+│   │   │   ├── fundamentals_client.cpython-312.pyc
+│   │   │   ├── fundamentals_client.cpython-313.pyc
+│   │   │   ├── index_client.cpython-312.pyc
+│   │   │   ├── index_client.cpython-313.pyc
+│   │   │   ├── macro_client.cpython-312.pyc
+│   │   │   ├── macro_client.cpython-313.pyc
+│   │   │   ├── news_client.cpython-312.pyc
+│   │   │   ├── news_client.cpython-313.pyc
+│   │   │   ├── nse_mcp_client.cpython-312.pyc
+│   │   │   ├── nse_mcp_client.cpython-313.pyc
+│   │   │   ├── symbol_resolver.cpython-312.pyc
+│   │   │   ├── symbol_resolver.cpython-313.pyc
+│   │   │   ├── udiff_client.cpython-312.pyc
+│   │   │   ├── udiff_client.cpython-313.pyc
+│   │   │   ├── universe_manager.cpython-312.pyc
+│   │   │   ├── universe_manager.cpython-313.pyc
+│   │   │   ├── validator.cpython-312.pyc
+│   │   │   └── validator.cpython-313.pyc
+│   │   ├── symbol_resolver.py
+│   │   ├── udiff_client.py
+│   │   ├── universe_manager.py
+│   │   └── validator.py
+│   ├── config.py
+│   ├── copilot
+│   │   ├── deliberation.py
+│   │   ├── __init__.py
+│   │   ├── llm_client.py
+│   │   ├── mcp_bridge.py
+│   │   └── __pycache__
+│   │       ├── deliberation.cpython-312.pyc
+│   │       ├── deliberation.cpython-313.pyc
+│   │       ├── __init__.cpython-312.pyc
+│   │       ├── __init__.cpython-313.pyc
+│   │       ├── llm_client.cpython-312.pyc
+│   │       ├── llm_client.cpython-313.pyc
+│   │       ├── mcp_bridge.cpython-312.pyc
+│   │       └── mcp_bridge.cpython-313.pyc
+│   ├── domain
+│   │   ├── observations.py
+│   │   └── __pycache__
+│   │       ├── observations.cpython-312.pyc
+│   │       └── observations.cpython-313.pyc
+│   ├── evidence
+│   │   ├── adapters.py
+│   │   ├── constants.py
+│   │   ├── __init__.py
+│   │   ├── models.py
+│   │   ├── peer_validator.py
+│   │   ├── __pycache__
+│   │   │   ├── adapters.cpython-312.pyc
+│   │   │   ├── adapters.cpython-313.pyc
+│   │   │   ├── constants.cpython-312.pyc
+│   │   │   ├── constants.cpython-313.pyc
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── __init__.cpython-313.pyc
+│   │   │   ├── models.cpython-312.pyc
+│   │   │   ├── models.cpython-313.pyc
+│   │   │   ├── peer_validator.cpython-312.pyc
+│   │   │   ├── peer_validator.cpython-313.pyc
+│   │   │   ├── store.cpython-312.pyc
+│   │   │   └── store.cpython-313.pyc
+│   │   └── store.py
+│   ├── explanation
+│   │   ├── attribution_engine.py
+│   │   ├── decision_engine.py
+│   │   ├── __init__.py
+│   │   ├── news_impact_engine.py
+│   │   └── __pycache__
+│   │       ├── attribution_engine.cpython-312.pyc
+│   │       ├── attribution_engine.cpython-313.pyc
+│   │       ├── decision_engine.cpython-312.pyc
+│   │       ├── decision_engine.cpython-313.pyc
+│   │       ├── __init__.cpython-312.pyc
+│   │       ├── __init__.cpython-313.pyc
+│   │       ├── news_impact_engine.cpython-312.pyc
+│   │       └── news_impact_engine.cpython-313.pyc
+│   ├── fundamentals
+│   │   ├── __pycache__
+│   │   │   ├── ttm_builder.cpython-312.pyc
+│   │   │   └── ttm_builder.cpython-313.pyc
+│   │   └── ttm_builder.py
+│   ├── ml
+│   │   ├── features
+│   │   │   ├── builder.py
+│   │   │   ├── __init__.py
+│   │   │   └── __pycache__
+│   │   │       ├── builder.cpython-313.pyc
+│   │   │       └── __init__.cpython-313.pyc
+│   │   ├── inference
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-313.pyc
+│   │   │   │   └── shadow_runner.cpython-313.pyc
+│   │   │   └── shadow_runner.py
+│   │   ├── __init__.py
+│   │   ├── labels
+│   │   │   ├── builder.py
+│   │   │   ├── __init__.py
+│   │   │   └── __pycache__
+│   │   │       ├── builder.cpython-313.pyc
+│   │   │       └── __init__.cpython-313.pyc
+│   │   ├── __pycache__
+│   │   │   └── __init__.cpython-313.pyc
+│   │   ├── registry
+│   │   │   ├── __init__.py
+│   │   │   ├── manager.py
+│   │   │   └── __pycache__
+│   │   │       ├── __init__.cpython-313.pyc
+│   │   │       └── manager.cpython-313.pyc
+│   │   └── training
+│   │       ├── __init__.py
+│   │       ├── __pycache__
+│   │       │   ├── __init__.cpython-313.pyc
+│   │       │   └── tournament.cpython-313.pyc
+│   │       └── tournament.py
+│   ├── pipeline
+│   │   ├── dynamic_ingestion.py
+│   │   ├── production_pipeline.py
+│   │   ├── __pycache__
+│   │   │   ├── dynamic_ingestion.cpython-312.pyc
+│   │   │   ├── dynamic_ingestion.cpython-313.pyc
+│   │   │   ├── production_pipeline.cpython-312.pyc
+│   │   │   ├── production_pipeline.cpython-313.pyc
+│   │   │   └── universe_ingestion.cpython-313.pyc
+│   │   └── universe_ingestion.py
+│   ├── __pycache__
+│   │   ├── config.cpython-312.pyc
+│   │   └── config.cpython-313.pyc
+│   ├── quant
+│   │   ├── alignment.py
+│   │   ├── backtest_engine.py
+│   │   ├── benchmark.py
+│   │   ├── breadth.py
+│   │   ├── calendar.py
+│   │   ├── corporate_actions.py
+│   │   ├── disclosures.py
+│   │   ├── event_study.py
+│   │   ├── factor_pipeline.py
+│   │   ├── feedback_evaluator.py
+│   │   ├── forecasting.py
+│   │   ├── fundamentals.py
+│   │   ├── metrics.py
+│   │   ├── movement_analyzer.py
+│   │   ├── performance.py
+│   │   ├── __pycache__
+│   │   │   ├── alignment.cpython-312.pyc
+│   │   │   ├── alignment.cpython-313.pyc
+│   │   │   ├── backtest_engine.cpython-312.pyc
+│   │   │   ├── backtest_engine.cpython-313.pyc
+│   │   │   ├── benchmark.cpython-312.pyc
+│   │   │   ├── benchmark.cpython-313.pyc
+│   │   │   ├── breadth.cpython-312.pyc
+│   │   │   ├── breadth.cpython-313.pyc
+│   │   │   ├── calendar.cpython-312.pyc
+│   │   │   ├── calendar.cpython-313.pyc
+│   │   │   ├── corporate_actions.cpython-312.pyc
+│   │   │   ├── corporate_actions.cpython-313.pyc
+│   │   │   ├── disclosures.cpython-312.pyc
+│   │   │   ├── disclosures.cpython-313.pyc
+│   │   │   ├── event_study.cpython-312.pyc
+│   │   │   ├── event_study.cpython-313.pyc
+│   │   │   ├── factor_pipeline.cpython-312.pyc
+│   │   │   ├── factor_pipeline.cpython-313.pyc
+│   │   │   ├── feedback_evaluator.cpython-312.pyc
+│   │   │   ├── feedback_evaluator.cpython-313.pyc
+│   │   │   ├── forecasting.cpython-312.pyc
+│   │   │   ├── forecasting.cpython-313.pyc
+│   │   │   ├── fundamentals.cpython-312.pyc
+│   │   │   ├── fundamentals.cpython-313.pyc
+│   │   │   ├── metrics.cpython-312.pyc
+│   │   │   ├── metrics.cpython-313.pyc
+│   │   │   ├── movement_analyzer.cpython-312.pyc
+│   │   │   ├── movement_analyzer.cpython-313.pyc
+│   │   │   ├── performance.cpython-312.pyc
+│   │   │   ├── performance.cpython-313.pyc
+│   │   │   ├── relative_strength.cpython-312.pyc
+│   │   │   ├── relative_strength.cpython-313.pyc
+│   │   │   ├── screener.cpython-312.pyc
+│   │   │   ├── screener.cpython-313.pyc
+│   │   │   ├── volume.cpython-312.pyc
+│   │   │   └── volume.cpython-313.pyc
+│   │   ├── relative_strength.py
+│   │   ├── screener.py
+│   │   └── volume.py
+│   ├── reporting
+│   │   ├── company_tearsheet.py
+│   │   ├── comparative_report_builder.py
+│   │   ├── daily_market_report.py
+│   │   ├── investigation_builder.py
+│   │   ├── investigation_schema.py
+│   │   ├── __pycache__
+│   │   │   ├── company_tearsheet.cpython-312.pyc
+│   │   │   ├── company_tearsheet.cpython-313.pyc
+│   │   │   ├── daily_market_report.cpython-312.pyc
+│   │   │   ├── daily_market_report.cpython-313.pyc
+│   │   │   ├── investigation_builder.cpython-312.pyc
+│   │   │   ├── investigation_builder.cpython-313.pyc
+│   │   │   ├── investigation_schema.cpython-312.pyc
+│   │   │   ├── investigation_schema.cpython-313.pyc
+│   │   │   ├── visualizer.cpython-312.pyc
+│   │   │   └── visualizer.cpython-313.pyc
+│   │   ├── report_builder.py
+│   │   └── visualizer.py
+│   ├── storage
+│   │   ├── database.py
+│   │   ├── migrations.py
+│   │   ├── __pycache__
+│   │   │   ├── database.cpython-312.pyc
+│   │   │   ├── database.cpython-313.pyc
+│   │   │   ├── migrations.cpython-312.pyc
+│   │   │   └── migrations.cpython-313.pyc
+│   │   ├── schema.sql
+│   │   ├── schema_v2.sql
+│   │   └── schema_v3.sql
+│   ├── supervisor
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── __init__.cpython-313.pyc
+│   │   │   ├── state_machine.cpython-312.pyc
+│   │   │   └── state_machine.cpython-313.pyc
+│   │   └── state_machine.py
+│   └── tasks
+│       ├── daemon.py
+│       ├── eod_daemon.py
+│       ├── __init__.py
+│       └── __pycache__
+│           ├── daemon.cpython-312.pyc
+│           ├── daemon.cpython-313.pyc
+│           ├── eod_daemon.cpython-312.pyc
+│           ├── __init__.cpython-312.pyc
+│           └── __init__.cpython-313.pyc
+├── tests
+│   ├── __pycache__
+│   │   ├── test_api_nan_handling.cpython-312.pyc
+│   │   ├── test_api_nan_handling.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_corporate_disclosure_audit.cpython-312.pyc
+│   │   ├── test_corporate_disclosure_audit.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_dynamic_ingestion_api.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_dynamic_ingestion.cpython-312.pyc
+│   │   ├── test_dynamic_ingestion.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_event_study.cpython-312.pyc
+│   │   ├── test_event_study.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone2_1.cpython-312.pyc
+│   │   ├── test_milestone2_1.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone2_2.cpython-312.pyc
+│   │   ├── test_milestone2_2.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone2_4_reports.cpython-312.pyc
+│   │   ├── test_milestone2_4_reports.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b3_1.cpython-312.pyc
+│   │   ├── test_milestone_b3_1.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b3_2.cpython-312.pyc
+│   │   ├── test_milestone_b3_2.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b3_3.cpython-312.pyc
+│   │   ├── test_milestone_b3_3.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b4_1.cpython-312.pyc
+│   │   ├── test_milestone_b4_1.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b4_2_screener.cpython-312.pyc
+│   │   ├── test_milestone_b4_2_screener.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b4.cpython-312.pyc
+│   │   ├── test_milestone_b4.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b5_attribution.cpython-312.pyc
+│   │   ├── test_milestone_b5_attribution.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b5_phase1.cpython-312.pyc
+│   │   ├── test_milestone_b5_phase1.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b5_phase2.cpython-312.pyc
+│   │   ├── test_milestone_b5_phase2.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b5_phase3.cpython-312.pyc
+│   │   ├── test_milestone_b5_phase3.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b5_phase4.cpython-312.pyc
+│   │   ├── test_milestone_b5_phase4.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b5_phase5.cpython-312.pyc
+│   │   ├── test_milestone_b5_phase5.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b5_phase6.cpython-312.pyc
+│   │   ├── test_milestone_b5_phase6.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b6_3_api.cpython-312.pyc
+│   │   ├── test_milestone_b6_3_api.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b7_5_news.cpython-312.pyc
+│   │   ├── test_milestone_b7_5_news.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b7_forecasting.cpython-312.pyc
+│   │   ├── test_milestone_b7_forecasting.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b8_backtest.cpython-312.pyc
+│   │   ├── test_milestone_b8_backtest.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_milestone_b9_compounding.cpython-312.pyc
+│   │   ├── test_milestone_b9_compounding.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_ml_lifecycle.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_nse_mcp_integration.cpython-312.pyc
+│   │   ├── test_nse_mcp_integration.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_offline_governance.cpython-312.pyc
+│   │   ├── test_offline_governance.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_production_pipeline.cpython-312.pyc
+│   │   ├── test_production_pipeline.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_quant.cpython-312.pyc
+│   │   ├── test_quant.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_storage.cpython-312.pyc
+│   │   ├── test_storage.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_truth_invariants.cpython-313-pytest-9.2.0.pyc
+│   │   ├── test_validation.cpython-312.pyc
+│   │   └── test_validation.cpython-313-pytest-9.2.0.pyc
+│   ├── test_api_nan_handling.py
+│   ├── test_corporate_disclosure_audit.py
+│   ├── test_dynamic_ingestion_api.py
+│   ├── test_dynamic_ingestion.py
+│   ├── test_event_study.py
+│   ├── test_milestone2_1.py
+│   ├── test_milestone2_2.py
+│   ├── test_milestone2_4_reports.py
+│   ├── test_milestone_b3_1.py
+│   ├── test_milestone_b3_2.py
+│   ├── test_milestone_b3_3.py
+│   ├── test_milestone_b4_1.py
+│   ├── test_milestone_b4_2_screener.py
+│   ├── test_milestone_b4.py
+│   ├── test_milestone_b5_attribution.py
+│   ├── test_milestone_b5_phase1.py
+│   ├── test_milestone_b5_phase2.py
+│   ├── test_milestone_b5_phase3.py
+│   ├── test_milestone_b5_phase4.py
+│   ├── test_milestone_b5_phase5.py
+│   ├── test_milestone_b5_phase6.py
+│   ├── test_milestone_b6_3_api.py
+│   ├── test_milestone_b7_5_news.py
+│   ├── test_milestone_b7_forecasting.py
+│   ├── test_milestone_b8_backtest.py
+│   ├── test_milestone_b9_compounding.py
+│   ├── test_ml_lifecycle.py
+│   ├── test_nse_mcp_integration.py
+│   ├── test_offline_governance.py
+│   ├── test_production_pipeline.py
+│   ├── test_quant.py
+│   ├── test_storage.py
+│   ├── test_truth_invariants.py
+│   └── test_validation.py
+└── uv.lock
+
+102 directories, 922 files

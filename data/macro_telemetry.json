@@ -1,0 +1,50 @@
+{
+  "status": "live_observed",
+  "as_of_session": "2026-11-06",
+  "retrieval_timestamp": "2026-11-06T17:35:43.798334+00:00",
+  "indicators": [
+    {
+      "symbol": "USD/INR",
+      "label": "USD / INR",
+      "value": 93.89,
+      "unit": "\u20b9",
+      "change_pct": -0.66,
+      "source": "yfinance",
+      "retrieval_timestamp": "2026-11-06T17:35:43.798334+00:00",
+      "observed_at": "2026-11-06T00:00:00+00:00",
+      "freshness_status": "LIVE_FEED"
+    },
+    {
+      "symbol": "BRENT",
+      "label": "Brent Crude",
+      "value": 97.8,
+      "unit": "$/bbl",
+      "change_pct": -0.5,
+      "source": "yfinance",
+      "retrieval_timestamp": "2026-11-06T17:35:43.798334+00:00",
+      "observed_at": "2026-11-06T00:00:00-05:00",
+      "freshness_status": "LIVE_FEED"
+    },
+    {
+      "symbol": "US10Y",
+      "label": "US 10Y Yield",
+      "value": 4.85,
+      "unit": "%",
+      "change_pct": 0.27,
+      "source": "yfinance",
+      "retrieval_timestamp": "2026-11-06T17:35:43.798334+00:00",
+      "observed_at": "2026-11-06T00:00:00-06:00",
+      "freshness_status": "LIVE_FEED"
+    },
+    {
+      "symbol": "IN10Y",
+      "label": "India 10Y G-Sec",
+      "value": null,
+      "unit": "%",
+      "change_pct": null,
+      "source": "unconfigured_ccil",
+      "observed_at": null,
+      "freshness_status": "NOT_CONFIGURED"
+    }
+  ]
+}

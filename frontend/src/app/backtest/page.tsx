@@ -117,6 +117,8 @@ export default function BacktestPage() {
   const [weighting, setWeighting] = useState<"EQUAL_WEIGHT" | "INVERSE_VOLATILITY">("EQUAL_WEIGHT");
   const [initialCapital, setInitialCapital] = useState<number>(500000);
   const [slippageBps, setSlippageBps] = useState<number>(5.0);
+  const [startDate, setStartDate] = useState<string>("2024-01-01");
+  const [endDate, setEndDate] = useState<string>("2026-10-28");
 
   // Execution State
   const [running, setRunning] = useState<boolean>(false);
@@ -130,8 +132,8 @@ export default function BacktestPage() {
       setError(null);
       const payload = {
         strategy_name: `Quality_Momentum_Top${topN}`,
-        start_date: "2024-01-01",
-        end_date: "2026-10-28",
+        start_date: startDate,
+        end_date: endDate,
         initial_capital: initialCapital,
         rebalance_frequency: rebalanceFreq,
         top_n: topN,
@@ -161,9 +163,9 @@ export default function BacktestPage() {
     } finally {
       setRunning(false);
     }
-  }, [topN, initialCapital, rebalanceFreq, weighting, slippageBps]);
+  }, [topN, initialCapital, rebalanceFreq, weighting, slippageBps, startDate, endDate]);
 
-  // Load latest or default on mount
+  // Load latest on mount (strictly read-only; does not auto-trigger backtest)
   const fetchLatest = useCallback(async () => {
     try {
       setRunning(true);
@@ -176,21 +178,21 @@ export default function BacktestPage() {
       });
       if (res.ok) {
         const json = await res.json();
-        // If complete run object returned, set it
+        // If complete run object returned, display it
         if (json.equity_curve && json.metrics) {
           setResult(json);
         } else {
-          await runBacktest();
+          setResult(null);
         }
       } else {
-        await runBacktest();
+        setResult(null);
       }
     } catch {
-      await runBacktest();
+      setResult(null);
     } finally {
       setRunning(false);
     }
-  }, [runBacktest]);
+  }, []);
 
   useEffect(() => {
     fetchLatest();
@@ -349,6 +351,34 @@ export default function BacktestPage() {
                 onChange={(e) => setSlippageBps(Number(e.target.value))}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500"
               />
+            </div>
+          </div>
+
+          {/* Date Range & Statutory Cost Breakdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-3 border-t border-slate-800/60 text-xs font-mono">
+            <div>
+              <label className="text-slate-400 block mb-1">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="text-slate-400 block mb-1">End Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div className="sm:col-span-2 flex flex-col justify-center bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5">
+              <span className="text-slate-400 text-[11px] mb-1">Institutional Execution Friction Deductions:</span>
+              <span className="text-slate-300 text-[10px] leading-tight">
+                STT: 0.10% (Delivery) · Exchange Txn: 0.00345% · SEBI: ₹10/Cr · Stamp Duty: 0.015% · DP Charges: ₹15.93/sell · Slippage: {slippageBps} bps
+              </span>
             </div>
           </div>
         </section>
@@ -695,6 +725,21 @@ export default function BacktestPage() {
                 })}
               </div>
             </div>
+          </section>
+        )}
+
+        {/* Clean Institutional Empty State when No Run Exists */}
+        {!result && !running && (
+          <section className="bg-slate-900/40 border border-slate-800 rounded-xl p-12 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-400">
+              <BarChart3 className="w-6 h-6 text-cyan-400" />
+            </div>
+            <h3 className="text-base font-bold text-slate-200 font-mono">
+              No Backtest Simulation Run
+            </h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              Configure parameters above and click &quot;Run Backtest&quot; to execute walk-forward institutional simulation across authentic Indian equity settlement series.
+            </p>
           </section>
         )}
       </main>

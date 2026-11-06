@@ -46,7 +46,8 @@ from src.api.routes_market import (
     get_latest_backtest,
     get_investment_memo,
     get_system_accuracy,
-    run_dynamic_ingestion
+    run_dynamic_ingestion,
+    trigger_system_ingest
 )
 
 from contextlib import asynccontextmanager
@@ -373,4 +374,5 @@ __all__ = [
     "get_investment_memo",
     "get_system_accuracy",
     "run_dynamic_ingestion",
+    "trigger_system_ingest",
 ]

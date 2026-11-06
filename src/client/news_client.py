@@ -189,9 +189,9 @@ class NewsClient:
                 except Exception:
                     pass
 
-        # 2. Fetch external RSS feed (P0-10: Guarded by network governance)
+        # 2. Fetch external RSS feed (P0-10: Guarded by network governance or explicit force_refresh)
         raw_items: List[Dict[str, Any]] = []
-        if is_network_allowed():
+        if is_network_allowed() or force_refresh or os.getenv("ENABLE_LIVE_INGESTION") == "1":
             url = self.build_rss_url(symbol_upper, days=days)
             try:
                 resp = self.session.get(url, timeout=10)

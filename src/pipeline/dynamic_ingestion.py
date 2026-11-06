@@ -335,103 +335,36 @@ class DynamicIngestionManager:
                 "source": "dynamic_ingestion_24m",
                 "retrieval_timestamp": now_ts,
                 "trades_count": int(v * 0.04),
-                "data_status": "final_settled"
+                "data_status": "quarantined_synthetic",
+                "provenance_class": "SYNTHETIC_TEST",
+                "is_synthetic": 1,
+                "is_eligible_for_live_analytics": 0,
+                "is_eligible_for_backtest": 0,
+                "is_eligible_for_training": 0
             })
 
         self.db.upsert_ohlcv_records(records)
 
     def _sync_corporate_data(self, symbol: str) -> None:
         """
-        Fetches or provisions official corporate actions and the 5 most recent
-        exchange disclosures with active PDF URLs.
+        Synchronizes official corporate actions and exchange disclosures using CorporateClient.
+        Never fabricates disclosures: if official feeds return empty, records no-data state.
         """
         now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-        # Try live corporate client if allowed
+        # Fetch official corporate disclosures via NSE API
         live_disclosures = []
+        raw_path = ""
         try:
-            live_disclosures, _ = self.corp_client.fetch_corporate_disclosures(symbol)
-        except Exception:
+            live_disclosures, raw_path = self.corp_client.fetch_corporate_disclosures(symbol)
+        except Exception as e:
+            logger.warning(f"Official corporate disclosure fetch failed for {symbol}: {e}")
             live_disclosures = []
 
-        if not live_disclosures:
-            # Seed 5 structured, realistic official exchange disclosures
-            recent_disclosures = [
-                {
-                    "disclosure_id": f"{symbol}_DISC_20261024_RESULTS",
-                    "id": f"{symbol}_DISC_20261024_RESULTS",
-                    "symbol": symbol,
-                    "broadcast_timestamp": "2026-10-24T12:00:00+05:30",
-                    "effective_session_date": "2026-10-26",
-                    "category": "EARNINGS",
-                    "subject": f"Financial Results for the Quarter and Half Year ended September 30, 2026",
-                    "details_summary": f"Unaudited financial results and limited review report approved by the Board of Directors.",
-                    "source_url": f"https://nsearchives.nseindia.com/corporate/{symbol}_24102026_Q2_Results.pdf",
-                    "retrieval_timestamp": now_ts,
-                    "verification_status": "VERIFIED",
-                    "audit_status": "UNAUDITED",
-                    "operating_margin_pct": 18.5,
-                    "source_timestamp_basis": "OFFICIAL_EXCHANGE_BROADCAST"
-                },
-                {
-                    "disclosure_id": f"{symbol}_DISC_20261012_BM",
-                    "id": f"{symbol}_DISC_20261012_BM",
-                    "symbol": symbol,
-                    "broadcast_timestamp": "2026-10-12T16:30:00+05:30",
-                    "effective_session_date": "2026-10-13",
-                    "category": "BOARD_MEETING",
-                    "subject": "Intimation of Board Meeting under Regulation 29 of SEBI LODR Regulations",
-                    "details_summary": "Board of Directors meeting scheduled on October 24, 2026 to consider Q2 FY27 results.",
-                    "source_url": f"https://nsearchives.nseindia.com/corporate/{symbol}_12102026_BM_Notice.pdf",
-                    "retrieval_timestamp": now_ts,
-                    "verification_status": "VERIFIED",
-                    "audit_status": None,
-                    "source_timestamp_basis": "OFFICIAL_EXCHANGE_BROADCAST"
-                },
-                {
-                    "disclosure_id": f"{symbol}_DISC_20260920_GEN",
-                    "id": f"{symbol}_DISC_20260920_GEN",
-                    "symbol": symbol,
-                    "broadcast_timestamp": "2026-09-20T10:15:00+05:30",
-                    "effective_session_date": "2026-09-21",
-                    "category": "GENERAL_ANNOUNCEMENT",
-                    "subject": "Commercial Operations / Capacity Addition milestone achieved",
-                    "details_summary": "Successful commissioning and operationalization of expanded infrastructure project.",
-                    "source_url": f"https://nsearchives.nseindia.com/corporate/{symbol}_20092026_Milestone.pdf",
-                    "retrieval_timestamp": now_ts,
-                    "verification_status": "VERIFIED",
-                    "audit_status": None,
-                    "source_timestamp_basis": "OFFICIAL_EXCHANGE_BROADCAST"
-                },
-                {
-                    "disclosure_id": f"{symbol}_DISC_20260728_Q1",
-                    "id": f"{symbol}_DISC_20260728_Q1",
-                    "symbol": symbol,
-                    "broadcast_timestamp": "2026-07-28T14:45:00+05:30",
-                    "effective_session_date": "2026-07-29",
-                    "category": "EARNINGS",
-                    "subject": f"Financial Results for the Quarter ended June 30, 2026",
-                    "details_summary": "Quarterly standalone and consolidated financial results along with limited review report.",
-                    "source_url": f"https://nsearchives.nseindia.com/corporate/{symbol}_28072026_Q1_Results.pdf",
-                    "retrieval_timestamp": now_ts,
-                    "verification_status": "VERIFIED",
-                    "audit_status": "UNAUDITED",
-                    "source_timestamp_basis": "OFFICIAL_EXCHANGE_BROADCAST"
-                },
-                {
-                    "disclosure_id": f"{symbol}_DISC_20260525_FY26",
-                    "id": f"{symbol}_DISC_20260525_FY26",
-                    "symbol": symbol,
-                    "broadcast_timestamp": "2026-05-25T17:15:00+05:30",
-                    "effective_session_date": "2026-05-26",
-                    "category": "EARNINGS",
-                    "subject": "Audited Annual Financial Results for the Financial Year ended March 31, 2026",
-                    "details_summary": "Annual audited results and recommendation of dividend by the Board.",
-                    "source_url": f"https://nsearchives.nseindia.com/corporate/{symbol}_25052026_FY26_Audited.pdf",
-                    "retrieval_timestamp": now_ts,
-                    "verification_status": "VERIFIED",
-                    "audit_status": "AUDITED",
-                    "source_timestamp_basis": "OFFICIAL_EXCHANGE_BROADCAST"
-                }
-            ]
-            self.db.upsert_corporate_disclosures(recent_disclosures)
+        if live_disclosures:
+            from src.quant.disclosures import CorporateDisclosuresParser
+            parser = CorporateDisclosuresParser()
+            res = parser.ingest_disclosures(self.db, symbol, live_disclosures, raw_path)
+            logger.info(f"Synced {res.get('accepted', 0)} official disclosures for {symbol} (raw: {raw_path})")
+        else:
+            logger.info(f"No official exchange disclosures returned for {symbol}.")

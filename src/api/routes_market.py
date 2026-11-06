@@ -128,10 +128,11 @@ def get_stock_tearsheet(
 
     # 1. Fetch metadata
     cur.execute(
-        "SELECT symbol, company_name, isin, industry, sector FROM securities_master WHERE symbol = ?",
+        "SELECT symbol, company_name, isin, industry, sector, COALESCE(is_nifty50, 0) as is_nifty50 FROM securities_master WHERE symbol = ?",
         (sym,)
     )
     sec_row = cur.fetchone()
+    is_nifty50 = bool(sec_row["is_nifty50"]) if sec_row else False
 
     cur.execute(
         "SELECT company_name, sector, target_price, stop_loss, notes FROM user_watchlists WHERE symbol = ?",
@@ -141,7 +142,7 @@ def get_stock_tearsheet(
 
     # Check OHLCV presence and bar count (reading only necessary columns)
     cur.execute(
-        "SELECT trading_date, open, high, low, close, volume FROM ohlcv_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1",
+        "SELECT trading_date, open, high, low, close, volume FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ' ORDER BY trading_date DESC LIMIT 1",
         (sym,)
     )
     ohlcv_row = cur.fetchone()
@@ -250,9 +251,13 @@ def get_stock_tearsheet(
     # Fetch Historical Daily Candlesticks (for lightweight-charts)
     cur.execute(
         """
-        SELECT trading_date as time, open, high, low, close, volume 
+        SELECT trading_date as time, open, high, low, close, volume,
+               COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
+               COALESCE(is_synthetic, 0) as is_synthetic
         FROM ohlcv_daily 
-        WHERE symbol = ? 
+        WHERE symbol = ? AND series = 'EQ'
+          AND COALESCE(is_synthetic, 0) = 0
+          AND COALESCE(is_eligible_for_live_analytics, 1) = 1
         ORDER BY trading_date ASC
         """,
         (sym,)
@@ -265,7 +270,9 @@ def get_stock_tearsheet(
             "high": safe_float(r["high"], 2),
             "low": safe_float(r["low"], 2),
             "close": safe_float(r["close"], 2),
-            "volume": safe_int(r["volume"]) or 0
+            "volume": safe_int(r["volume"]) or 0,
+            "provenance_class": r["provenance_class"],
+            "is_synthetic": bool(r["is_synthetic"])
         }
         for r in chart_rows
     ]
@@ -276,6 +283,7 @@ def get_stock_tearsheet(
         "isin": isin,
         "sector": sector,
         "industry": industry,
+        "is_nifty50": is_nifty50,
         "is_watchlist": is_watchlist,
         "target_price": target_price,
         "stop_loss": stop_loss,
@@ -331,11 +339,15 @@ def get_stock_history(
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT trading_date as time, open, high, low, close, volume 
+        SELECT trading_date as time, open, high, low, close, volume,
+               COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
+               COALESCE(is_synthetic, 0) as is_synthetic
         FROM (
-            SELECT trading_date, open, high, low, close, volume
+            SELECT trading_date, open, high, low, close, volume, provenance_class, is_synthetic
             FROM ohlcv_daily 
-            WHERE symbol = ? 
+            WHERE symbol = ? AND series = 'EQ'
+              AND COALESCE(is_synthetic, 0) = 0
+              AND COALESCE(is_eligible_for_live_analytics, 1) = 1
             ORDER BY trading_date DESC 
             LIMIT ?
         )
@@ -354,7 +366,9 @@ def get_stock_history(
             "high": safe_float(r["high"], 2),
             "low": safe_float(r["low"], 2),
             "close": safe_float(r["close"], 2),
-            "volume": safe_int(r["volume"]) or 0
+            "volume": safe_int(r["volume"]) or 0,
+            "provenance_class": r["provenance_class"],
+            "is_synthetic": bool(r["is_synthetic"])
         }
         for r in rows
     ]
@@ -438,10 +452,12 @@ def get_stock_forecast(
 
 @router.get("/stocks/{symbol}/news")
 @router.get("/api/v1/stocks/{symbol}/news")
+@router.get("/news/{symbol}")
+@router.get("/api/v1/news/{symbol}")
 def get_stock_news(
     symbol: str,
     limit: int = Query(5, ge=1, le=20, description="Max news articles to return"),
-    force_refresh: bool = Query(False, description="Bypass cache and fetch live RSS"),
+    force_refresh: bool = Query(True, description="Bypass cache and fetch live RSS"),
     conn: sqlite3.Connection = Depends(get_db_connection)
 ):
     """
@@ -601,6 +617,35 @@ def get_system_accuracy():
         raise HTTPException(status_code=500, detail=f"Failed to retrieve accuracy metrics: {str(e)}")
 
 
+
+@router.post("/system/ingest")
+@router.post("/api/v1/system/ingest")
+def trigger_system_ingest(
+    background_tasks: BackgroundTasks,
+    background: bool = Query(False, description="Run ingestion in background asynchronously"),
+):
+    """
+    Executes Universal Dynamic Ingestion across the active equity universe.
+    Fetches latest settlement quotes from exchange feeds, updates ohlcv_daily and index_daily,
+    recalculates quantitative factors, updates macro telemetry, and advances settled session.
+    """
+    try:
+        from src.pipeline.universe_ingestion import UniverseIngestionManager
+        manager = UniverseIngestionManager(DATABASE_PATH)
+        if background:
+            background_tasks.add_task(manager.execute_universe_ingestion)
+            return sanitize_for_json({
+                "status": "QUEUED",
+                "message": "Universal dynamic ingestion running in background."
+            })
+
+        res = manager.execute_universe_ingestion()
+        return sanitize_for_json(res)
+    except Exception as e:
+        logger.error(f"Universal dynamic ingestion error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Universal dynamic ingestion failed: {str(e)}")
+
+
 __all__ = [
     "router",
     "market_router",
@@ -614,4 +659,5 @@ __all__ = [
     "get_investment_memo",
     "get_system_accuracy",
     "run_dynamic_ingestion",
+    "trigger_system_ingest",
 ]

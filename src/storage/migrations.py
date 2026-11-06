@@ -7,9 +7,12 @@ Guarantees database consistency, deduplication, and truth-quarantine tracking.
 """
 
 import hashlib
+import inspect
+import json
 import logging
 import os
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from typing import List, Tuple, Callable
 
@@ -37,28 +40,58 @@ def get_applied_migrations(conn: sqlite3.Connection) -> set[str]:
     return {row[0] for row in cursor.fetchall()}
 
 
+def compute_migration_checksum(action: Callable[[sqlite3.Connection], None]) -> str:
+    """Computes a deterministic 16-character SHA-256 hash of the migration function source code."""
+    try:
+        source_code = inspect.getsource(action)
+        return hashlib.sha256(source_code.encode("utf-8")).hexdigest()[:16]
+    except Exception:
+        fn_name = getattr(action, "__name__", str(action))
+        return hashlib.sha256(fn_name.encode("utf-8")).hexdigest()[:16]
+
+
 def apply_migration(
     conn: sqlite3.Connection,
     migration_id: str,
     action: Callable[[sqlite3.Connection], None],
     app_version: str = "0.3.0"
 ) -> bool:
-    """Applies a migration within a transaction and logs it into schema_migrations."""
-    applied = get_applied_migrations(conn)
-    if migration_id in applied:
+    """Applies a migration within an isolated transaction and validates checksum integrity."""
+    init_migrations_table(conn)
+    cursor = conn.execute("SELECT checksum FROM schema_migrations WHERE migration_id = ? AND status = 'APPLIED'", (migration_id,))
+    row = cursor.fetchone()
+
+    current_checksum = compute_migration_checksum(action)
+    legacy_checksum = hashlib.sha256(migration_id.encode("utf-8")).hexdigest()[:16]
+
+    if row:
+        stored_checksum = row[0]
+        # Backwards compatibility for migrations 0001-0004 previously applied under ID hashing
+        if stored_checksum != current_checksum and stored_checksum != legacy_checksum:
+            raise RuntimeError(
+                f"Migration integrity violation: Migration '{migration_id}' was previously applied with checksum "
+                f"'{stored_checksum}', but the current source code checksum is '{current_checksum}'."
+            )
         return False
 
-    logger.info(f"Applying migration: {migration_id}")
-    action(conn)
-
-    checksum = hashlib.sha256(migration_id.encode("utf-8")).hexdigest()[:16]
+    logger.info(f"Applying migration: {migration_id} (source hash: {current_checksum})")
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    conn.execute("""
-        INSERT INTO schema_migrations (migration_id, checksum, applied_at, app_version, status)
-        VALUES (?, ?, ?, ?, 'APPLIED')
-    """, (migration_id, checksum, now_iso, app_version))
-    conn.commit()
+    try:
+        if not conn.in_transaction:
+            conn.execute("BEGIN TRANSACTION")
+        action(conn)
+        conn.execute("""
+            INSERT INTO schema_migrations (migration_id, checksum, applied_at, app_version, status)
+            VALUES (?, ?, ?, ?, 'APPLIED')
+        """, (migration_id, current_checksum, now_iso, app_version))
+        conn.commit()
+    except Exception as e:
+        if conn.in_transaction:
+            conn.rollback()
+        logger.error(f"Migration {migration_id} failed: {e}")
+        raise
+
     logger.info(f"Migration {migration_id} applied successfully.")
     return True
 
@@ -326,10 +359,198 @@ def _migration_0003(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_mps_model_date ON model_predictions_shadow(model_id, as_of_date);")
 
 
+# ----------------------------------------------------------------------
+# Migration 0004: Data Provenance & Synthetic Quarantine (MIL-P0-001, MIL-DATA-001)
+# ----------------------------------------------------------------------
+def _migration_0004(conn: sqlite3.Connection) -> None:
+    """
+    1. Adds data provenance and eligibility columns to ohlcv_daily:
+       provenance_class, is_synthetic, is_eligible_for_live_analytics,
+       is_eligible_for_backtest, is_eligible_for_training.
+    2. Quarantines synthetic rows from offline_multi_regime_generator, watchlist_backfill_24m,
+       and synthetic dynamic_ingestion_24m:
+       sets is_synthetic = 1, provenance_class = 'SYNTHETIC_TEST', and eligibility flags = 0.
+    3. Ensures is_orphaned column on quant_factors_daily is added and indexed.
+    4. Flags factor records without matching ohlcv_daily records as is_orphaned = 1.
+    """
+    cursor = conn.execute("PRAGMA table_info(ohlcv_daily);")
+    cols = {row["name"] for row in cursor.fetchall()}
+
+    if "provenance_class" not in cols:
+        conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN provenance_class TEXT NOT NULL DEFAULT 'EXCHANGE_OFFICIAL';")
+    if "is_synthetic" not in cols:
+        conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_synthetic INTEGER NOT NULL DEFAULT 0;")
+    if "is_eligible_for_live_analytics" not in cols:
+        conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_eligible_for_live_analytics INTEGER NOT NULL DEFAULT 1;")
+    if "is_eligible_for_backtest" not in cols:
+        conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_eligible_for_backtest INTEGER NOT NULL DEFAULT 1;")
+    if "is_eligible_for_training" not in cols:
+        conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN is_eligible_for_training INTEGER NOT NULL DEFAULT 1;")
+
+    # Quarantine synthetic rows
+    cursor_q = conn.execute("""
+        UPDATE ohlcv_daily
+        SET is_synthetic = 1,
+            provenance_class = 'SYNTHETIC_TEST',
+            is_eligible_for_live_analytics = 0,
+            is_eligible_for_backtest = 0,
+            is_eligible_for_training = 0
+        WHERE source IN ('offline_multi_regime_generator', 'watchlist_backfill_24m')
+           OR source LIKE '%synthetic%'
+           OR source = 'dynamic_ingestion_24m';
+    """)
+    quarantined_bars = cursor_q.rowcount
+    logger.info(f"Quarantined {quarantined_bars} synthetic OHLCV rows.")
+
+    # Quarantine orphan factors
+    qf_cursor = conn.execute("PRAGMA table_info(quant_factors_daily);")
+    qf_cols = {row["name"] for row in qf_cursor.fetchall()}
+    if "is_orphaned" not in qf_cols:
+        conn.execute("ALTER TABLE quant_factors_daily ADD COLUMN is_orphaned INTEGER NOT NULL DEFAULT 0;")
+
+    conn.execute("""
+        UPDATE quant_factors_daily
+        SET is_orphaned = 1
+        WHERE NOT EXISTS (
+            SELECT 1 FROM ohlcv_daily o 
+            WHERE o.symbol = quant_factors_daily.symbol 
+              AND o.trading_date = quant_factors_daily.trading_date
+        );
+    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_provenance ON ohlcv_daily(symbol, trading_date, is_synthetic, is_eligible_for_live_analytics);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_qf_orphaned ON quant_factors_daily(symbol, trading_date, is_orphaned);")
+
+
+# ----------------------------------------------------------------------
+# Migration 0005: Corporate Disclosures Truth & EQ Reconciliation (P0-Remediation)
+# ----------------------------------------------------------------------
+def _migration_0005(conn: sqlite3.Connection) -> None:
+    """
+    1. Adds 11 evidence columns to corporate_disclosures for cryptographic verification:
+       source_provider, source_response_id, document_retrieved_at, document_sha256,
+       http_status, mime_type, document_size_bytes, parser_version,
+       verification_method, verification_actor, verification_timestamp.
+    2. Creates corporate_disclosure_audit_events table for append-only audit trail.
+    3. Quarantines 25 fabricated corporate disclosures in corporate_disclosures:
+       sets verification_status = 'SYNTHETIC_SEED_QUARANTINED', operating_margin_pct = NULL,
+       and logs append-only audit event for each row.
+    4. Adds metric_validity column to model_registry and invalidates historical
+       faulty Sharpe baseline models.
+    5. Reconciles quant_factors_daily.is_orphaned where no ohlcv_daily row with series = 'EQ' exists.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # 1. Add evidence columns to corporate_disclosures
+    cur = conn.execute("PRAGMA table_info(corporate_disclosures);")
+    cd_cols = {row[1] if isinstance(row, tuple) else row["name"] for row in cur.fetchall()}
+
+    evidence_columns = [
+        ("source_provider", "TEXT"),
+        ("source_response_id", "TEXT"),
+        ("document_retrieved_at", "TEXT"),
+        ("document_sha256", "TEXT"),
+        ("http_status", "INTEGER"),
+        ("mime_type", "TEXT"),
+        ("document_size_bytes", "INTEGER"),
+        ("parser_version", "TEXT"),
+        ("verification_method", "TEXT"),
+        ("verification_actor", "TEXT"),
+        ("verification_timestamp", "TEXT"),
+    ]
+    for col_name, col_type in evidence_columns:
+        if col_name not in cd_cols:
+            conn.execute(f"ALTER TABLE corporate_disclosures ADD COLUMN {col_name} {col_type};")
+
+    # 2. Create corporate_disclosure_audit_events table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS corporate_disclosure_audit_events (
+            event_id TEXT PRIMARY KEY,
+            disclosure_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            details_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cdae_disc_id 
+        ON corporate_disclosure_audit_events(disclosure_id);
+    """)
+
+    # 3. Find and quarantine fabricated corporate disclosures
+    cur_fab = conn.execute("""
+        SELECT disclosure_id, symbol, category, subject, source_url, operating_margin_pct
+        FROM corporate_disclosures
+        WHERE symbol IN ('CANBK', 'IDEA', 'NHPC', 'RVNL', 'TATAPOWER')
+          AND (disclosure_id LIKE '%_DISC_2026%' OR source_url LIKE '%archives.nseindia.com%');
+    """)
+    fabricated_rows = cur_fab.fetchall()
+
+    for r in fabricated_rows:
+        disc_id = r[0] if isinstance(r, tuple) else r["disclosure_id"]
+        sym = r[1] if isinstance(r, tuple) else r["symbol"]
+        event_id = f"cdae_quarantine_{uuid.uuid4().hex[:12]}"
+        audit_details = json.dumps({
+            "action": "QUARANTINE_FABRICATED_DISCLOSURE",
+            "symbol": sym,
+            "previous_status": "VERIFIED",
+            "reason": "Eliminated fictional exchange filing with hardcoded 18.5% OPM seeded by legacy fallback.",
+            "rule": "ADR-0001, ADR-0012, P0-Audit"
+        })
+        conn.execute("""
+            INSERT INTO corporate_disclosure_audit_events (
+                event_id, disclosure_id, event_type, actor, details_json, created_at
+            ) VALUES (?, ?, 'QUARANTINE', 'SYSTEM_MIGRATION_ENGINE', ?, ?)
+        """, (event_id, disc_id, audit_details, now_iso))
+
+    cursor_q = conn.execute("""
+        UPDATE corporate_disclosures
+        SET verification_status = 'SYNTHETIC_SEED_QUARANTINED',
+            operating_margin_pct = NULL,
+            verification_method = 'AUDIT_QUARANTINE_MIGRATION_0005',
+            verification_actor = 'SYSTEM_MIGRATION_ENGINE',
+            verification_timestamp = ?
+        WHERE symbol IN ('CANBK', 'IDEA', 'NHPC', 'RVNL', 'TATAPOWER')
+          AND (disclosure_id LIKE '%_DISC_2026%' OR source_url LIKE '%archives.nseindia.com%');
+    """, (now_iso,))
+    logger.info(f"Quarantined {cursor_q.rowcount} fabricated corporate disclosures.")
+
+    # 4. Invalidate faulty baseline Sharpe models in model_registry
+    mr_cur = conn.execute("PRAGMA table_info(model_registry);")
+    mr_cols = {row[1] if isinstance(row, tuple) else row["name"] for row in mr_cur.fetchall()}
+    if "metric_validity" not in mr_cols:
+        conn.execute("ALTER TABLE model_registry ADD COLUMN metric_validity TEXT NOT NULL DEFAULT 'VALID';")
+
+    conn.execute("""
+        UPDATE model_registry
+        SET metric_validity = 'INVALIDATED_FAULTY_SHARPE'
+        WHERE model_name = 'ZeroReturnBaseline'
+          AND (
+              metrics_json LIKE '%"validation_sharpe": 1.405%'
+              OR metrics_json LIKE '%"validation_sharpe": 0.13%'
+          );
+    """)
+
+    # 5. Reconcile quant_factors_daily orphans with series = 'EQ'
+    conn.execute("""
+        UPDATE quant_factors_daily
+        SET is_orphaned = 1
+        WHERE NOT EXISTS (
+            SELECT 1 FROM ohlcv_daily o 
+            WHERE o.symbol = quant_factors_daily.symbol 
+              AND o.trading_date = quant_factors_daily.trading_date
+              AND o.series = 'EQ'
+        );
+    """)
+
+
 ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0001_baseline_schema", _migration_0001),
     ("0002_truth_layer_invariants", _migration_0002),
     ("0003_adaptive_ml_and_supervisor", _migration_0003),
+    ("0004_data_provenance_and_synthetic_quarantine", _migration_0004),
+    ("0005_corporate_disclosures_truth_and_eq_reconciliation", _migration_0005),
 ]
 
 

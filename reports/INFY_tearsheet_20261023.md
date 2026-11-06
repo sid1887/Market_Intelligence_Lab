@@ -1,5 +1,5 @@
 # Company Research Tearsheet — INFY (Infosys Ltd.)
-**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-05 12:04:32 UTC`  
+**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-06 17:28:41 UTC`  
 **ISIN:** `INE009A01021` | **Industry:** `Information Technology` | **Sector:** `Information Technology`  
 **System Status:** Local-First SQLite Research Lab | **Execution Capabilities:** Permanently Disabled  
 
@@ -13,8 +13,8 @@
 | **Day's OHLC Range** | ₹1,038.05 – ₹1,197.80 | Open: ₹1,187.00 |
 | **Day's Traded Volume** | 33,044,499 shares | Exchange turnover settlement |
 | **Delivery Quantity** | *Unavailable in CM-UDiFF (Stored as NULL)* | Strict null preservation rule |
-| **52-Week Range** | ₹980.40 – ₹1,728.00 | Trailing 245-session extreme closes |
-| **52-Week Position** | **`23.2%`** | Position between 52w low (0%) and 52w high (100%) |
+| **52-Week Range** | ₹958.44 – ₹1,677.30 | Trailing 245-session extreme closes |
+| **52-Week Position** | **`27.2%`** | Position between 52w low (0%) and 52w high (100%) |
 
 ### 1.1 Verified Corporate Disclosures & Financial Results Metadata
 
@@ -2946,11 +2946,11 @@
 
 | Horizon | Trading Days | Stock Return | Benchmark (Nifty 50 PRI) | Excess Return vs Benchmark |
 | :---: | :---: | :---: | :---: | :---: |
-| **1-Day (1D)** | 1 | `+0.04%` | `-0.39%` | **`+0.43%`** |
-| **1-Month (1M)** | 21 | `+12.08%` | `-3.12%` | **`+15.21%`** |
-| **3-Month (3M)** | 63 | `+10.16%` | `-5.32%` | **`+15.48%`** |
-| **6-Month (6M)** | 126 | `-9.05%` | `-7.29%` | **`-1.76%`** |
-| **1-Year (1Y)** | 245 | `-23.31%` | `-12.96%` | **`-10.35%`** |
+| **1-Day (1D)** | 1 | `+2.33%` | `-0.39%` | **`+2.72%`** |
+| **1-Month (1M)** | 21 | `+14.65%` | `-3.12%` | **`+17.78%`** |
+| **3-Month (3M)** | 63 | `+12.68%` | `-5.32%` | **`+18.00%`** |
+| **6-Month (6M)** | 126 | `-4.95%` | `-7.29%` | **`+2.34%`** |
+| **1-Year (1Y)** | 245 | `-19.63%` | `-12.96%` | **`-6.66%`** |
 
 > [!NOTE]
 > **Return Horizon Methodology**: Trailing returns use fixed trading-session windows (1D = 1 trading session, 1M = 21 trading sessions, 3M = 63 trading sessions, 6M = 126 trading sessions, 1Y = 245 trading sessions), ensuring exact reproducibility across holidays and suspensions.
@@ -2960,11 +2960,11 @@
 
 | Quantitative Metric | Value | Reference / Formula |
 | :--- | :---: | :--- |
-| **20-Day SMA** | ₹1,057.82 | Distance: **`+9.07%`** |
-| **50-Day SMA** | ₹1,085.11 | Distance: **`+6.33%`** |
-| **200-Day SMA** | ₹1,227.04 | Distance: **`-5.97%`** |
-| **20-Day Annualized Volatility** | `36.26%` | Annualized standard deviation ($\sigma \times \sqrt{252}$) |
-| **60-Day Rolling Beta (Nifty 50)** | **`1.07`** | OLS slope $\beta = \mathrm{Cov}(R_s, R_b) / \mathrm{Var}(R_b)$ |
+| **20-Day SMA** | ₹1,035.42 | Distance: **`+11.43%`** |
+| **50-Day SMA** | ₹1,061.32 | Distance: **`+8.71%`** |
+| **200-Day SMA** | ₹1,185.11 | Distance: **`-2.64%`** |
+| **20-Day Annualized Volatility** | `36.67%` | Annualized standard deviation ($\sigma \times \sqrt{252}$) |
+| **60-Day Rolling Beta (Nifty 50)** | **`1.05`** | OLS slope $\beta = \mathrm{Cov}(R_s, R_b) / \mathrm{Var}(R_b)$ |
 | **20-Day Volume Ratio (VR 20)** | `2.43x` | Today Volume / 20-Day ADV (VR >= 2.5x threshold) |
 | **50-Day Volume Z-Score ($Z_V$)** | `+4.46σ` | Normalized volume anomaly ($Z \ge 2.5\sigma$ threshold) |
 
@@ -2973,10 +2973,10 @@
 
 | Peer Symbol | Latest Close | 1-Month Return | 3-Month Return | Excess vs INFY (1M) | Excess vs INFY (3M) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **INFY (Target)** | **₹1,153.80** | **`+12.08%`** | **`+10.16%`** | *Base* | *Base* |
-| **HCLTECH** | ₹1,422.20 | `+11.95%` | `+14.26%` | `-0.14%` | `+4.10%` |
-| **TCS** | ₹2,530.00 | `+20.19%` | `+12.80%` | `+8.11%` | `+2.64%` |
-| **TECHM** | ₹1,790.00 | `+15.36%` | `+15.05%` | `+3.28%` | `+4.89%` |
+| **INFY (Target)** | **₹1,153.80** | **`+14.65%`** | **`+12.68%`** | *Base* | *Base* |
+| **HCLTECH** | ₹1,422.20 | `+11.95%` | `+14.26%` | `-2.70%` | `+1.58%` |
+| **TCS** | ₹2,530.00 | `+20.83%` | `+13.40%` | `+6.18%` | `+0.72%` |
+| **TECHM** | ₹1,790.00 | `+15.36%` | `+15.05%` | `+0.71%` | `+2.37%` |
 
 
 ## 4. Econometric Event Studies & Disclosures Audit
@@ -3235,20 +3235,10 @@
 | `DISC_INFY_106409762` | `2025-10-17` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
 | `DISC_INFY_106409770` | `2025-10-17` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
 | `DISC_INFY_106410204` | `2025-10-17` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
+| `DISC_INFY_106411762` | `2025-10-20` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
+| `DISC_INFY_106413674` | `2025-10-23` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
+| `DISC_INFY_106413742` | `2025-10-23` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
 | `DISC_INFY_106414443` | `2025-10-24` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
-| `DISC_INFY_106419326` | `2025-10-29` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⚠️ `INSUFFICIENT_HISTORY` |
-| `DISC_INFY_106826465` | `2026-10-26` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106826469` | `2026-10-26` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `INFY_DISC_20261023_Q2` | `2026-10-26` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106826996` | `2026-10-26` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106827749` | `2026-10-26` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106830354` | `2026-10-28` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106831187` | `2026-10-28` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106832566` | `2026-10-29` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106832593` | `2026-10-29` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106834219` | `2026-10-29` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106834249` | `2026-10-29` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
-| `DISC_INFY_106837197` | `2026-11-02` | `[-252, -21]` | `N/A` | `N/A` | `N/A` | ⏳ **`AWAITING_POST_EVENT_DATA`** |
 
 ### 4.1 Epistemic Guardrails & Provenance Warnings
 
@@ -3287,9 +3277,9 @@
 
 ## 6. Explanatory Hypotheses & Scenario Projections
 
-1. **Trend & Momentum Hypothesis**: INFY is currently positioned at `23.2%` of its 52-week range, trading `+9.07%` relative to its 20-day SMA and `-5.97%` relative to its 200-day SMA. This structural positioning indicates an ongoing intermediate consolidation phase following broad Information Technology sector movements.
-2. **Downside Risk Scenario**: In the event that broader macroeconomic headwinds or sector deceleration emerge, key downside support aligns with the 52-week trough of ₹980.40.
-3. **Upside Rebound Scenario**: Conversely, sustained operational performance and sector re-rating position the instrument toward overhead resistance aligning with 50-day SMA (₹1,085.11) and 200-day SMA (₹1,227.04).
+1. **Trend & Momentum Hypothesis**: INFY is currently positioned at `27.2%` of its 52-week range, trading `+11.43%` relative to its 20-day SMA and `-2.64%` relative to its 200-day SMA. This structural positioning indicates an ongoing intermediate consolidation phase following broad Information Technology sector movements.
+2. **Downside Risk Scenario**: In the event that broader macroeconomic headwinds or sector deceleration emerge, key downside support aligns with the 52-week trough of ₹958.44.
+3. **Upside Rebound Scenario**: Conversely, sustained operational performance and sector re-rating position the instrument toward overhead resistance aligning with 50-day SMA (₹1,061.32) and 200-day SMA (₹1,185.11).
 
 > [!CAUTION]
 > **Epistemic Limitation**: All hypotheses and scenarios are probabilistic qualitative frameworks generated for quantitative research. They do not constitute financial advice, trade recommendations, or causal certainty. Live order placement is Permanently Disabled.

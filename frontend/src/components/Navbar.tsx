@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, LayoutDashboard, BookmarkCheck, Search, ArrowRight, LineChart } from "lucide-react";
+import { Activity, LayoutDashboard, BookmarkCheck, Search, ArrowRight, LineChart, Loader2 } from "lucide-react";
+import { triggerSystemIngest } from "@/lib/api";
 
 export default function Navbar() {
   const router = useRouter();
@@ -15,6 +16,21 @@ export default function Navbar() {
     if (sym) {
       router.push(`/stocks/${sym}`);
       setSearchQuery("");
+    }
+  };
+
+  const [isIngesting, setIsIngesting] = useState(false);
+
+  const handleIngest = async () => {
+    if (isIngesting) return;
+    setIsIngesting(true);
+    try {
+      await triggerSystemIngest();
+      router.refresh();
+    } catch {
+      // Ignored
+    } finally {
+      setIsIngesting(false);
     }
   };
 
@@ -90,10 +106,24 @@ export default function Navbar() {
 
           <div className="h-4 w-px bg-slate-800 hidden lg:block" />
 
-          <div className="hidden lg:flex items-center space-x-2 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-800/40 text-emerald-400 text-xs font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Universal Dynamic Ingestion</span>
-          </div>
+          <button
+            onClick={handleIngest}
+            disabled={isIngesting}
+            title="Execute Universal Dynamic Ingestion for live NSE settlement"
+            className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/40 hover:border-emerald-600/60 text-emerald-400 text-xs font-mono transition-colors disabled:opacity-60"
+          >
+            {isIngesting ? (
+              <>
+                <Loader2 className="w-3 h-3 text-emerald-400 animate-spin" />
+                <span>Ingesting Live Market Data...</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Universal Dynamic Ingestion</span>
+              </>
+            )}
+          </button>
         </nav>
       </div>
     </header>

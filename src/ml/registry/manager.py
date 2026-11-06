@@ -6,6 +6,8 @@ Manages model lifecycle, artifact persistence, cryptographic integrity, and roll
 import os
 import pickle
 import hashlib
+import json
+import math
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
@@ -60,10 +62,116 @@ class ModelRegistryManager:
         model_obj = pickle.loads(bytes_data)
         return model_obj, rec
 
-    def promote_model(self, model_id: str) -> bool:
-        """Promotes a candidate model to PROMOTED status and demotes any existing active models."""
+    def load_model_by_id(self, model_id: str) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
+        """Loads and cryptographically verifies a specific model artifact by model_id."""
         with self.db.get_connection() as conn:
-            # Demote current active models
+            cur = conn.execute("SELECT * FROM model_registry WHERE model_id = ?", (model_id,))
+            row = cur.fetchone()
+            rec = dict(row) if row else None
+
+        if not rec:
+            logger.warning(f"Model ID '{model_id}' not found in registry.")
+            return None, None
+
+        path = rec.get("artifact_path")
+        if not path or not os.path.exists(path):
+            logger.error(f"Model artifact not found on disk at {path}")
+            return None, rec
+
+        with open(path, "rb") as f:
+            bytes_data = f.read()
+            checksum = hashlib.sha256(bytes_data).hexdigest()
+
+        if checksum != rec.get("artifact_hash"):
+            logger.error(f"Model artifact {path} checksum mismatch! Expected {rec.get('artifact_hash')}, got {checksum}")
+            return None, rec
+
+        try:
+            model_obj = pickle.loads(bytes_data)
+            return model_obj, rec
+        except Exception as e:
+            logger.error(f"Failed to unpickle model artifact {path}: {e}")
+            return None, rec
+
+    def promote_model(self, model_id: str) -> bool:
+        """
+        Promotes a candidate model to PROMOTED status after strictly validating:
+        1. Model existence in registry
+        2. Status is strictly 'CANDIDATE' (cannot promote BASELINE, RETIRED, DEMOTED, or non-candidate)
+        3. Model architecture is not a baseline
+        4. Artifact exists on disk, is a regular file within artifact_dir, and passes SHA-256 integrity verification
+        5. Validation metrics are finite numbers and exceed minimum hurdles (IC > 0.02, Sharpe > 0.0)
+        """
+        with self.db.get_connection() as conn:
+            cur = conn.execute("SELECT * FROM model_registry WHERE model_id = ?", (model_id,))
+            row = cur.fetchone()
+            if not row:
+                logger.warning(f"Promotion rejected: model_id '{model_id}' does not exist.")
+                return False
+            rec = dict(row)
+
+            # Gate 1: Positively require CANDIDATE status
+            if rec.get("status") != "CANDIDATE":
+                logger.warning(f"Promotion rejected: model '{model_id}' has non-candidate status '{rec.get('status')}'.")
+                return False
+
+            if "Baseline" in rec.get("model_name", ""):
+                logger.warning(f"Promotion rejected: baseline architecture '{rec.get('model_name')}' cannot be promoted.")
+                return False
+
+            # Gate 2: Artifact existence, path containment & SHA-256 verification
+            path = rec.get("artifact_path")
+            if not path or not os.path.isfile(path):
+                logger.error(f"Promotion rejected: artifact file missing or invalid at '{path}'.")
+                return False
+
+            # Prevent directory traversal
+            abs_artifact_dir = os.path.abspath(self.artifact_dir)
+            abs_path = os.path.abspath(path)
+            if not abs_path.startswith(abs_artifact_dir):
+                logger.error(f"Promotion rejected: artifact path '{path}' escapes artifact directory '{self.artifact_dir}'.")
+                return False
+
+            with open(path, "rb") as f:
+                checksum = hashlib.sha256(f.read()).hexdigest()
+
+            if checksum != rec.get("artifact_hash"):
+                logger.error(f"Promotion rejected: artifact checksum mismatch for '{model_id}'.")
+                return False
+
+            # Gate 3: Metric hurdles verification with finite number checking
+            metrics_raw = rec.get("metrics_json") or "{}"
+            try:
+                metrics = json.loads(metrics_raw) if isinstance(metrics_raw, str) else metrics_raw
+            except Exception:
+                metrics = {}
+
+            raw_ic = metrics.get("validation_ic")
+            raw_sharpe = metrics.get("validation_sharpe")
+
+            if raw_ic is None or raw_sharpe is None:
+                logger.warning(f"Promotion rejected: model '{model_id}' missing validation_ic or validation_sharpe metrics.")
+                return False
+
+            try:
+                val_ic = float(raw_ic)
+                val_sharpe = float(raw_sharpe)
+            except (ValueError, TypeError):
+                logger.warning(f"Promotion rejected: non-numeric metrics in model '{model_id}'.")
+                return False
+
+            if not math.isfinite(val_ic) or not math.isfinite(val_sharpe):
+                logger.warning(f"Promotion rejected: non-finite metrics in model '{model_id}' (IC={val_ic}, Sharpe={val_sharpe}).")
+                return False
+
+            if val_ic <= 0.02 or val_sharpe <= 0.0:
+                logger.warning(
+                    f"Promotion rejected: model '{model_id}' failed metric hurdles "
+                    f"(IC={val_ic} <= 0.02 or Sharpe={val_sharpe} <= 0.0)."
+                )
+                return False
+
+            # Promotion Approved: Demote current active models and promote candidate
             conn.execute(
                 """
                 UPDATE model_registry
@@ -71,7 +179,6 @@ class ModelRegistryManager:
                 WHERE status IN ('PROMOTED', 'CHAMPION')
                 """
             )
-            # Promote new model
             res = conn.execute(
                 """
                 UPDATE model_registry
@@ -80,10 +187,26 @@ class ModelRegistryManager:
                 """,
                 (model_id,)
             )
+
+            # Synchronize supervisor_state atomically
+            now_iso = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                INSERT INTO supervisor_state (singleton_id, current_state, active_model_id, last_transition_at, transition_reason, updated_at)
+                VALUES (1, 'NORMAL', ?, ?, 'MODEL_PROMOTION', ?)
+                ON CONFLICT(singleton_id) DO UPDATE SET
+                    active_model_id = excluded.active_model_id,
+                    current_state = 'NORMAL',
+                    transition_reason = 'MODEL_PROMOTION',
+                    updated_at = excluded.updated_at;
+                """,
+                (model_id, now_iso, now_iso)
+            )
+            logger.info(f"Successfully promoted model '{model_id}' (IC={val_ic}, Sharpe={val_sharpe}).")
             return res.rowcount > 0
 
     def demote_model(self, model_id: str, reason: str = "PERFORMANCE_DEGRADATION") -> bool:
-        """Demotes a model to DEMOTED status."""
+        """Demotes a model to DEMOTED status and clears active pointer if demoted was active."""
         with self.db.get_connection() as conn:
             res = conn.execute(
                 """
@@ -92,6 +215,15 @@ class ModelRegistryManager:
                 WHERE model_id = ?
                 """,
                 (model_id,)
+            )
+            now_iso = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                UPDATE supervisor_state
+                SET active_model_id = NULL, updated_at = ?
+                WHERE singleton_id = 1 AND active_model_id = ?
+                """,
+                (now_iso, model_id)
             )
             return res.rowcount > 0
 

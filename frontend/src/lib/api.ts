@@ -290,3 +290,32 @@ export interface SupervisorStatus {
 export async function fetchSupervisorStatus(): Promise<SupervisorStatus> {
   return apiFetch<SupervisorStatus>("/supervisor/status");
 }
+
+export interface IngestResponse {
+  status: string;
+  settled_date?: string;
+  symbols_updated?: number;
+  records_ingested?: number;
+  factors_computed?: number;
+  duration_seconds?: number;
+  message: string;
+}
+
+export function clearMemoryCache() {
+  memoryCache.clear();
+}
+
+export async function triggerSystemIngest(): Promise<IngestResponse> {
+  const url = `${API_BASE}/system/ingest`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Ingest failed: HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as IngestResponse;
+  clearMemoryCache();
+  return data;
+}

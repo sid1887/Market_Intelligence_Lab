@@ -19,6 +19,11 @@ import {
   Table as TableIcon,
   LayoutGrid,
   Sparkles,
+  PanelRightClose,
+  PanelRightOpen,
+  Loader2,
+  Zap,
+  BrainCircuit,
 } from "lucide-react";
 import {
   apiFetch,
@@ -37,6 +42,7 @@ import {
   fetchMacroTelemetry,
   SupervisorStatus,
   fetchSupervisorStatus,
+  triggerSystemIngest,
 } from "@/lib/api";
 import StockChart from "@/components/StockChart";
 import { FactorPentagonRadar } from "@/components/FactorPentagonRadar";
@@ -143,7 +149,7 @@ export default function CockpitPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [search, setSearch] = useState("");
   const [sectorFilter, setSectorFilter] = useState<SectorFilter>("All");
-  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
 
   // Sorting
@@ -153,6 +159,9 @@ export default function CockpitPage() {
   // Right Inspector state
   const [inspector, setInspector] = useState<InspectorData>(EMPTY_INSPECTOR);
   const [inspectorTab, setInspectorTab] = useState<"thesis" | "wire">("thesis");
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
+  const [isIngesting, setIsIngesting] = useState<boolean>(false);
+  const [ingestBanner, setIngestBanner] = useState<string | null>(null);
 
   const tableBodyRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -186,7 +195,20 @@ export default function CockpitPage() {
     return list;
   }, [candidates, search, sectorFilter, sortField, sortAsc]);
 
-  const activeCandidate = filtered[activeIndex] || filtered[0] || null;
+  const activeCandidate = useMemo(() => {
+    if (!filtered.length) return null;
+    if (selectedSymbol) {
+      const found = filtered.find((c) => c.symbol === selectedSymbol);
+      if (found) return found;
+    }
+    return filtered[0];
+  }, [filtered, selectedSymbol]);
+
+  const activeIndex = useMemo(() => {
+    if (!activeCandidate) return 0;
+    const idx = filtered.findIndex((c) => c.symbol === activeCandidate.symbol);
+    return idx >= 0 ? idx : 0;
+  }, [filtered, activeCandidate]);
 
   // ─── Initial Page Load ──────────────────────────────────────────────────────
   const loadPageData = useCallback(async () => {
@@ -275,8 +297,32 @@ export default function CockpitPage() {
       if (inspectorLoadingRef.current === symbol) {
         setInspector((prev) => ({ ...prev, isSyncing: false }));
       }
+    } finally {
+      if (inspectorLoadingRef.current === symbol) {
+        inspectorLoadingRef.current = "";
+      }
     }
   }, []);
+
+  const handleUniversalIngest = useCallback(async () => {
+    if (isIngesting) return;
+    setIsIngesting(true);
+    setIngestBanner("Fetching Live Market Data...");
+    try {
+      const res = await triggerSystemIngest();
+      setIngestBanner(`Ingested ${res.symbols_updated || "Universe"} equities for session ${res.settled_date || "today"}`);
+      await loadPageData();
+      if (activeCandidate) {
+        await loadInspector(activeCandidate.symbol);
+      }
+      setTimeout(() => setIngestBanner(null), 4000);
+    } catch (err: unknown) {
+      setIngestBanner(err instanceof Error ? err.message : "Ingestion failed");
+      setTimeout(() => setIngestBanner(null), 4000);
+    } finally {
+      setIsIngesting(false);
+    }
+  }, [isIngesting, loadPageData, loadInspector, activeCandidate]);
 
   // Sync inspector with active candidate
   useEffect(() => {
@@ -298,25 +344,27 @@ export default function CockpitPage() {
       }
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActiveIndex((i) => {
-          const next = Math.min(i + 1, filtered.length - 1);
-          if (filtered[next]) prefetchStockBundle(filtered[next].symbol);
-          return next;
-        });
+        const currIdx = filtered.findIndex((c) => c.symbol === activeCandidate?.symbol);
+        const next = Math.min(currIdx + 1, filtered.length - 1);
+        if (filtered[next]) {
+          setSelectedSymbol(filtered[next].symbol);
+          prefetchStockBundle(filtered[next].symbol);
+        }
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setActiveIndex((i) => {
-          const prev = Math.max(i - 1, 0);
-          if (filtered[prev]) prefetchStockBundle(filtered[prev].symbol);
-          return prev;
-        });
+        const currIdx = filtered.findIndex((c) => c.symbol === activeCandidate?.symbol);
+        const prev = Math.max(currIdx - 1, 0);
+        if (filtered[prev]) {
+          setSelectedSymbol(filtered[prev].symbol);
+          prefetchStockBundle(filtered[prev].symbol);
+        }
       } else if (e.key === "Escape") {
         setShowCommandPalette(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [filtered]);
+  }, [filtered, activeCandidate]);
 
   // Scroll active row into view
   useEffect(() => {
@@ -326,27 +374,16 @@ export default function CockpitPage() {
     }
   }, [activeIndex, viewMode]);
 
-  // Reset index on filter change
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [search, sectorFilter, sortField, sortAsc]);
-
   // Quick jump helper
   const handleSelectSymbol = (sym: string) => {
-    const idx = filtered.findIndex((c) => c.symbol === sym);
-    if (idx >= 0) {
-      setActiveIndex(idx);
-    } else {
-      // Find in full candidates
-      const cand = candidates.find((c) => c.symbol === sym);
-      if (cand) {
-        setSearch("");
-        setSectorFilter("All");
-        const newIdx = candidates.findIndex((c) => c.symbol === sym);
-        setActiveIndex(newIdx >= 0 ? newIdx : 0);
-      }
-      void loadInspector(sym);
+    setSelectedSymbol(sym);
+    setIsInspectorCollapsed(false);
+    const cand = candidates.find((c) => c.symbol === sym);
+    if (cand && !filtered.some((c) => c.symbol === sym)) {
+      setSearch("");
+      setSectorFilter("All");
     }
+    void loadInspector(sym);
   };
 
   // Toggle sort
@@ -378,23 +415,29 @@ export default function CockpitPage() {
 
   const verdictCfg = VERDICT_CONFIG[activeVerdict] || DEFAULT_VERDICT_CFG;
 
-  // Forecast bounds for RiskRewardVectorBar
-  const forecastLower95 =
-    inspector.forecast?.projections?.[inspector.forecast.projections.length - 1]?.lower_95 ||
-    currentPrice * 0.92;
-  const forecastUpper80 =
-    inspector.forecast?.projections?.[inspector.forecast.projections.length - 1]?.upper_80 ||
-    currentPrice * 1.08;
+  // Forecast bounds for RiskRewardVectorBar (Honest bounds: no fabricated +-8% cones)
+  const lastProjection =
+    inspector.forecast?.projections?.[inspector.forecast.projections.length - 1];
+  const hasValidForecast = Boolean(
+    lastProjection &&
+    typeof lastProjection.lower_95 === "number" &&
+    typeof lastProjection.upper_80 === "number" &&
+    currentPrice > 0
+  );
+  const forecastLower95 = hasValidForecast ? lastProjection!.lower_95 : null;
+  const forecastUpper80 = hasValidForecast ? lastProjection!.upper_80 : null;
 
-  // Factor Pentagon metrics (immediate from candidate, refined from memo)
-  const factorRoe = activeCandidate?.roe_pct ?? inspector.memo?.key_metrics?.roe_pct ?? 0;
-  const factorDe = activeCandidate?.debt_to_equity ?? inspector.memo?.key_metrics?.debt_to_equity ?? 0;
-  const factorOpm = activeCandidate?.opm_pct ?? inspector.memo?.key_metrics?.opm_pct ?? 0;
-  const factorMom = (activeCandidate?.excess_ret_20d ?? 0) * 100;
+  // Factor Pentagon metrics (immediate from candidate, refined from memo, no fake defaults)
+  const factorRoe = activeCandidate?.roe_pct ?? inspector.memo?.key_metrics?.roe_pct ?? null;
+  const factorDe = activeCandidate?.debt_to_equity ?? inspector.memo?.key_metrics?.debt_to_equity ?? null;
+  const factorOpm = activeCandidate?.opm_pct ?? inspector.memo?.key_metrics?.opm_pct ?? null;
+  const factorMom = activeCandidate?.excess_ret_20d !== null && activeCandidate?.excess_ret_20d !== undefined
+    ? activeCandidate.excess_ret_20d * 100
+    : null;
   const factorConv =
     inspector.memo?.institutional_conviction_score ??
     activeCandidate?.composite_score ??
-    50;
+    null;
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] select-none text-slate-100 font-sans">
@@ -407,36 +450,53 @@ export default function CockpitPage() {
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-sm bg-cyan-400 shadow-[0_0_6px_#06b6d4]" />
             <span className="text-sm font-mono font-bold text-white tracking-tight">
-              MARKET INTELLIGENCE LAB
+              MIL<span className="hidden sm:inline"> — MARKET INTELLIGENCE LAB</span>
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700/60 text-slate-300 text-[10px] font-mono whitespace-nowrap">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                supervisor?.supervisor_state === "NORMAL" ? "bg-emerald-400" : supervisor?.supervisor_state === "NO_ACTIVE_MODEL" ? "bg-amber-400" : "bg-rose-400"
+              }`} />
+              <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
+                supervisor?.supervisor_state === "NORMAL" ? "bg-emerald-500" : supervisor?.supervisor_state === "NO_ACTIVE_MODEL" ? "bg-amber-500" : "bg-rose-500"
+              }`} />
             </span>
             <span>
-              System: {supervisor?.supervisor_state || "NORMAL"} · {candidates.length || 181} Active · Settled: {supervisor?.latest_settled_session || asOfDate || "2026-11-05"}
+              System: <strong className={supervisor?.supervisor_state === "NORMAL" ? "text-emerald-400" : "text-amber-400"}>{supervisor?.supervisor_state || "ONLINE"}</strong>
+              <span className="hidden md:inline"> · {candidates.length || 181} EQ</span>
+              <span className="hidden sm:inline"> · {supervisor?.latest_settled_session || asOfDate || "2026-11-06"}</span>
             </span>
           </div>
+
+          {ingestBanner && (
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono animate-in fade-in whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+              <span>{ingestBanner}</span>
+            </div>
+          )}
         </div>
 
-        {/* Center: Live AlphaVantage Macro Ribbon + Minimal Audit Pill */}
-        <div className="hidden lg:flex items-center gap-2.5">
+        {/* Center: Live AlphaVantage Macro Ribbon (2XL) + Compact Model Health Pill (LG) */}
+        <div className="hidden lg:flex items-center gap-2 shrink-0">
           {macro && macro.indicators && (
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#050811] border border-white/[0.06] text-[11px] font-mono text-slate-400">
+            <div className="hidden 2xl:flex items-center gap-2 px-3 py-1 rounded-full bg-[#050811] border border-white/[0.06] text-[11px] font-mono text-slate-400 whitespace-nowrap">
               {macro.indicators.slice(0, 3).map((ind, i) => (
                 <React.Fragment key={ind.symbol}>
                   {i > 0 && <span className="text-slate-700">·</span>}
                   <span className="flex items-center gap-1">
                     <span className="text-slate-500">{ind.label}:</span>
                     <strong className="text-slate-200 font-medium">
-                      {ind.unit === "₹"
-                        ? `₹${ind.value.toFixed(2)}`
-                        : ind.unit === "%"
-                        ? `${ind.value.toFixed(2)}%`
-                        : `$${ind.value.toFixed(2)}`}
+                      {ind.value != null ? (
+                        ind.unit === "₹"
+                          ? `₹${ind.value.toFixed(2)}`
+                          : ind.unit === "%"
+                          ? `${ind.value.toFixed(2)}%`
+                          : `$${ind.value.toFixed(2)}`
+                      ) : (
+                        "—"
+                      )}
                     </strong>
                   </span>
                 </React.Fragment>
@@ -444,12 +504,12 @@ export default function CockpitPage() {
             </div>
           )}
 
-          <div className="flex items-center px-3.5 py-1 rounded-full bg-[#050811] border border-slate-800 text-slate-400 font-mono text-xs">
+          <div className="flex items-center px-3 py-1 rounded-full bg-[#050811] border border-slate-800 text-slate-400 font-mono text-xs whitespace-nowrap">
             <span>
-              Model Health:{" "}
+              Model:{" "}
               {!accuracy || accuracy.forecast_model.total_evaluated < 30 ? (
                 <span className="text-amber-400 font-medium">
-                  Calibration: Pending Maturity ({accuracy?.forecast_model.total_evaluated ?? 0}/30 evaluated)
+                  Calibrating ({accuracy?.forecast_model.total_evaluated ?? 0}/30)
                 </span>
               ) : (
                 <>
@@ -457,7 +517,7 @@ export default function CockpitPage() {
                     {accuracy.forecast_model.containment_80_pct != null
                       ? `${accuracy.forecast_model.containment_80_pct.toFixed(0)}%`
                       : "—"}{" "}
-                    20D Containment
+                    20D
                   </strong>{" "}
                   ·{" "}
                   <strong className="text-slate-200 font-medium">
@@ -472,11 +532,58 @@ export default function CockpitPage() {
           </div>
         </div>
 
-        {/* Right: Backtester + ⌘K Search trigger + Sync */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        {/* Right: Universal Ingest + Copilot + Backtester + ⌘K Search trigger + Expand Inspector */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Universal Dynamic Ingestion Action Button */}
+          <button
+            onClick={handleUniversalIngest}
+            disabled={isIngesting || pageLoading}
+            title="Execute Universal Dynamic Ingestion for live NSE settlement"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-600/40 hover:border-emerald-500 text-xs font-mono font-medium transition-all shadow-sm disabled:opacity-60 whitespace-nowrap"
+          >
+            {isIngesting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                <span className="animate-pulse">Ingesting...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden 2xl:inline">Universal Dynamic Ingestion</span>
+                <span className="hidden sm:inline 2xl:hidden">Dynamic Ingest</span>
+                <span className="sm:hidden">Ingest</span>
+              </>
+            )}
+          </button>
+
+          {/* Dedicated Header Copilot Button */}
+          <button
+            onClick={() => {
+              window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }));
+            }}
+            title="Open Quant Copilot Multi-Agent Committee (⌘J)"
+            className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/50 hover:border-cyan-400 transition-colors hidden sm:flex whitespace-nowrap"
+          >
+            <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Copilot</span>
+            <kbd className="text-[10px] text-cyan-400/80 bg-slate-900 px-1 rounded border border-cyan-500/30">⌘J</kbd>
+          </button>
+
+          {/* Expand Inspector Pill when collapsed */}
+          {isInspectorCollapsed && (
+            <button
+              onClick={() => setIsInspectorCollapsed(false)}
+              title="Expand Tearsheet Inspector"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800/60 rounded-lg transition-colors"
+            >
+              <PanelRightOpen className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden md:inline">Inspect {activeCandidate?.symbol || "Stock"}</span>
+            </button>
+          )}
+
           <Link
             href="/backtest"
-            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors hidden sm:flex"
           >
             <span>Backtester</span>
             <ExternalLink className="w-3 h-3 text-cyan-400" />
@@ -487,14 +594,14 @@ export default function CockpitPage() {
             className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
           >
             <Command className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Search</span>
+            <span className="hidden md:inline">Search</span>
             <kbd className="text-[10px] font-mono text-slate-500 bg-slate-800/80 px-1 rounded border border-white/[0.04]">⌘K</kbd>
           </button>
 
           <button
             onClick={loadPageData}
-            disabled={pageLoading}
-            title="Sync Universe"
+            disabled={pageLoading || isIngesting}
+            title="Sync Universe State"
             className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800/60 border border-white/[0.06] transition-colors disabled:opacity-50"
           >
             <RefreshCw
@@ -505,11 +612,17 @@ export default function CockpitPage() {
       </header>
 
       {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* 2. SPLIT-PANE WORKBENCH: LEFT (54%) + RIGHT (46%)                    */}
+      {/* 2. SPLIT-PANE WORKBENCH: LEFT (54% or 100%) + RIGHT (46% or 0%)     */}
       {/* ─────────────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* ── LEFT MASTER PANE (54%) ──────────────────────────────────────── */}
-        <div className="w-[54%] flex flex-col border-r border-white/[0.06] bg-[#030508] overflow-hidden shrink-0">
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* ── LEFT MASTER PANE ──────────────────────────────────────── */}
+        <div
+          className={`${
+            isInspectorCollapsed
+              ? "w-full flex"
+              : "hidden lg:flex w-full lg:w-[54%]"
+          } flex-col border-r border-white/[0.06] bg-[#030508] overflow-hidden shrink-0 transition-all duration-300 ease-in-out`}
+        >
           {/* Top Control Strip */}
           <div className="shrink-0 border-b border-white/[0.05] px-3.5 py-2 flex items-center justify-between gap-3 bg-[#030508]/90">
             {/* View Mode Toggle (Table vs Heatmap) */}
@@ -649,10 +762,12 @@ export default function CockpitPage() {
 
                   {/* Table Rows */}
                   {filtered.map((item, idx) => {
-                    const isActive = idx === activeIndex;
-                    const excess = item.excess_ret_20d ?? 0;
+                    const isActive = item.symbol === activeCandidate?.symbol;
+                    const excess = item.excess_ret_20d;
                     const retColor =
-                      excess >= 0.05
+                      excess === null || excess === undefined
+                        ? "text-slate-500"
+                        : excess >= 0.05
                         ? "text-emerald-400"
                         : excess >= 0
                         ? "text-emerald-300/80"
@@ -660,19 +775,21 @@ export default function CockpitPage() {
                         ? "text-rose-400"
                         : "text-rose-300/80";
 
-                    const scoreVal = Math.round(item.composite_score ?? 0);
+                    const scoreVal = item.composite_score != null ? Math.round(item.composite_score) : "—";
                     const scoreColor =
-                      scoreVal >= 80
-                        ? "text-emerald-400"
-                        : scoreVal >= 60
-                        ? "text-cyan-400"
-                        : "text-slate-300";
+                      typeof scoreVal === "number"
+                        ? scoreVal >= 80
+                          ? "text-emerald-400"
+                          : scoreVal >= 60
+                          ? "text-cyan-400"
+                          : "text-slate-300"
+                        : "text-slate-500";
 
                     return (
                       <div
                         key={item.symbol}
                         data-rowindex={idx}
-                        onClick={() => setActiveIndex(idx)}
+                        onClick={() => handleSelectSymbol(item.symbol)}
                         onMouseEnter={() => prefetchStockBundle(item.symbol)}
                         className={`relative grid grid-cols-[36px_1fr_64px_54px_54px_54px_62px] gap-0 px-3 h-10 items-center border-b border-white/[0.03] cursor-pointer transition-colors duration-100 ${
                           isActive
@@ -705,12 +822,20 @@ export default function CockpitPage() {
                                 WL
                               </span>
                             ) : null}
-                            {item.data_completeness_score !== undefined && item.data_completeness_score !== null && item.data_completeness_score < 1.0 ? (
+                            {item.data_completeness_score !== undefined && item.data_completeness_score !== null && item.data_completeness_score < 100 && item.data_completeness_score > 0 ? (
                               <span
-                                title="Partial fundamental statements ingested"
+                                title={`Partial fundamental statements ingested (${item.data_completeness_score}%)`}
                                 className="text-[8px] font-mono text-amber-400/80 border border-amber-500/30 px-1 py-0.2 rounded bg-amber-950/40 shrink-0"
                               >
                                 Partial
+                              </span>
+                            ) : null}
+                            {item.data_completeness_score !== undefined && item.data_completeness_score !== null && item.data_completeness_score === 0 ? (
+                              <span
+                                title="No fundamental statements ingested"
+                                className="text-[8px] font-mono text-rose-400/80 border border-rose-500/30 px-1 py-0.2 rounded bg-rose-950/40 shrink-0"
+                              >
+                                No Data
                               </span>
                             ) : null}
                           </div>
@@ -750,8 +875,9 @@ export default function CockpitPage() {
 
                         {/* 20D Excess Return */}
                         <span className={`text-[11px] font-mono text-right font-semibold ${retColor}`}>
-                          {excess >= 0 ? "+" : ""}
-                          {(excess * 100).toFixed(1)}%
+                          {excess !== null && excess !== undefined
+                            ? `${excess >= 0 ? "+" : ""}${(excess * 100).toFixed(1)}%`
+                            : "—"}
                         </span>
                       </div>
                     );
@@ -782,8 +908,12 @@ export default function CockpitPage() {
           </div>
         </div>
 
-        {/* ── RIGHT DOCKED LIVE INSPECTOR (46%) ───────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden relative bg-[#030508]">
+        {/* ── RIGHT DOCKED LIVE INSPECTOR ──────────────── */}
+        <div
+          className={`${
+            isInspectorCollapsed ? "hidden" : "flex w-full lg:flex-1"
+          } flex-col overflow-hidden relative bg-[#030508] transition-all duration-300 ease-in-out`}
+        >
           {/* Dynamic Ambient Verdict Aura */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
             <AnimatePresence mode="wait">
@@ -863,14 +993,32 @@ export default function CockpitPage() {
                     </div>
                   </div>
 
-                  {/* Open Full Tearsheet Link */}
-                  <Link
-                    href={`/stocks/${activeCandidate.symbol}`}
-                    className="shrink-0 flex items-center gap-1 text-[11px] font-mono text-slate-300 hover:text-cyan-300 border border-white/[0.08] hover:border-cyan-500/40 rounded-lg px-2.5 py-1.5 bg-slate-900/60 hover:bg-slate-900 transition-all shadow-sm"
-                  >
-                    <span>Full Tearsheet</span>
-                    <ExternalLink className="w-3 h-3 text-cyan-400" />
-                  </Link>
+                  {/* Open Full Tearsheet Link + Collapse Button */}
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <button
+                      onClick={() => setIsInspectorCollapsed(true)}
+                      title="Back to Screener Table"
+                      className="lg:hidden flex items-center gap-1 text-[11px] font-mono text-cyan-300 hover:text-white border border-cyan-800/80 rounded-lg px-2 py-1 bg-cyan-950/70 transition-all shadow-sm"
+                    >
+                      <span>← Screener</span>
+                    </button>
+
+                    <Link
+                      href={`/stocks/${activeCandidate.symbol}`}
+                      className="flex items-center gap-1 text-[11px] font-mono text-slate-300 hover:text-cyan-300 border border-white/[0.08] hover:border-cyan-500/40 rounded-lg px-2.5 py-1.5 bg-slate-900/60 hover:bg-slate-900 transition-all shadow-sm"
+                    >
+                      <span>Full Tearsheet</span>
+                      <ExternalLink className="w-3 h-3 text-cyan-400" />
+                    </Link>
+
+                    <button
+                      onClick={() => setIsInspectorCollapsed(true)}
+                      title="Collapse Tearsheet Inspector (Expand Screener to 100%)"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 border border-white/[0.08] transition-colors"
+                    >
+                      <PanelRightClose className="w-3.5 h-3.5 text-slate-400 hover:text-white" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -896,12 +1044,20 @@ export default function CockpitPage() {
                   )}
                 </div>
 
-                {/* 2. Risk/Reward Vector Bar */}
-                <RiskRewardVectorBar
-                  currentPrice={currentPrice}
-                  stopPrice={forecastLower95}
-                  targetPrice={forecastUpper80}
-                />
+                {/* 2. Risk/Reward Vector Bar (Honest conditional render) */}
+                {hasValidForecast && forecastLower95 !== null && forecastUpper80 !== null ? (
+                  <RiskRewardVectorBar
+                    currentPrice={currentPrice}
+                    stopPrice={forecastLower95}
+                    targetPrice={forecastUpper80}
+                  />
+                ) : (
+                  <div className="py-2.5 px-3 rounded-lg border border-white/[0.05] bg-slate-900/40 text-center">
+                    <span className="text-[11px] font-mono text-slate-500">
+                      Walk-Forward Forecast Cone Unavailable (Limited Uncontaminated History)
+                    </span>
+                  </div>
+                )}
 
                 {/* 3. Bento Grid: Factor Radar + Tabbed Intelligence Deck */}
                 <div className="grid grid-cols-[195px_1fr] gap-3">
@@ -920,17 +1076,19 @@ export default function CockpitPage() {
                     />
 
                     <div className="flex items-center gap-2 pt-1 border-t border-white/[0.05] w-full justify-center">
-                      <RadialConvictionGauge score={Math.round(factorConv)} />
+                      <RadialConvictionGauge score={factorConv !== null ? Math.round(factorConv) : null} />
                       <div className="flex flex-col text-left">
                         <span className="text-[10px] font-mono font-bold text-white">
                           Conviction
                         </span>
                         <span className="text-[9px] font-mono text-slate-500">
-                          {factorConv >= 80
-                            ? "Tier 1 Alpha"
-                            : factorConv >= 60
-                            ? "Solid Quality"
-                            : "Cautious"}
+                          {factorConv !== null
+                            ? factorConv >= 80
+                              ? "Tier 1 Alpha"
+                              : factorConv >= 60
+                              ? "Solid Quality"
+                              : "Cautious"
+                            : "Unscored"}
                         </span>
                       </div>
                     </div>
@@ -983,7 +1141,7 @@ export default function CockpitPage() {
                                   <span>Health Checklist</span>
                                 </span>
 
-                                <div className="grid grid-cols-2 gap-1.5">
+                                <div className="grid grid-cols-2 gap-2">
                                   {inspector.memo.health_checklist.map((diag) => {
                                     const isPass = diag.status === "PASS";
                                     const isCaution = diag.status === "CAUTION";
@@ -1001,14 +1159,14 @@ export default function CockpitPage() {
                                     return (
                                       <div
                                         key={diag.id}
-                                        className={`p-1.5 rounded-lg border ${color} flex items-start gap-1.5`}
+                                        className={`p-2.5 rounded-lg border ${color} flex items-start gap-2 min-w-0`}
                                       >
-                                        <Icon className="w-3 h-3 shrink-0 mt-0.5" />
-                                        <div className="min-w-0">
-                                          <div className="font-bold text-[10px] truncate">
+                                        <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                        <div className="min-w-0 flex-1">
+                                          <div className="font-bold text-[10px] tracking-tight">
                                             {diag.name}
                                           </div>
-                                          <div className="text-[9px] text-slate-400 truncate">
+                                          <div className="text-[9px] text-slate-300 leading-snug break-words mt-0.5">
                                             {diag.detail}
                                           </div>
                                         </div>
@@ -1022,15 +1180,15 @@ export default function CockpitPage() {
                             {/* Bull vs Bear Catalysts */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
                               {/* Bull Case */}
-                              <div className="space-y-1 rounded-lg p-2 bg-emerald-950/15 border border-emerald-900/30">
+                              <div className="space-y-1.5 rounded-lg p-2.5 bg-emerald-950/20 border border-emerald-900/40">
                                 <span className="text-[10px] font-mono font-bold text-emerald-400 flex items-center gap-1">
                                   <TrendingUp className="w-3 h-3" /> Bull Catalysts
                                 </span>
                                 {inspector.memo?.bull_case && inspector.memo.bull_case.length > 0 ? (
                                   inspector.memo.bull_case.slice(0, 2).map((pt, i) => (
-                                    <div key={i} className="flex items-start gap-1 text-[10px] text-slate-300">
+                                    <div key={i} className="flex items-start gap-1.5 text-[10px] text-slate-200">
                                       <ChevronRight className="w-2.5 h-2.5 text-emerald-400 shrink-0 mt-0.5" />
-                                      <span className="leading-tight">{pt}</span>
+                                      <span className="leading-snug break-words">{pt}</span>
                                     </div>
                                   ))
                                 ) : (
@@ -1041,15 +1199,15 @@ export default function CockpitPage() {
                               </div>
 
                               {/* Bear Case */}
-                              <div className="space-y-1 rounded-lg p-2 bg-rose-950/15 border border-rose-900/30">
+                              <div className="space-y-1.5 rounded-lg p-2.5 bg-rose-950/20 border border-rose-900/40">
                                 <span className="text-[10px] font-mono font-bold text-rose-400 flex items-center gap-1">
                                   <TrendingDown className="w-3 h-3" /> Headwinds &amp; Risks
                                 </span>
                                 {inspector.memo?.bear_case && inspector.memo.bear_case.length > 0 ? (
                                   inspector.memo.bear_case.slice(0, 2).map((pt, i) => (
-                                    <div key={i} className="flex items-start gap-1 text-[10px] text-slate-300">
+                                    <div key={i} className="flex items-start gap-1.5 text-[10px] text-slate-200">
                                       <ChevronRight className="w-2.5 h-2.5 text-rose-400 shrink-0 mt-0.5" />
-                                      <span className="leading-tight">{pt}</span>
+                                      <span className="leading-snug break-words">{pt}</span>
                                     </div>
                                   ))
                                 ) : (
@@ -1134,13 +1292,13 @@ export default function CockpitPage() {
                 <div className="glass-panel rounded-lg px-3 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] font-mono">
                   <div className="flex items-center gap-4 flex-wrap">
                     <span className="text-slate-500">
-                      ROE: <strong className="text-emerald-300">{factorRoe.toFixed(1)}%</strong>
+                      ROE: <strong className="text-emerald-300">{factorRoe !== null ? `${factorRoe.toFixed(1)}%` : "—"}</strong>
                     </span>
                     <span className="text-slate-500">
-                      D/E: <strong className="text-slate-200">{factorDe.toFixed(2)}x</strong>
+                      D/E: <strong className="text-slate-200">{factorDe !== null ? `${factorDe.toFixed(2)}x` : "—"}</strong>
                     </span>
                     <span className="text-slate-500">
-                      OPM: <strong className="text-slate-200">{factorOpm.toFixed(1)}%</strong>
+                      OPM: <strong className="text-slate-200">{factorOpm !== null ? `${factorOpm.toFixed(1)}%` : "—"}</strong>
                     </span>
                     {inspector.memo?.key_metrics.ttm_pe && (
                       <span className="text-slate-500">

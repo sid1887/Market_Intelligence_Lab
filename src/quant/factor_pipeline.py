@@ -280,7 +280,10 @@ class FactorPipeline:
                 """
                 SELECT trading_date, open, high, low, close, volume
                 FROM ohlcv_daily
-                WHERE symbol = ?
+                WHERE symbol = ? 
+                  AND series = 'EQ'
+                  AND COALESCE(is_synthetic, 0) = 0
+                  AND is_eligible_for_live_analytics = 1
                 ORDER BY trading_date ASC
                 """,
                 (symbol,)

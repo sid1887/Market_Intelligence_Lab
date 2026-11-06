@@ -53,6 +53,8 @@ class BacktestEngine:
                 SELECT DISTINCT trading_date
                 FROM ohlcv_daily
                 WHERE trading_date >= ? AND trading_date <= ? AND series = 'EQ'
+                  AND COALESCE(is_synthetic, 0) = 0
+                  AND COALESCE(is_eligible_for_backtest, 1) = 1
                 ORDER BY trading_date ASC;
                 """,
                 (start_date, end_date)
@@ -183,7 +185,9 @@ class BacktestEngine:
                 """
                 SELECT symbol, trading_date, open, close
                 FROM ohlcv_daily
-                WHERE trading_date >= ? AND trading_date <= ? AND series = 'EQ';
+                WHERE trading_date >= ? AND trading_date <= ? AND series = 'EQ'
+                  AND COALESCE(is_synthetic, 0) = 0
+                  AND COALESCE(is_eligible_for_backtest, 1) = 1;
                 """,
                 (trading_dates[0], trading_dates[-1])
             )

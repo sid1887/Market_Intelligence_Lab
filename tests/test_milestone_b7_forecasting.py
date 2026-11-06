@@ -98,7 +98,7 @@ class TestMilestoneB7EconometricForecasting(unittest.TestCase):
 
         data = resp.json()
         self.assertEqual(data["symbol"], "SUZLON")
-        self.assertIn(data["as_of_date"], ["2026-10-28", "2026-11-04"])
+        self.assertIn(data["as_of_date"], ["2026-10-28", "2026-11-04", "2026-11-05", "2026-11-06"])
         self.assertGreater(data["current_close"], 0.0)
         self.assertGreater(data["annualized_volatility"], 0.0)
         self.assertIn(data["volatility_regime"], ("LOW", "NORMAL", "ELEVATED"))

@@ -30,9 +30,10 @@ interface CopilotDrawerProps {
 }
 
 interface DeliberationState {
-  stage: "idle" | "telemetry" | "bull_analyst" | "bear_analyst" | "judge_synthesis" | "complete" | "error";
+  stage: "idle" | "telemetry" | "conversational" | "bull_analyst" | "bear_analyst" | "judge_synthesis" | "complete" | "error";
   statusText: string;
   progressPct: number;
+  conversationalText?: string;
   bullText: string;
   bearText: string;
   judgeText: string;
@@ -76,8 +77,16 @@ export default function CopilotDrawer({
     judgeText: ""
   });
 
-  const bullElapsed = "00:03";
-  const bearElapsed = "00:05";
+  const [bullElapsed, setBullElapsed] = useState("00:00");
+  const [bearElapsed, setBearElapsed] = useState("00:00");
+  const bullStartTimeRef = useRef<number | null>(null);
+  const bearStartTimeRef = useRef<number | null>(null);
+
+  const formatSeconds = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -127,6 +136,7 @@ export default function CopilotDrawer({
       stage: "telemetry",
       statusText: `Initializing deliberation engine for ${activeSymbol}...`,
       progressPct: 5,
+      conversationalText: "",
       bullText: "",
       bearText: "",
       judgeText: ""
@@ -154,26 +164,47 @@ export default function CopilotDrawer({
       const decoder = new TextDecoder();
       let buffer = "";
 
+      bullStartTimeRef.current = null;
+      bearStartTimeRef.current = null;
+      setBullElapsed("00:00");
+      setBearElapsed("00:00");
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
+        const lines = buffer.split(/\r?\n/);
         buffer = lines.pop() || "";
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.startsWith("data: ")) {
+          if (!trimmed || trimmed.startsWith(":")) continue;
+
+          if (trimmed.startsWith("data:")) {
+            const rawJson = trimmed.slice(5).trim();
+            if (!rawJson) continue;
+
             try {
-              const data = JSON.parse(trimmed.slice(6));
-              
+              const data = JSON.parse(rawJson);
+
+              if (data.stage === "bull_analyst") {
+                if (!bullStartTimeRef.current) bullStartTimeRef.current = Date.now();
+                setBullElapsed(formatSeconds((Date.now() - bullStartTimeRef.current) / 1000));
+              } else if (data.stage === "bear_analyst") {
+                if (!bearStartTimeRef.current) bearStartTimeRef.current = Date.now();
+                setBearElapsed(formatSeconds((Date.now() - bearStartTimeRef.current) / 1000));
+              }
+
               setState(prev => {
                 const next = { ...prev };
                 if (data.status) next.statusText = data.status;
                 if (data.progress !== undefined) next.progressPct = data.progress;
 
-                if (data.stage === "bull_analyst") {
+                if (data.stage === "conversational") {
+                  next.stage = "conversational";
+                  if (data.delta) next.conversationalText = (prev.conversationalText || "") + data.delta;
+                } else if (data.stage === "bull_analyst") {
                   next.stage = "bull_analyst";
                   if (data.delta) next.bullText = prev.bullText + data.delta;
                 } else if (data.stage === "bear_analyst") {
@@ -190,6 +221,7 @@ export default function CopilotDrawer({
                     if (data.result.bull_thesis) next.bullText = data.result.bull_thesis;
                     if (data.result.bear_thesis) next.bearText = data.result.bear_thesis;
                     if (data.result.judge_memo) next.judgeText = data.result.judge_memo;
+                    if (data.result.conversational_response) next.conversationalText = data.result.conversational_response;
                   }
                 }
                 return next;
@@ -357,8 +389,34 @@ export default function CopilotDrawer({
                   <span className="text-[10px] text-slate-500 shrink-0">{state.progressPct}%</span>
                 </div>
 
+                {/* CONVERSATIONAL ASSISTANT GUIDANCE */}
+                {state.conversationalText && (
+                  <div className="border border-cyan-500/30 bg-slate-900/80 rounded-xl p-4 space-y-3 shadow-md animate-in fade-in duration-300">
+                    <div className="flex items-center space-x-2 pb-2 border-b border-white/[0.08]">
+                      <div className="w-6 h-6 rounded-md bg-cyan-950 flex items-center justify-center text-cyan-400">
+                        <BrainCircuit className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="font-bold text-xs text-white font-mono">
+                        Quant Copilot · Verified Telemetry Context
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-200 font-sans leading-relaxed whitespace-pre-line">
+                      {state.conversationalText}
+                    </div>
+                    <div className="pt-2 flex flex-wrap gap-1.5 border-t border-white/[0.06]">
+                      <button
+                        onClick={() => runDeliberation("Debate Bull vs Bear Thesis")}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-800/60 text-[10px] font-mono text-cyan-300 transition-colors flex items-center space-x-1"
+                      >
+                        <Sparkles className="w-3 h-3 text-cyan-400" />
+                        <span>Launch 3-Agent Committee Debate</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* STAGE 1: BULL ANALYST */}
-                {(state.bullText || state.stage === "bull_analyst" || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || state.stage === "complete") && (
+                {!state.conversationalText && (state.bullText || state.stage === "bull_analyst" || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
                   <div className="border border-emerald-500/20 bg-emerald-950/20 rounded-xl overflow-hidden shadow-sm">
                     <button
                       onClick={() => toggleSection("bull")}
@@ -383,7 +441,7 @@ export default function CopilotDrawer({
                 )}
 
                 {/* STAGE 2: BEAR ANALYST */}
-                {(state.bearText || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || state.stage === "complete") && (
+                {!state.conversationalText && (state.bearText || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
                   <div className="border border-rose-500/20 bg-rose-950/20 rounded-xl overflow-hidden shadow-sm">
                     <button
                       onClick={() => toggleSection("bear")}
@@ -408,7 +466,7 @@ export default function CopilotDrawer({
                 )}
 
                 {/* STAGE 3: PORTFOLIO MANAGER JUDGE */}
-                {(state.judgeText || state.stage === "judge_synthesis" || state.stage === "complete") && (
+                {!state.conversationalText && (state.judgeText || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
                   <div className="border border-cyan-500/30 bg-cyan-950/20 rounded-xl overflow-hidden shadow-md">
                     <button
                       onClick={() => toggleSection("judge")}
@@ -428,19 +486,19 @@ export default function CopilotDrawer({
                     {expandedSections.judge && (
                       <div className="p-3.5 space-y-3.5">
                         {/* Quick Execution Parameters Pill Box */}
-                        {state.decisionResult && (
+                        {state.decisionResult && state.decisionResult.target_price !== undefined && (
                           <div className="grid grid-cols-3 gap-2 bg-slate-950/80 p-2.5 rounded-lg border border-cyan-800/40 font-mono text-center">
                             <div>
                               <span className="text-[10px] text-slate-500 block">ENTRY ANCHOR</span>
-                              <span className="text-xs font-bold text-white">₹{state.decisionResult.entry_price.toFixed(2)}</span>
+                              <span className="text-xs font-bold text-white">₹{(state.decisionResult.entry_price ?? activePrice ?? 0).toFixed(2)}</span>
                             </div>
                             <div>
                               <span className="text-[10px] text-emerald-400 block">TARGET (80% CI)</span>
-                              <span className="text-xs font-bold text-emerald-300">₹{state.decisionResult.target_price.toFixed(2)}</span>
+                              <span className="text-xs font-bold text-emerald-300">₹{(state.decisionResult.target_price ?? 0).toFixed(2)}</span>
                             </div>
                             <div>
                               <span className="text-[10px] text-rose-400 block">STOP LOSS</span>
-                              <span className="text-xs font-bold text-rose-300">₹{state.decisionResult.stop_loss.toFixed(2)}</span>
+                              <span className="text-xs font-bold text-rose-300">₹{(state.decisionResult.stop_loss ?? 0).toFixed(2)}</span>
                             </div>
                           </div>
                         )}

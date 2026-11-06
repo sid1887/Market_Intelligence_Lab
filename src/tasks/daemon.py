@@ -125,39 +125,89 @@ class AutonomousPlatformDaemon:
 
         # Check if database already has settled records for today
         with self.db.get_connection() as conn:
-            cur = conn.execute("SELECT COUNT(DISTINCT symbol) FROM ohlcv_daily WHERE trading_date = ?", (today_str,))
+            cur_active = conn.execute("SELECT COUNT(*) FROM securities_master WHERE is_active = 1")
+            row_act = cur_active.fetchone()
+            active_cnt = row_act[0] if row_act and row_act[0] else 0
+            if active_cnt == 0:
+                logger.warning("No active securities found in securities_master; cannot run EOD settlement.")
+                return
+
+            cur = conn.execute(
+                """
+                SELECT COUNT(DISTINCT symbol) 
+                FROM ohlcv_daily 
+                WHERE trading_date = ? 
+                  AND series = 'EQ'
+                  AND COALESCE(is_synthetic, 0) = 0
+                  AND is_eligible_for_live_analytics = 1
+                """,
+                (today_str,)
+            )
             cnt = cur.fetchone()[0]
 
-        if cnt >= 150:
+        threshold = max(10, int(active_cnt * 0.8))
+        if cnt >= threshold:
             # Already populated for today
             self.last_eod_date = today_str
             return
 
-        logger.info(f"Triggering Autonomous EOD Settlement Ingestion for {today_str}...")
+        logger.info(f"Triggering Autonomous EOD Settlement Ingestion for {today_str} (observed {cnt}/{active_cnt} symbols)...")
 
         # Run settlement ingestion in threadpool to avoid blocking event loop
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._execute_eod_pipeline, today_str)
-        self.last_eod_date = today_str
+        res = await loop.run_in_executor(None, self._execute_eod_pipeline, today_str)
+        if (
+            res.get("status") == "SUCCESS" 
+            and res.get("records_ingested", 0) > 0 
+            and res.get("settled_date") == today_str
+        ):
+            self.last_eod_date = today_str
+            logger.info(f"EOD settlement for {today_str} successfully finalized.")
+        else:
+            logger.warning(
+                f"EOD settlement for {today_str} did not succeed or returned no bars "
+                f"(status={res.get('status')}, records={res.get('records_ingested', 0)}). Will retry on next tick."
+            )
 
-    def _execute_eod_pipeline(self, target_date: str) -> None:
+    def _execute_eod_pipeline(self, target_date: str) -> Dict[str, Any]:
         """Ingests settlement prices and recomputes factors for target_date."""
         try:
             logger.info(f"Running FactorPipeline for session {target_date}...")
-            res = self.pipeline.run_universe_pipeline(start_date=target_date, end_date=target_date)
-            logger.info(f"EOD pipeline completed for {target_date}: {res['total_factors_upserted']} factor rows.")
+            from src.pipeline.universe_ingestion import UniverseIngestionManager
+            ingestion_mgr = UniverseIngestionManager(self.db_path)
+            res = ingestion_mgr.execute_universe_ingestion()
+            status = res.get("status", "SUCCESS")
+            factors_count = res.get("factors_computed", 0)
+
+            logger.info(f"EOD pipeline completed for {target_date}: status={status}, {factors_count} factor rows.")
             
             # Log telemetry
             self.supervisor.log_telemetry(
                 metric_name="EOD_SETTLEMENT_ADVANCE",
-                metric_value=float(res.get("total_factors_upserted", 0)),
-                threshold_breached=False,
-                severity="INFO",
-                message=f"Autonomous EOD daemon successfully advanced settlement to {target_date}.",
-                context={"session_date": target_date, "factors_upserted": res.get("total_factors_upserted", 0)}
+                metric_value=float(factors_count),
+                threshold_breached=(status != "SUCCESS"),
+                severity="INFO" if status == "SUCCESS" else "WARNING",
+                message=f"Autonomous EOD daemon advanced settlement for {target_date} with status {status}.",
+                context={"session_date": target_date, "factors_upserted": factors_count, "status": status}
             )
+            return {
+                "status": status,
+                "target_date": target_date,
+                "settled_date": res.get("settled_date"),
+                "records_ingested": res.get("records_ingested", 0),
+                "factors_written": factors_count,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error": None
+            }
         except Exception as e:
             logger.error(f"Failed to execute EOD pipeline: {e}")
+            return {
+                "status": "FAILED",
+                "target_date": target_date,
+                "factors_written": 0,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error": str(e)
+            }
 
     async def run_intraday_telemetry(self) -> None:
         """Pulls macro telemetry and news headlines."""

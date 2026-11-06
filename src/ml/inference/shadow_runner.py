@@ -34,18 +34,8 @@ class ShadowInferenceRunner:
         Uses active promoted model if model_id is None.
         """
         if model_id:
-            # Query specific model
-            with self.db.get_connection() as conn:
-                cur = conn.execute("SELECT * FROM model_registry WHERE model_id = ?", (model_id,))
-                rec = cur.fetchone()
-                model_rec = dict(rec) if rec else None
-            if not model_rec:
-                return {"status": "MODEL_NOT_FOUND", "predictions_count": 0}
-            model_obj, _ = self.registry.load_active_model() if model_rec.get("state") == "PROMOTED" else (None, None)
-            if not model_obj:
-                import pickle
-                with open(model_rec["artifact_path"], "rb") as f:
-                    model_obj = pickle.load(f)
+            # Query and load specific model using verified registry loader
+            model_obj, model_rec = self.registry.load_model_by_id(model_id)
         else:
             model_obj, model_rec = self.registry.load_active_model()
 
@@ -66,7 +56,9 @@ class ShadowInferenceRunner:
         except Exception:
             # Linear model needing imputation fallback
             from sklearn.impute import SimpleImputer
-            X_imp = SimpleImputer(strategy="median").fit_transform(X_raw)
+            X_imp = SimpleImputer(strategy="median", keep_empty_features=True).fit_transform(X_raw)
+            # If any remaining NaNs exist in completely empty features, fill with 0.0
+            X_imp = np.nan_to_num(X_imp, nan=0.0)
             preds = model_obj.predict(X_imp)
 
         # Compute pseudo probability using logistic sigmoid: 1 / (1 + exp(-50 * ret))

@@ -13,7 +13,7 @@ from src.storage.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
-VALID_STATES = {"NORMAL", "DEGRADED", "HALTED", "EMERGENCY_CASH", "RETRAINING"}
+VALID_STATES = {"NORMAL", "DEGRADED", "HALTED", "EMERGENCY_CASH", "RETRAINING", "NO_ACTIVE_MODEL"}
 
 
 class SupervisorStateMachine:
@@ -45,12 +45,17 @@ class SupervisorStateMachine:
             cur = conn.execute("SELECT * FROM supervisor_state WHERE singleton_id = 1")
             row = cur.fetchone()
             if not row:
-                return {"current_state": "NORMAL", "quarantined_symbols": []}
+                return {"current_state": "NO_ACTIVE_MODEL", "quarantined_symbols": []}
             res = dict(row)
             try:
                 res["quarantined_symbols"] = json.loads(res.get("quarantined_symbols_json") or "[]")
             except Exception:
                 res["quarantined_symbols"] = []
+
+            # Invariant: If there is no active model pointer, state cannot be NORMAL
+            if not res.get("active_model_id") and res.get("current_state") == "NORMAL":
+                res["current_state"] = "NO_ACTIVE_MODEL"
+
             return res
 
     def transition_to(self, new_state: str, reason: str, active_model_id: Optional[str] = None) -> bool:
@@ -156,7 +161,10 @@ class SupervisorStateMachine:
             self.transition_to("HALTED", f"Contaminated defaults detected ({contaminated_count} rows).")
             status = "HALTED"
         elif not active_model:
-            status = "NORMAL_BASELINE"
+            status = "NO_ACTIVE_MODEL"
+            current = self.get_state()
+            if current.get("current_state") == "NORMAL":
+                self.transition_to("NO_ACTIVE_MODEL", "No active champion model deployed.")
 
         return {
             "status": status,

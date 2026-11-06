@@ -4,11 +4,11 @@ import React from "react";
 import { motion } from "framer-motion";
 
 interface FactorRadarProps {
-  roe: number;          // e.g. 0 to 40+
-  debtToEquity: number; // e.g. 0 to 2.0 (inverted: lower is better)
-  opm: number;          // e.g. 0 to 35+
-  momentum20d: number;  // e.g. -15 to +15 (as percent: excess_ret_20d * 100)
-  conviction: number;   // 0 to 100
+  roe?: number | null;          // e.g. 0 to 40+
+  debtToEquity?: number | null; // e.g. 0 to 2.0 (inverted: lower is better)
+  opm?: number | null;          // e.g. 0 to 35+
+  momentum20d?: number | null;  // e.g. -15 to +15 (as percent: excess_ret_20d * 100)
+  conviction?: number | null;   // 0 to 100
 }
 
 export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
