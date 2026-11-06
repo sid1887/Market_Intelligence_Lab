@@ -64,16 +64,14 @@ export async function apiFetch<T>(endpoint: string, useCache = true): Promise<T>
 }
 
 /**
- * Prefetch full stock intelligence bundle on row hover or arrow navigation.
- * Fires history, memo, forecast, and news in parallel into the memory cache.
+ * Prefetch lightweight stock data on row hover or arrow navigation.
+ * CQRS & UI Honesty: Does NOT prefetch expensive /memo or /forecast endpoints on hover.
  */
 export function prefetchStockBundle(symbol: string) {
   if (!symbol) return;
   const sym = symbol.toUpperCase().trim();
+  // Only lightweight history cache prefetch
   void apiFetch(`/stocks/${sym}/history`).catch(() => {});
-  void apiFetch(`/stocks/${sym}/memo`).catch(() => {});
-  void apiFetch(`/stocks/${sym}/forecast`).catch(() => {});
-  void apiFetch(`/stocks/${sym}/news`).catch(() => {});
 }
 
 // ─── Shared Type Definitions ──────────────────────────────────────────────────
@@ -90,6 +88,8 @@ export interface ScreenerCandidate {
   opm_pct: number | null;
   excess_ret_20d: number | null;
   composite_score: number | null;
+  data_completeness_score?: number | null;
+  score_status?: string | null;
   price_above_sma200: boolean | number;
   is_watchlist: boolean | number;
 }
@@ -125,21 +125,21 @@ export interface WatchlistResponse {
 export interface SystemAccuracy {
   forecast_model: {
     total_evaluated: number;
-    containment_80_pct: number;
-    containment_95_pct: number;
-    rmse_pct: number;
-    mape_pct: number;
+    containment_80_pct: number | null;
+    containment_95_pct: number | null;
+    rmse_pct: number | null;
+    mape_pct: number | null;
     target_benchmark_80: number;
     target_benchmark_95: number;
     status: string;
   };
   catalyst_model: {
     total_evaluated: number;
-    directional_accuracy_pct: number;
-    avg_5d_return_pct: number;
+    directional_accuracy_pct: number | null;
+    avg_5d_return_pct: number | null;
     status: string;
   };
-  evaluated_at: string;
+  evaluated_at?: string;
 }
 
 export interface CandleData {
@@ -274,4 +274,19 @@ export interface MacroResponse {
 
 export async function fetchMacroTelemetry(): Promise<MacroResponse> {
   return apiFetch<MacroResponse>("/macro");
+}
+
+export interface SupervisorStatus {
+  status: string;
+  supervisor_state: string;
+  latest_settled_session: string;
+  total_active_equities: number;
+  universe_health_pct: number;
+  last_ingestion_timestamp: string;
+  daemon_started_at: string | null;
+  macro_indicators?: MacroIndicator[];
+}
+
+export async function fetchSupervisorStatus(): Promise<SupervisorStatus> {
+  return apiFetch<SupervisorStatus>("/supervisor/status");
 }

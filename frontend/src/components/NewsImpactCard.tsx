@@ -238,7 +238,7 @@ export default function NewsImpactCard({ symbol, articles = [], loading = false 
                   {article.impact?.confidence_score && (
                     <span className="text-[11px] font-mono text-slate-500 flex items-center">
                       <ShieldCheck className="w-3 h-3 mr-1 text-slate-400" />
-                      {(article.impact.confidence_score * 100).toFixed(0)}% Confidence
+                      {(article.impact.confidence_score * 100).toFixed(0)}% Rule Match (Heuristic)
                     </span>
                   )}
                 </div>

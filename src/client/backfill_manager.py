@@ -282,11 +282,16 @@ class BackfillManager:
 
         return records
 
-    def get_active_universe(self) -> List[str]:
+    def get_active_universe(self, nifty_only: bool = True) -> List[str]:
         """Returns the authoritative list of active symbols from securities_master."""
         with self.db.get_connection() as conn:
+            cur = conn.execute("PRAGMA table_info(securities_master)")
+            cols = {r["name"] for r in cur.fetchall()}
+            where_clause = "WHERE is_active = 1"
+            if nifty_only and "is_nifty50" in cols:
+                where_clause += " AND is_nifty50 = 1"
             cursor = conn.execute(
-                "SELECT symbol FROM securities_master WHERE is_active = 1 ORDER BY symbol"
+                f"SELECT symbol FROM securities_master {where_clause} ORDER BY symbol"
             )
             return [row[0] for row in cursor.fetchall()]
 

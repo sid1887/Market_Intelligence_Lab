@@ -1,5 +1,5 @@
 # Company Research Tearsheet — SUZLON (Suzlon Energy Ltd)
-**As-of Trading Session:** `2026-10-28` | **Generated:** `2026-11-04 11:28:54 UTC`  
+**As-of Trading Session:** `2026-10-28` | **Generated:** `2026-11-05 12:03:36 UTC`  
 **ISIN:** `INE040H01021` | **Industry:** `Heavy Electrical Equipment` | **Sector:** `Renewable Energy`  
 **System Status:** Local-First SQLite Research Lab | **Execution Capabilities:** Permanently Disabled  
 

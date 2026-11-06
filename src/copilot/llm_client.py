@@ -4,17 +4,47 @@ Milestone B12.0: Part 2.
 
 Supports Google AI Studio (Gemini 2.0 Flash / 1.5 Flash), Groq Cloud (llama-3.3-70b),
 or Local Ollama (qwen2.5:7b) via an OpenAI-compatible Async client.
+Lazy-loaded to guarantee 100% offline core platform operation and testability.
 """
 
 import os
-from openai import AsyncOpenAI
+from typing import Any, Tuple
+
+try:
+    from openai import AsyncOpenAI
+    HAS_OPENAI = True
+except ImportError:
+    AsyncOpenAI = None  # type: ignore
+    HAS_OPENAI = False
 
 
-def get_copilot_client() -> tuple[AsyncOpenAI, str]:
+def is_live_llm_configured() -> bool:
+    """Checks whether a valid live credential or local host is configured and SDK is installed."""
+    if not HAS_OPENAI:
+        return False
+
+    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    if provider == "gemini":
+        return bool(os.getenv("GEMINI_API_KEY"))
+    elif provider == "groq":
+        return bool(os.getenv("GROQ_API_KEY"))
+    elif provider == "ollama":
+        return True
+    return False
+
+
+def get_copilot_client() -> Tuple[Any, str]:
     """
     Returns an async OpenAI-compatible client and the target model name.
     Supports Google AI Studio (Free), Groq (Free), or local Ollama (Free).
+    Raises RuntimeError if openai extra is not installed.
     """
+    if not HAS_OPENAI:
+        raise RuntimeError(
+            "The 'openai' package is not installed. "
+            "Install with 'pip install openai' or 'pip install .[llm]' to activate live LLM features."
+        )
+
     provider = os.getenv("LLM_PROVIDER", "gemini").lower()
 
     if provider == "gemini":
@@ -42,15 +72,3 @@ def get_copilot_client() -> tuple[AsyncOpenAI, str]:
         model = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
     return client, model
-
-
-def is_live_llm_configured() -> bool:
-    """Checks whether a valid live credential or local host is configured."""
-    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
-    if provider == "gemini":
-        return bool(os.getenv("GEMINI_API_KEY"))
-    elif provider == "groq":
-        return bool(os.getenv("GROQ_API_KEY"))
-    elif provider == "ollama":
-        return True
-    return False

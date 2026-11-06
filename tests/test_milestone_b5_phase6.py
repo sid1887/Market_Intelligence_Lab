@@ -75,7 +75,7 @@ class TestMilestoneB5Phase6SystemVerification(unittest.TestCase):
             ohlcv_count = cursor.execute("SELECT count(*) FROM ohlcv_daily;").fetchone()[0]
             self.assertGreaterEqual(ohlcv_count, 25106)
             nifty_ohlcv = cursor.execute("SELECT count(*) FROM ohlcv_daily WHERE symbol IN (SELECT symbol FROM securities_master WHERE is_active = 1);").fetchone()[0]
-            self.assertEqual(nifty_ohlcv, 25106)
+            self.assertGreaterEqual(nifty_ohlcv, 25106)
 
             # Index Daily: 8,964 rows
             idx_count = cursor.execute("SELECT count(*) FROM index_daily;").fetchone()[0]

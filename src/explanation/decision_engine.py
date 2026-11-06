@@ -136,40 +136,24 @@ class InvestmentDecisionEngine:
         debt_to_equity = safe_float(factor_row["debt_to_equity"]) if factor_row else None
         opm_pct = safe_float(factor_row["opm_pct"]) if factor_row else None
 
-        # 3. Fetch Forecast Cone Summary
+        # 3. Fetch Forecast Cone Summary (Read-Only: No audit ledger writes, P0-08, ADR-0011)
         try:
             fc_res = self.forecaster.generate_forecast(sym, horizon_days=20, cutoff_date=as_of_date)
             projections = fc_res.get("projections", [])
             last_proj = projections[-1] if projections else {}
             exp_20d = safe_float(last_proj.get("expected"), 2) or current_price
-            upper_80 = safe_float(last_proj.get("upper_80"), 2) or round(current_price * 1.08, 2)
-            lower_80 = safe_float(last_proj.get("lower_80"), 2) or round(current_price * 0.92, 2)
-            upper_95 = safe_float(last_proj.get("upper_95"), 2) or round(current_price * 1.15, 2)
-            lower_95 = safe_float(last_proj.get("lower_95"), 2) or round(current_price * 0.85, 2)
+            upper_80 = safe_float(last_proj.get("upper_80"), 2)
+            lower_80 = safe_float(last_proj.get("lower_80"), 2)
+            upper_95 = safe_float(last_proj.get("upper_95"), 2)
+            lower_95 = safe_float(last_proj.get("lower_95"), 2)
             upside_pct = round(((exp_20d - current_price) / current_price) * 100.0, 2)
-
-            # Auto-log forecast prediction into audit ledger for autonomous feedback tracking
-            if projections:
-                target_eval_date = last_proj.get("target_date", as_of_date)
-                self.feedback_evaluator.record_forecast(
-                    symbol=sym,
-                    prediction_date=as_of_date,
-                    horizon_days=20,
-                    target_evaluation_date=target_eval_date,
-                    current_price=current_price,
-                    expected_price=exp_20d,
-                    lower_80=lower_80,
-                    upper_80=upper_80,
-                    lower_95=lower_95,
-                    upper_95=upper_95
-                )
         except Exception as e:
             logger.warning(f"Econometric forecast unavailable for {sym}: {e}")
             exp_20d = current_price
-            upper_80 = round(current_price * 1.06, 2)
-            lower_80 = round(current_price * 0.94, 2)
-            upper_95 = round(current_price * 1.12, 2)
-            lower_95 = round(current_price * 0.88, 2)
+            upper_80 = None
+            lower_80 = None
+            upper_95 = None
+            lower_95 = None
             upside_pct = 0.0
 
         # 4. Fetch Recent News Feed & Catalysts
@@ -258,10 +242,13 @@ class InvestmentDecisionEngine:
         # 6. Health Checklist Diagnostics (4 diagnostics)
         checklist: List[Dict[str, Any]] = []
 
-        # Diagnostic 1: Solvency & Leverage
+        # Diagnostic 1: Solvency & Leverage (P0-01, ADR-0006: Null debt is never claimed as zero)
         if debt_to_equity is None:
+            solv_status = "DATA_MISSING"
+            solv_detail = "Solvency Data Unavailable: Balance sheet debt/equity has not been ingested for this issuer."
+        elif debt_to_equity <= 0.10:
             solv_status = "PASS"
-            solv_detail = "Zero long-term debt detected on balance sheet (Net Cash Profile)."
+            solv_detail = f"Prudent capital structure. Debt-to-Equity is {debt_to_equity:.2f}x (Low / Negligible Debt Profile)."
         elif debt_to_equity <= 0.5:
             solv_status = "PASS"
             solv_detail = f"Prudent capital structure. Debt-to-Equity is {debt_to_equity:.2f}x (Threshold <= 0.50x)."
@@ -280,16 +267,18 @@ class InvestmentDecisionEngine:
 
         # Diagnostic 2: Capital Dilution & Promoter Integrity
         # Evaluates return on capital and capital retention stability
-        if roe_pct is not None and roe_pct >= 15.0:
+        if roe_pct is None:
+            dil_status = "DATA_MISSING"
+            dil_detail = "Capital efficiency data unavailable: ROE has not been reported for this reporting period."
+        elif roe_pct >= 15.0:
             dil_status = "PASS"
             dil_detail = f"Strong capital stewardship. High ROE ({roe_pct:.1f}%) enables self-funded organic expansion without equity dilution."
-        elif roe_pct is not None and roe_pct >= 8.0:
+        elif roe_pct >= 8.0:
             dil_status = "CAUTION"
             dil_detail = f"Moderate capital efficiency. ROE of {roe_pct:.1f}% requires disciplined capex oversight."
         else:
             dil_status = "FAIL"
-            roe_val_str = f"{roe_pct:.1f}%" if roe_pct is not None else "Sub-optimal"
-            dil_detail = f"Weak return on invested capital ({roe_val_str}) signals risk of shareholder dilution."
+            dil_detail = f"Weak return on invested capital ({roe_pct:.1f}%) signals risk of shareholder dilution."
         checklist.append({
             "id": "dilution_promoters",
             "name": "Capital Efficiency & Dilution Risk",
@@ -341,11 +330,15 @@ class InvestmentDecisionEngine:
             "detail": val_detail
         })
 
-        # 7. Deterministic Verdict Assignment
+        # 7. Deterministic Verdict Assignment (P0-01: Insufficient data forces transparent posture)
         num_fails = sum(1 for c in checklist if c["status"] == "FAIL")
         num_passes = sum(1 for c in checklist if c["status"] == "PASS")
+        num_missing = sum(1 for c in checklist if c["status"] == "DATA_MISSING")
 
-        if num_fails >= 2 or (debt_to_equity is not None and debt_to_equity > 1.8):
+        if num_missing >= 2:
+            verdict = "INSUFFICIENT_DATA"
+            target_horizon = "AWAITING_STATEMENTS"
+        elif num_fails >= 2 or (debt_to_equity is not None and debt_to_equity > 1.8):
             verdict = "AVOID_CAPITAL_PRESERVATION"
             target_horizon = "CAPITAL_PRESERVATION_EXIT"
         elif conviction_score >= 72 and num_passes >= 3 and trend_status == "PASS":
@@ -371,8 +364,10 @@ class InvestmentDecisionEngine:
 
         if roe_pct is not None and roe_pct >= 10.0:
             bull_case.append(f"Capital Compounding: Generates superior capital efficiency with TTM Return on Equity of {roe_pct:.1f}% and healthy operating margins ({opm_pct or 0.0:.1f}% OPM).")
+        elif debt_to_equity is not None:
+            bull_case.append(f"Balance Sheet Safety: Total Debt-to-Equity maintained at {debt_to_equity:.2f}x, preserving solvency through market cycles.")
         else:
-            bull_case.append(f"Balance Sheet Safety: Total Debt-to-Equity maintained at a manageable {debt_to_equity or 0.0:.2f}x, preserving solvency through market cycles.")
+            bull_case.append("Capital Efficiency: Operating fundamentals currently awaiting next quarterly publication cycle.")
 
         if news_rows:
             top_catalyst = news_rows[0]["title"]

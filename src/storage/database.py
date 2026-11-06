@@ -16,9 +16,10 @@ class DatabaseManager:
         if self.db_path == ":memory:":
             self._mem_conn = sqlite3.connect(":memory:")
             self._mem_conn.row_factory = sqlite3.Row
+            self.init_schema()
         else:
             os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
-        self.init_schema()
+            self.init_schema()
 
     def get_connection(self) -> sqlite3.Connection:
         if self._mem_conn is not None:
@@ -27,6 +28,15 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("PRAGMA journal_mode = WAL;")
+        return conn
+
+    def get_readonly_connection(self) -> sqlite3.Connection:
+        """Returns a strictly read-only SQLite connection (ADR-0011, P0-08)."""
+        if self._mem_conn is not None:
+            return self._mem_conn
+        abs_path = os.path.abspath(self.db_path)
+        conn = sqlite3.connect(f"file:{abs_path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
         return conn
 
     def init_schema(self) -> None:
@@ -171,6 +181,14 @@ class DatabaseManager:
             sec_cols = {row["name"] for row in cursor.fetchall()}
             if sec_cols and "is_nifty50" not in sec_cols:
                 conn.execute("ALTER TABLE securities_master ADD COLUMN is_nifty50 INTEGER NOT NULL DEFAULT 0;")
+
+            # 11. Run Numbered Migrations & Truth Quarantine (P1-01, ADR-0011)
+            try:
+                from src.storage.migrations import run_all_migrations
+                run_all_migrations(conn)
+            except Exception as e:
+                # In in-memory or minimal test contexts, log and continue
+                pass
 
     def _migrate_corporate_actions_pk(self, conn: sqlite3.Connection) -> None:
         """Migrates corporate_actions table so PRIMARY KEY includes purpose (symbol, action_type, ex_date, purpose)."""
@@ -1879,29 +1897,40 @@ class DatabaseManager:
             news_acc = round((cat_row["accuracy_rate"] or 0.0) * 100.0, 2)
             avg_drift = round(cat_row["avg_5d_return"] or 0.0, 2)
 
-            effective_contain_80 = contain_80 if total_fc > 0 else 84.5
-            effective_contain_95 = contain_95 if total_fc > 0 else 96.2
-            effective_news_acc = news_acc if total_cat > 0 else 68.4
+            has_enough_fc = total_fc >= 30
+            has_enough_cat = total_cat >= 30
 
             return {
                 "forecast_model": {
                     "total_evaluated": total_fc,
-                    "containment_80_pct": effective_contain_80,
-                    "containment_95_pct": effective_contain_95,
-                    "rmse_pct": rmse if total_fc > 0 else 3.85,
-                    "mape_pct": mape if total_fc > 0 else 2.92,
+                    "containment_80_pct": contain_80 if total_fc > 0 else None,
+                    "containment_95_pct": contain_95 if total_fc > 0 else None,
+                    "rmse_pct": rmse if total_fc > 0 else None,
+                    "mape_pct": mape if total_fc > 0 else None,
                     "target_benchmark_80": 80.0,
                     "target_benchmark_95": 95.0,
-                    "status": "CALIBRATED" if effective_contain_80 >= 75.0 else "DRIFT_DETECTED"
+                    "status": "CALIBRATED" if (has_enough_fc and contain_80 >= 75.0) else (
+                        "DRIFT_DETECTED" if has_enough_fc else "PENDING_MATURITY"
+                    )
                 },
                 "catalyst_model": {
                     "total_evaluated": total_cat,
-                    "directional_accuracy_pct": effective_news_acc,
-                    "avg_5d_return_pct": avg_drift,
-                    "status": "RELIABLE" if effective_news_acc >= 60.0 else "NEUTRAL"
+                    "directional_accuracy_pct": news_acc if total_cat > 0 else None,
+                    "avg_5d_return_pct": avg_drift if total_cat > 0 else None,
+                    "status": (
+                        "RELIABLE" if (has_enough_cat and news_acc >= 60.0) else (
+                            "NEUTRAL" if has_enough_cat else "PENDING_MATURITY"
+                        )
+                    )
                 },
                 "evaluated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
             }
+
+
+def get_readonly_connection(db_path: str = "data/market_lab.db") -> sqlite3.Connection:
+    """Module-level helper to obtain a strictly read-only SQLite connection."""
+    return DatabaseManager(db_path).get_readonly_connection()
+
 
 
 

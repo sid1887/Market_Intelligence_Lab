@@ -196,13 +196,15 @@ class TestMilestoneB42ScreenerAndWatchlist(unittest.TestCase):
         df = self.screener.screen(as_of_date="2026-10-28", criteria=None)
         scores = df["composite_score"].tolist()
 
-        for s in scores:
+        valid_scores = [s for s in scores if pd.notna(s)]
+        self.assertGreater(len(valid_scores), 0)
+        for s in valid_scores:
             self.assertGreaterEqual(s, 0.0)
             self.assertLessEqual(s, 100.0)
 
-        # Check sorting order is descending
-        for i in range(1, len(scores)):
-            self.assertGreaterEqual(scores[i - 1], scores[i], "Screener output must be sorted descending by composite score.")
+        # Check sorting order is descending for valid scores
+        for i in range(1, len(valid_scores)):
+            self.assertGreaterEqual(valid_scores[i - 1], valid_scores[i], "Screener output must be sorted descending by composite score.")
 
     # -------------------------------------------------------------
     # 7. SUZLON Dedicated Factor and Watchlist Properties

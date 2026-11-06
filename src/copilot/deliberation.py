@@ -254,17 +254,33 @@ class MultiAgentDeliberationEngine:
             max_tokens=800
         )
         content = response.choices[0].message.content or ""
-        # Determine verdict metadata from context
+        # Determine verdict metadata from LLM output (P0-09, Section 17)
         sym = context.get("symbol", "")
         price = context.get("current_price", 0.0)
         forecast = context.get("forecast_20d", {})
         
         target = forecast.get("upper_80") or round(price * 1.08, 2)
         stop = forecast.get("lower_80") or round(price * 0.94, 2)
-        conviction = 82 if "STRONG_BUY" in content else 74 if "SWING" in content else 55
+
+        upper_c = content.upper()
+        if "STRONG_BUY" in upper_c:
+            verdict = "STRONG_BUY"
+            conviction = 84
+        elif "TACTICAL_SWING_LONG" in upper_c or "SWING" in upper_c:
+            verdict = "TACTICAL_SWING_LONG"
+            conviction = 74
+        elif "HOLD" in upper_c:
+            verdict = "HOLD"
+            conviction = 55
+        elif "AVOID" in upper_c:
+            verdict = "AVOID"
+            conviction = 35
+        else:
+            verdict = "INSUFFICIENT_EVIDENCE"
+            conviction = 45
 
         return content, {
-            "verdict": "STRONG_BUY" if "STRONG_BUY" in content else "TACTICAL_SWING_LONG",
+            "verdict": verdict,
             "conviction_score": conviction,
             "target_price": target,
             "stop_loss": stop
@@ -278,14 +294,16 @@ class MultiAgentDeliberationEngine:
         fc = ctx.get("forecast_20d", {})
 
         above_200 = "trading above its 200-day moving average" if t.get("price_above_sma200") else "consolidating near technical support"
-        roe = f.get("roe_pct", 18.5)
-        opm = f.get("opm_pct", 22.0)
+        roe_val = f.get("roe_pct")
+        opm_val = f.get("opm_pct")
+        roe_str = f"{roe_val:.1f}%" if roe_val is not None else "Awaiting Statement"
+        opm_str = f"{opm_val:.1f}%" if opm_val is not None else "Awaiting Statement"
         exp_target = fc.get("target_objective", round(price * 1.08, 2))
 
         return (
             f"### Bull Thesis: Capital Compounding & Upside Asymmetry\n\n"
             f"1. **Operational Moat & Return on Capital:**\n"
-            f"   - {sym} demonstrates resilient operating performance with an ROE of **{roe:.1f}%** and operating margins of **{opm:.1f}%**.\n"
+            f"   - {sym} return metrics: ROE at **{roe_str}** and operating margins at **{opm_str}**.\n"
             f"   - High return on incremental invested capital enables self-funded capacity additions without shareholding dilution.\n\n"
             f"2. **Trend Momentum & Technical Structure:**\n"
             f"   - The stock is currently {above_200} (200 SMA: ₹{t.get('sma_200', 0):.2f}).\n"
@@ -302,21 +320,23 @@ class MultiAgentDeliberationEngine:
         fc = ctx.get("forecast_20d", {})
         macro = ctx.get("macro_environment", {})
 
-        pe = f.get("ttm_pe", 32.0)
-        de = f.get("debt_to_equity", 0.15)
+        pe_val = f.get("ttm_pe")
+        de_val = f.get("debt_to_equity")
+        pe_str = f"{pe_val:.1f}x" if pe_val is not None else "Awaiting Statement"
+        de_str = f"{de_val:.2f}x" if de_val is not None else "Awaiting Statement"
         stop_floor = fc.get("invalidation_floor", round(price * 0.94, 2))
         tail_95 = fc.get("lower_95", round(price * 0.90, 2))
 
         return (
             f"### Bear Thesis: Valuation Friction & Tail-Risk Constraints\n\n"
             f"1. **Valuation Multiple & Expectation Treadmill:**\n"
-            f"   - Trading at a TTM P/E multiple of **{pe:.1f}x**, pricing leaves zero tolerance for quarterly earnings slippage or margin compression.\n"
+            f"   - TTM P/E multiple stands at **{pe_str}**; leaves zero tolerance for quarterly earnings slippage or margin compression.\n"
             f"   - Current multiple sits in the upper quartile of sectoral valuations.\n\n"
             f"2. **Downside Tail-Risk Envelope:**\n"
             f"   - GARCH(1,1) dispersion highlights an 80% downside invalidation floor at **₹{stop_floor:.2f}** (-{((price - stop_floor)/price)*100:.1f}% risk).\n"
             f"   - Under extreme 95% tail-risk stress scenarios, the volatility cone extends down to **₹{tail_95:.2f}**.\n\n"
             f"3. **Macro Headwinds & Leverage Pressure:**\n"
-            f"   - Debt-to-Equity is positioned at **{de:.2f}x**; elevated yields (India 10Y at **{macro.get('india_10y_yield_pct', 6.8)}%**) increase cost of capital.\n"
+            f"   - Debt-to-Equity is positioned at **{de_str}**; elevated yields (India 10Y at **{macro.get('india_10y_yield_pct', 6.8)}%**) increase cost of capital.\n"
             f"   - Forex fluctuations (USD/INR at **₹{macro.get('usd_inr', 84.0)}**) present imported inflation pressure on raw material inputs."
         )
 
@@ -325,17 +345,28 @@ class MultiAgentDeliberationEngine:
         company = ctx["company_name"]
         price = ctx["current_price"]
         t = ctx.get("technicals", {})
+        f = ctx.get("fundamentals", {})
         fc = ctx.get("forecast_20d", {})
 
-        is_above_sma = t.get("price_above_sma200", True)
+        is_above_sma = t.get("price_above_sma200", False)
         target = fc.get("target_objective", round(price * 1.08, 2))
         stop = fc.get("invalidation_floor", round(price * 0.94, 2))
         upside = ((target / price) - 1.0) * 100 if price > 0 else 8.0
         risk = ((price - stop) / price) * 100 if price > 0 else 6.0
         rr_ratio = round(upside / max(0.1, risk), 2)
 
-        verdict = "STRONG_BUY" if is_above_sma and rr_ratio >= 1.5 else "TACTICAL_SWING_LONG"
-        conviction = 84 if verdict == "STRONG_BUY" else 76
+        if f.get("roe_pct") is None and f.get("debt_to_equity") is None:
+            verdict = "INSUFFICIENT_EVIDENCE"
+            conviction = 45
+        elif is_above_sma and rr_ratio >= 1.5:
+            verdict = "STRONG_BUY"
+            conviction = 84
+        elif is_above_sma or rr_ratio >= 1.0:
+            verdict = "TACTICAL_SWING_LONG"
+            conviction = 74
+        else:
+            verdict = "HOLD"
+            conviction = 55
 
         memo = (
             f"## Portfolio Manager Judicial Decision\n\n"

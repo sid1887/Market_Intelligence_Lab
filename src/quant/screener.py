@@ -11,7 +11,7 @@ Computes a normalized Composite Quality-Momentum score (0-100).
 import math
 import datetime
 import logging
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Tuple
 
 import pandas as pd
 import numpy as np
@@ -43,10 +43,10 @@ class FactorScreener:
         as_of_date: str,
         index_name: str = "NIFTY 50",
         index_type: str = "PRI"
-    ) -> float:
+    ) -> Optional[float]:
         """
         Retrieves the trailing 20-session benchmark return as of as_of_date.
-        Returns 0.0 if sufficient history is unavailable.
+        Returns None if sufficient history is unavailable (P0-03, ADR-0004).
         """
         with self.db.get_connection() as conn:
             cursor = conn.execute(
@@ -62,23 +62,23 @@ class FactorScreener:
             rows = cursor.fetchall()
 
         if len(rows) < 21:
-            return 0.0
+            return None
 
         c_today = float(rows[0]["close"])
         c_20_ago = float(rows[20]["close"])
-        return (c_today - c_20_ago) / c_20_ago if c_20_ago > 0 else 0.0
+        return (c_today - c_20_ago) / c_20_ago if c_20_ago > 0 else None
 
     @staticmethod
     def _percentile_rank_series(series: pd.Series, ascending: bool = True) -> pd.Series:
         """
-        Computes exact normalized percentile rank between 0.0 and 100.0.
-        Uses rank averaging and maps: lowest rank -> 0.0, highest rank -> 100.0.
+        Computes exact normalized percentile rank between 0.0 and 100.0 strictly over valid non-null rows.
+        Missing values remain NaN — NEVER filled with 0.0 (P0-06, ADR-0007).
         """
         valid = series.dropna()
         if len(valid) == 0:
-            return pd.Series(50.0, index=series.index)
+            return pd.Series(np.nan, index=series.index)
         if len(valid) == 1:
-            return pd.Series(100.0, index=series.index)
+            return pd.Series(100.0, index=series.index).where(series.notna(), np.nan)
 
         ranks = valid.rank(ascending=ascending, method="average")
         n = len(valid)
@@ -87,22 +87,22 @@ class FactorScreener:
         else:
             pct = pd.Series(100.0, index=valid.index)
 
-        # Impute missing values with 0.0
-        return pct.reindex(series.index).fillna(0.0)
+        # Preserve NaN for unobserved rows
+        return pct.reindex(series.index)
 
     def calculate_composite_score(
         self,
         df: pd.DataFrame,
-        weights: Optional[Dict[str, float]] = None
-    ) -> pd.Series:
+        weights: Optional[Dict[str, float]] = None,
+        return_metadata: bool = False
+    ) -> Union[pd.Series, Tuple[pd.Series, pd.Series, pd.Series]]:
         """
-        Computes composite Quality-Momentum score normalized strictly between 0.0 and 100.0:
-        - ROE % (higher is better)
-        - Low Debt-to-Equity (lower is better)
-        - 20-day Excess Return vs NIFTY 50 (higher is better)
-        - OPM % (higher is better)
+        Computes composite Quality-Momentum score normalized strictly between 0.0 and 100.0.
+        Renormalizes valid weights if data_completeness >= 60%; sets score to NaN if completeness < 60%.
         """
         if df.empty:
+            if return_metadata:
+                return pd.Series(dtype=float), pd.Series(dtype=float), pd.Series(dtype=object)
             return pd.Series(dtype=float)
 
         w = weights or self.DEFAULT_QUALITY_MOMENTUM_WEIGHTS
@@ -110,25 +110,57 @@ class FactorScreener:
         w_de = w.get("low_de", 0.25)
         w_excess = w.get("excess_ret_20d", 0.25)
         w_opm = w.get("opm", 0.20)
-        total_w = w_roe + w_de + w_excess + w_opm
-        if total_w <= 0:
-            total_w = 1.0
+        nominal_total = w_roe + w_de + w_excess + w_opm
 
-        # Percentile rank components across the universe
+        # Percentile rank components across the universe strictly over non-nulls
         score_roe = self._percentile_rank_series(df["roe_pct"], ascending=True)
-        # For Debt-to-Equity, lower is better (inverted rank)
         score_de = self._percentile_rank_series(df["debt_to_equity"], ascending=False)
         score_excess = self._percentile_rank_series(df["excess_ret_20d"], ascending=True)
         score_opm = self._percentile_rank_series(df["opm_pct"], ascending=True)
 
-        composite = (
-            w_roe * score_roe +
-            w_de * score_de +
-            w_excess * score_excess +
-            w_opm * score_opm
-        ) / total_w
+        composites = []
+        completeness_list = []
+        status_list = []
 
-        return composite.round(2)
+        for idx in df.index:
+            valid_w = 0.0
+            weighted_sum = 0.0
+
+            if pd.notna(score_roe.loc[idx]):
+                valid_w += w_roe
+                weighted_sum += w_roe * score_roe.loc[idx]
+
+            if pd.notna(score_de.loc[idx]):
+                valid_w += w_de
+                weighted_sum += w_de * score_de.loc[idx]
+
+            if pd.notna(score_excess.loc[idx]):
+                valid_w += w_excess
+                weighted_sum += w_excess * score_excess.loc[idx]
+
+            if pd.notna(score_opm.loc[idx]):
+                valid_w += w_opm
+                weighted_sum += w_opm * score_opm.loc[idx]
+
+            comp_pct = round((valid_w / nominal_total) * 100.0, 1)
+            completeness_list.append(comp_pct)
+
+            if comp_pct >= 60.0 and valid_w > 0:
+                renorm_score = round(weighted_sum / valid_w, 2)
+                composites.append(renorm_score)
+                status_list.append("FULL_SCORE" if comp_pct == 100.0 else "PARTIAL_SCORE")
+            else:
+                composites.append(np.nan)
+                status_list.append("INSUFFICIENT_DATA")
+
+        comp_series = pd.Series(composites, index=df.index)
+        if return_metadata:
+            return (
+                comp_series,
+                pd.Series(completeness_list, index=df.index),
+                pd.Series(status_list, index=df.index)
+            )
+        return comp_series
 
     def screen(
         self,
@@ -229,12 +261,22 @@ class FactorScreener:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # 2. Compute 20-day Excess Return vs Nifty 50
+        # 2. Compute 20-day Excess Return vs Nifty 50 (P0-06: No fillna(0.0) on missing returns)
         nifty_ret_20d = self.get_benchmark_20d_return(as_of_date)
-        df["excess_ret_20d"] = (df["ret_20d"].fillna(0.0) - nifty_ret_20d).round(4)
+        if nifty_ret_20d is not None:
+            df["excess_ret_20d"] = np.where(
+                df["ret_20d"].notna(),
+                (df["ret_20d"] - nifty_ret_20d).round(4),
+                np.nan
+            )
+        else:
+            df["excess_ret_20d"] = np.nan
 
-        # 3. Compute Composite Quality-Momentum Score across the universe
-        df["composite_score"] = self.calculate_composite_score(df)
+        # 3. Compute Composite Quality-Momentum Score & Completeness across the universe
+        comp_scores, completeness, statuses = self.calculate_composite_score(df, return_metadata=True)
+        df["composite_score"] = comp_scores
+        df["data_completeness_score"] = completeness
+        df["score_status"] = statuses
 
         # 4. Helper boolean column for SMA comparison
         df["price_above_sma200"] = df["sma_200"].notna() & (df["close"] > df["sma_200"])
@@ -292,7 +334,10 @@ class FactorScreener:
                 exclude_sectors = [exclude_sectors]
             for exc in exclude_sectors:
                 exc_clean = exc.strip().lower()
-                mask &= ~df["sector"].str.lower().str.contains(exc_clean, na=False)
+                if "financial" in exc_clean or "bank" in exc_clean:
+                    mask &= ~df["sector"].str.lower().str.contains(r"financial|bank", regex=True, na=False)
+                else:
+                    mask &= ~df["sector"].str.lower().str.contains(exc_clean, na=False)
 
         include_sectors = criteria.get("include_sectors")
         if include_sectors:

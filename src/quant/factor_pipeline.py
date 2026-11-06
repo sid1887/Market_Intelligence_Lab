@@ -31,6 +31,7 @@ from src.quant.fundamentals import (
     calculate_opm
 )
 from src.quant.metrics import calculate_52_week_position
+from src.fundamentals.ttm_builder import PointInTimeTTMBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -160,10 +161,20 @@ class FactorPipeline:
             aligned_dates = [dt for dt in common_benchmark_dates if dt <= d]
             if len(aligned_dates) >= 60:
                 win_dates = aligned_dates[-60:]
-                s_r_slice = [stock_ret_map[dt] for dt in win_dates]
-                b_r_slice = [b_map[dt] for dt in win_dates]
-                raw_beta = calculate_beta(s_r_slice, b_r_slice, stock_mode="PRI", benchmark_mode="PRI", min_observations=60)
-                beta_60d = round(raw_beta, 4) if raw_beta is not None else None
+                # Check benchmark staleness (P0-03, ADR-0004):
+                # If latest aligned benchmark date lags d by > 4 calendar days (~2 sessions), mark beta as None
+                latest_b_date = win_dates[-1]
+                try:
+                    cal_lag = (datetime.date.fromisoformat(d) - datetime.date.fromisoformat(latest_b_date)).days
+                except Exception:
+                    cal_lag = 0
+                if cal_lag > 4:
+                    beta_60d = None
+                else:
+                    s_r_slice = [stock_ret_map[dt] for dt in win_dates]
+                    b_r_slice = [b_map[dt] for dt in win_dates]
+                    raw_beta = calculate_beta(s_r_slice, b_r_slice, stock_mode="PRI", benchmark_mode="PRI", min_observations=60)
+                    beta_60d = round(raw_beta, 4) if raw_beta is not None else None
             else:
                 beta_60d = None
 
@@ -212,117 +223,46 @@ class FactorPipeline:
         close_price: float,
         quarterly_statements: List[Dict[str, Any]],
         annual_statements: Optional[List[Dict[str, Any]]] = None,
-        fundamental_statements: Optional[List[Dict[str, Any]]] = None
+        fundamental_statements: Optional[List[Dict[str, Any]]] = None,
+        sector: Optional[str] = None
     ) -> Dict[str, Optional[float]]:
         """
         Point-in-Time (PIT) fundamental matching strictly enforcing:
         filing_date <= trading_date (eliminating look-ahead bias).
-
-        Ratios:
-        - TTM P/E: Current Price / TTM EPS (requires 4 discrete quarters or annual statement)
-        - ROE %: (TTM Net Profit / Total Equity) * 100
-        - Debt-to-Equity: Total Debt / Total Equity (from latest balance sheet snapshot)
-        - OPM %: (TTM EBITDA / TTM Revenue) * 100
+        Zero synthetic or fabricated fallback numbers (P0-01, ADR-0006).
         """
-        # 1. Filter quarterly statements strictly by filing_date <= trading_date
-        eligible_q = [
-            q for q in quarterly_statements
-            if q.get("filing_date") and q["filing_date"] <= trading_date
-        ]
-
-        # Sort descending by period_end_date to obtain most recent quarters
-        sorted_q = sorted(
-            eligible_q,
-            key=lambda x: x.get("period_end_date", ""),
-            reverse=True
+        ratios = PointInTimeTTMBuilder.compute_ratios(
+            symbol="",
+            as_of_date=trading_date,
+            close_price=close_price,
+            quarterly_statements=quarterly_statements,
+            annual_statements=annual_statements,
+            sector=sector
         )
 
-        q_count = len(sorted_q)
+        ttm_pe = ratios["ttm_pe"].value
+        roe_pct = ratios["roe_pct"].value
+        debt_to_equity = ratios["debt_to_equity"].value
+        opm_pct = ratios["opm_pct"].value
 
-        # Standard Case: 4 discrete quarters available for complete TTM
-        if q_count >= 4:
-            ttm_q = sorted_q[:4]
-            ttm_rev = sum(float(q["revenue"]) for q in ttm_q if q.get("revenue") is not None)
-            ttm_ebitda = sum(float(q["ebitda"]) for q in ttm_q if q.get("ebitda") is not None)
-            ttm_pat = sum(float(q["net_profit"]) for q in ttm_q if q.get("net_profit") is not None)
-            ttm_eps = sum(float(q["eps"]) for q in ttm_q if q.get("eps") is not None)
-
-            latest_q = sorted_q[0]
-            latest_debt = float(latest_q["total_debt"]) if latest_q.get("total_debt") is not None else 0.0
-            latest_equity = float(latest_q["total_equity"]) if latest_q.get("total_equity") is not None else None
-
-            ttm_pe = calculate_ttm_pe_ratio(close_price, ttm_eps)
-            roe_pct = calculate_roe(ttm_pat, latest_equity, as_percentage=True)
-            debt_to_equity = calculate_debt_to_equity(latest_debt, latest_equity)
-            opm_pct = calculate_opm(ttm_ebitda, ttm_rev, as_percentage=True)
-
-            return {
-                "ttm_pe": ttm_pe,
-                "roe_pct": roe_pct,
-                "debt_to_equity": debt_to_equity,
-                "opm_pct": opm_pct
-            }
-
-        # Fallback Case 1: Check if an annual statement was filed on or before trading_date
-        eligible_annual = [
-            a for a in (annual_statements or [])
-            if a.get("filing_date") and a["filing_date"] <= trading_date
-        ]
-
-        if eligible_annual:
-            latest_a = max(eligible_annual, key=lambda x: x.get("period_end_date", ""))
-            ann_rev = float(latest_a["revenue"]) if latest_a.get("revenue") is not None else None
-            ann_ebitda = float(latest_a["ebitda"]) if latest_a.get("ebitda") is not None else None
-            ann_pat = float(latest_a["net_profit"]) if latest_a.get("net_profit") is not None else None
-            ann_eps = float(latest_a["eps"]) if latest_a.get("eps") is not None else None
-
-            ann_debt = float(latest_a["total_debt"]) if latest_a.get("total_debt") is not None else 0.0
-            ann_equity = float(latest_a["total_equity"]) if latest_a.get("total_equity") is not None else None
-
-            ttm_pe = calculate_ttm_pe_ratio(close_price, ann_eps)
-            roe_pct = calculate_roe(ann_pat, ann_equity, as_percentage=True)
-            debt_to_equity = calculate_debt_to_equity(ann_debt, ann_equity)
-            opm_pct = calculate_opm(ann_ebitda, ann_rev, as_percentage=True)
-
-            return {
-                "ttm_pe": ttm_pe,
-                "roe_pct": roe_pct,
-                "debt_to_equity": debt_to_equity,
-                "opm_pct": opm_pct
-            }
-
-        # Fallback Case 2: Check fundamental_factors_daily cache
-        if fundamental_statements:
+        # Fallback to fundamental_factors_daily only if discrete statements missing and cached row is genuinely PIT and non-synthetic
+        if roe_pct is None and fundamental_statements:
             eligible_ff = [f for f in fundamental_statements if f.get("trading_date", "") <= trading_date]
             if eligible_ff:
                 latest_ff = eligible_ff[-1]
-                return {
-                    "ttm_pe": float(latest_ff["pe_ratio"]) if latest_ff.get("pe_ratio") is not None else round(close_price / max(1.0, close_price * 0.035), 1),
-                    "roe_pct": float(latest_ff["roe_pct"]) if latest_ff.get("roe_pct") is not None else 18.5,
-                    "debt_to_equity": float(latest_ff["debt_to_equity"]) if latest_ff.get("debt_to_equity") is not None else 0.15,
-                    "opm_pct": float(latest_ff["operating_margin_ttm"]) if latest_ff.get("operating_margin_ttm") is not None else 22.0
-                }
+                # Filter out legacy synthetic markers (18.5, 0.12, 22.0)
+                ff_roe = latest_ff.get("roe_pct")
+                if ff_roe is not None and ff_roe != 18.5:
+                    roe_pct = float(ff_roe)
+                    debt_to_equity = float(latest_ff["debt_to_equity"]) if latest_ff.get("debt_to_equity") is not None else None
+                    opm_pct = float(latest_ff["operating_margin_ttm"]) if latest_ff.get("operating_margin_ttm") is not None else None
+                    ttm_pe = float(latest_ff["pe_ratio"]) if latest_ff.get("pe_ratio") is not None else None
 
-        # Partial Quarters (< 4) without prior annual statement:
-        if q_count > 0:
-            latest_q = sorted_q[0]
-            latest_debt = float(latest_q["total_debt"]) if latest_q.get("total_debt") is not None else 0.0
-            latest_equity = float(latest_q["total_equity"]) if latest_q.get("total_equity") is not None else None
-            debt_to_equity = calculate_debt_to_equity(latest_debt, latest_equity)
-
-            return {
-                "ttm_pe": round(close_price / max(1.0, close_price * 0.035), 1),
-                "roe_pct": 18.5,
-                "debt_to_equity": debt_to_equity if debt_to_equity is not None else 0.12,
-                "opm_pct": 22.0
-            }
-
-        # Baseline fallback for active universe constituents without prior filings
         return {
-            "ttm_pe": round(close_price / max(1.0, close_price * 0.035), 1),
-            "roe_pct": 18.5,
-            "debt_to_equity": 0.12,
-            "opm_pct": 22.0
+            "ttm_pe": ttm_pe,
+            "roe_pct": roe_pct,
+            "debt_to_equity": debt_to_equity,
+            "opm_pct": opm_pct
         }
 
     def compute_daily_factors_for_symbol(
@@ -383,6 +323,10 @@ class FactorPipeline:
             )
             ff_rows = [dict(r) for r in cursor_ff.fetchall()]
 
+            cursor_sec = conn.execute("SELECT sector FROM securities_master WHERE symbol = ?", (symbol,))
+            sec_row = cursor_sec.fetchone()
+            symbol_sector = sec_row["sector"] if sec_row and sec_row["sector"] else None
+
         if not ohlcv_rows:
             return []
 
@@ -407,7 +351,8 @@ class FactorPipeline:
                 close_price=c,
                 quarterly_statements=q_rows,
                 annual_statements=a_rows,
-                fundamental_statements=ff_rows
+                fundamental_statements=ff_rows,
+                sector=symbol_sector
             )
 
             factor_row = {

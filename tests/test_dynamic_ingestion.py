@@ -150,15 +150,23 @@ class TestDynamicIngestionEngine(unittest.TestCase):
 
         # 3. Newly discovered unseeded stock (e.g. CANBK) returns 202 Accepted
         with self.db.get_connection() as conn:
+            conn.execute("PRAGMA foreign_keys = OFF;")
             for table in [
                 'quant_factors_daily',
+                'fundamental_factors_daily',
+                'company_financial_statements',
+                'equity_news_feed',
                 'ohlcv_daily',
                 'financial_statements_quarterly',
                 'financial_statements_annual',
                 'corporate_disclosures',
                 'securities_master'
             ]:
-                conn.execute(f"DELETE FROM {table} WHERE symbol = 'CANBK'")
+                try:
+                    conn.execute(f"DELETE FROM {table} WHERE symbol = 'CANBK'")
+                except Exception:
+                    pass
+            conn.execute("PRAGMA foreign_keys = ON;")
 
         from src.pipeline.dynamic_ingestion import _INGESTION_STATE
         _INGESTION_STATE.pop("CANBK", None)

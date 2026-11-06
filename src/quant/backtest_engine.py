@@ -44,7 +44,9 @@ class BacktestEngine:
     def _get_trading_calendar(self, start_date: str, end_date: str) -> List[str]:
         """
         Retrieves all active trading sessions between start_date and end_date in ascending order.
+        Strictly excludes official NSE exchange holidays (P0-02, P0-07, ADR-0009).
         """
+        from src.quant.calendar import is_trading_session
         with self.db.get_connection() as conn:
             cursor = conn.execute(
                 """
@@ -55,8 +57,10 @@ class BacktestEngine:
                 """,
                 (start_date, end_date)
             )
-            dates = [row[0] for row in cursor.fetchall()]
-        return dates
+            raw_dates = [row[0] for row in cursor.fetchall()]
+
+        valid_dates = [d for d in raw_dates if is_trading_session(d)[0]]
+        return valid_dates
 
     def _build_benchmark_series(
         self,
@@ -64,14 +68,14 @@ class BacktestEngine:
         initial_capital: float
     ) -> Dict[str, float]:
         """
-        Builds a continuous NIFTY 50 TRI benchmark curve normalized to initial_capital.
-        Uses official TRI records where available, chaining backward/forward via market constituent returns.
+        Builds a continuous NIFTY 50 TRI benchmark curve normalized to initial_capital strictly
+        using official TRI records from index_daily (P0-03, ADR-0004).
+        Synthetic cross-sectional stock return chaining is prohibited.
         """
         if not trading_dates:
             return {}
 
         with self.db.get_connection() as conn:
-            # 1. Fetch official TRI records
             cur = conn.execute(
                 """
                 SELECT trading_date, close
@@ -82,62 +86,34 @@ class BacktestEngine:
             )
             official_tri = dict(cur.fetchall())
 
-            # 2. Fetch daily market average returns for chaining missing dates
-            cur_ret = conn.execute(
-                """
-                SELECT trading_date, AVG(ret_1d) as avg_ret
-                FROM quant_factors_daily
-                WHERE trading_date >= ? AND trading_date <= ?
-                GROUP BY trading_date
-                ORDER BY trading_date ASC;
-                """,
-                (trading_dates[0], trading_dates[-1])
-            )
-            market_ret = {r[0]: float(r[1]) if r[1] is not None else 0.0 for r in cur_ret.fetchall()}
-
-        # Build raw index level for all trading dates
-        raw_index: Dict[str, float] = {}
-
-        # If any official dates intersect, find anchor
         tri_dates = sorted([d for d in trading_dates if d in official_tri])
-        if tri_dates:
-            anchor_date = tri_dates[0]
-            anchor_val = float(official_tri[anchor_date])
-            raw_index[anchor_date] = anchor_val
+        if not tri_dates:
+            # Fallback to official PRI if TRI not present in date range
+            with self.db.get_connection() as conn:
+                cur_pri = conn.execute(
+                    """
+                    SELECT trading_date, close
+                    FROM index_daily
+                    WHERE index_name = 'NIFTY 50' AND index_type = 'PRI'
+                    ORDER BY trading_date ASC;
+                    """
+                )
+                official_tri = dict(cur_pri.fetchall())
+                tri_dates = sorted([d for d in trading_dates if d in official_tri])
 
-            # Fill forward
-            curr_val = anchor_val
-            for d in trading_dates:
-                if d in official_tri:
-                    curr_val = float(official_tri[d])
-                    raw_index[d] = curr_val
-                elif d > anchor_date:
-                    ret = market_ret.get(d, 0.0)
-                    curr_val = curr_val * (1.0 + ret)
-                    raw_index[d] = curr_val
+        if not tri_dates:
+            logger.warning("Official NIFTY 50 TRI/PRI records completely missing. Returning un-levered benchmark.")
+            return {d: round(initial_capital, 2) for d in trading_dates}
 
-            # Fill backward from anchor
-            anchor_idx = trading_dates.index(anchor_date)
-            curr_b_val = anchor_val
-            for i in range(anchor_idx - 1, -1, -1):
-                d = trading_dates[i]
-                next_d = trading_dates[i + 1]
-                ret = market_ret.get(next_d, 0.0)
-                curr_b_val = curr_b_val / (1.0 + ret) if (1.0 + ret) > 0 else curr_b_val
-                raw_index[d] = curr_b_val
-        else:
-            # Synthetic chaining starting at 10000.0
-            curr_val = 10000.0
-            for d in trading_dates:
-                ret = market_ret.get(d, 0.0)
-                curr_val = curr_val * (1.0 + ret)
-                raw_index[d] = curr_val
-
-        # Normalize to initial_capital
-        base_val = raw_index.get(trading_dates[0], 1.0)
+        anchor_date = tri_dates[0]
+        base_val = float(official_tri[anchor_date])
         norm_series: Dict[str, float] = {}
+        curr_norm = initial_capital
+
         for d in trading_dates:
-            norm_series[d] = round((raw_index.get(d, base_val) / base_val) * initial_capital, 2)
+            if d in official_tri and official_tri[d] is not None:
+                curr_norm = round((float(official_tri[d]) / base_val) * initial_capital, 2)
+            norm_series[d] = curr_norm
 
         return norm_series
 
@@ -221,6 +197,7 @@ class BacktestEngine:
         # 3. Portfolio State
         cash = float(initial_capital)
         holdings: Dict[str, int] = {}  # symbol -> share count
+        last_known_close: Dict[str, float] = {}  # symbol -> last valid closing price (P0-02)
         rebalance_records: List[Dict[str, Any]] = []
         equity_curve: List[Dict[str, Any]] = []
 
@@ -275,16 +252,23 @@ class BacktestEngine:
                         for sym in target_symbols:
                             target_weights[sym] = 1.0 / k
 
-                # Determine execution price point:
-                # Next session open if available, else current session close
-                exec_date = trading_dates[idx + 1] if idx + 1 < len(trading_dates) else date
+                # Determine execution price point: Next session open (P0-02, ADR-0009)
+                if idx + 1 >= len(trading_dates):
+                    continue  # Last session of backtest, rebalance order cannot execute forward
 
-                # Current portfolio valuation at execution prices
+                exec_date = trading_dates[idx + 1]
+
+                # Current portfolio valuation at next-session execution prices
                 current_stock_value = 0.0
                 current_prices: Dict[str, float] = {}
                 for sym, qty in holdings.items():
-                    price_info = price_map.get((sym, exec_date)) or price_map.get((sym, date))
-                    p = price_info["open"] if price_info else 0.0
+                    price_info = price_map.get((sym, exec_date))
+                    if price_info and price_info.get("open") is not None and float(price_info["open"]) > 0:
+                        p = float(price_info["open"])
+                    elif price_info and price_info.get("close") is not None and float(price_info["close"]) > 0:
+                        p = float(price_info["close"])
+                    else:
+                        p = last_known_close.get(sym, 0.0)
                     current_prices[sym] = p
                     current_stock_value += qty * p
 
@@ -342,10 +326,15 @@ class BacktestEngine:
                             "dp_charge": round(dp, 2)
                         })
 
-                # 4c. Execute BUYS with available cash
+                # 4c. Execute BUYS with available cash at next session open
                 for sym in target_symbols:
-                    price_info = price_map.get((sym, exec_date)) or price_map.get((sym, date))
-                    p = price_info["open"] if price_info else 0.0
+                    price_info = price_map.get((sym, exec_date))
+                    if price_info and price_info.get("open") is not None and float(price_info["open"]) > 0:
+                        p = float(price_info["open"])
+                    elif price_info and price_info.get("close") is not None and float(price_info["close"]) > 0:
+                        p = float(price_info["close"])
+                    else:
+                        p = last_known_close.get(sym, 0.0)
                     if p <= 0:
                         continue
 
@@ -422,10 +411,15 @@ class BacktestEngine:
                     "sells": sells_log
                 })
 
-            # 4d. End-of-Day Valuation
+            # 4d. End-of-Day Valuation (P0-02: Never value held stock at 0.0 on missing bar)
             daily_stock_val = 0.0
             for sym, qty in holdings.items():
-                c_price = (price_map.get((sym, date)) or {}).get("close", 0.0)
+                p_info = price_map.get((sym, date))
+                if p_info and p_info.get("close") is not None and float(p_info["close"]) > 0:
+                    c_price = float(p_info["close"])
+                    last_known_close[sym] = c_price
+                else:
+                    c_price = last_known_close.get(sym, 0.0)
                 daily_stock_val += qty * c_price
 
             portfolio_val = round(cash + daily_stock_val, 2)

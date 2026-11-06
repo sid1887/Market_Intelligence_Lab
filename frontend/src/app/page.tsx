@@ -35,6 +35,8 @@ import {
   VerdictType,
   MacroResponse,
   fetchMacroTelemetry,
+  SupervisorStatus,
+  fetchSupervisorStatus,
 } from "@/lib/api";
 import StockChart from "@/components/StockChart";
 import { FactorPentagonRadar } from "@/components/FactorPentagonRadar";
@@ -132,6 +134,7 @@ export default function CockpitPage() {
   const [asOfDate, setAsOfDate] = useState<string>("");
   const [accuracy, setAccuracy] = useState<SystemAccuracy | null>(null);
   const [macro, setMacro] = useState<MacroResponse | null>(null);
+  const [supervisor, setSupervisor] = useState<SupervisorStatus | null>(null);
   const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -190,11 +193,12 @@ export default function CockpitPage() {
     setPageLoading(true);
     setPageError(null);
     try {
-      const [scrData, wlData, accData, macroData] = await Promise.allSettled([
+      const [scrData, wlData, accData, macroData, superData] = await Promise.allSettled([
         apiFetch<ScreenerResponse>("/screener?limit=250"),
         apiFetch<WatchlistResponse>("/watchlist"),
         apiFetch<SystemAccuracy>("/system/accuracy"),
         fetchMacroTelemetry(),
+        fetchSupervisorStatus(),
       ]);
 
       if (scrData.status === "fulfilled") {
@@ -217,6 +221,13 @@ export default function CockpitPage() {
 
       if (macroData.status === "fulfilled") {
         setMacro(macroData.value);
+      }
+
+      if (superData.status === "fulfilled") {
+        setSupervisor(superData.value);
+        if (superData.value.latest_settled_session) {
+          setAsOfDate(superData.value.latest_settled_session);
+        }
       }
     } catch (err: unknown) {
       setPageError(err instanceof Error ? err.message : "FastAPI Bridge Error");
@@ -400,12 +411,14 @@ export default function CockpitPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            <span>{candidates.length || 181} NSE Active</span>
+            <span>
+              System: {supervisor?.supervisor_state || "NORMAL"} · {candidates.length || 181} Active · Settled: {supervisor?.latest_settled_session || asOfDate || "2026-11-05"}
+            </span>
           </div>
         </div>
 
@@ -434,13 +447,27 @@ export default function CockpitPage() {
           <div className="flex items-center px-3.5 py-1 rounded-full bg-[#050811] border border-slate-800 text-slate-400 font-mono text-xs">
             <span>
               Model Health:{" "}
-              <strong className="text-slate-200 font-medium">
-                {accuracy ? `${accuracy.forecast_model.containment_80_pct.toFixed(0)}%` : "96%"} 20D Containment
-              </strong>{" "}
-              ·{" "}
-              <strong className="text-slate-200 font-medium">
-                {accuracy ? `${accuracy.forecast_model.rmse_pct.toFixed(1)}%` : "3.8%"} RMSE
-              </strong>
+              {!accuracy || accuracy.forecast_model.total_evaluated < 30 ? (
+                <span className="text-amber-400 font-medium">
+                  Calibration: Pending Maturity ({accuracy?.forecast_model.total_evaluated ?? 0}/30 evaluated)
+                </span>
+              ) : (
+                <>
+                  <strong className="text-slate-200 font-medium">
+                    {accuracy.forecast_model.containment_80_pct != null
+                      ? `${accuracy.forecast_model.containment_80_pct.toFixed(0)}%`
+                      : "—"}{" "}
+                    20D Containment
+                  </strong>{" "}
+                  ·{" "}
+                  <strong className="text-slate-200 font-medium">
+                    {accuracy.forecast_model.rmse_pct != null
+                      ? `${accuracy.forecast_model.rmse_pct.toFixed(1)}%`
+                      : "—"}{" "}
+                    RMSE
+                  </strong>
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -678,6 +705,14 @@ export default function CockpitPage() {
                                 WL
                               </span>
                             ) : null}
+                            {item.data_completeness_score !== undefined && item.data_completeness_score !== null && item.data_completeness_score < 1.0 ? (
+                              <span
+                                title="Partial fundamental statements ingested"
+                                className="text-[8px] font-mono text-amber-400/80 border border-amber-500/30 px-1 py-0.2 rounded bg-amber-950/40 shrink-0"
+                              >
+                                Partial
+                              </span>
+                            ) : null}
                           </div>
                           <span className="text-[11px] text-slate-400 font-sans truncate block leading-tight">
                             {item.company_name}
@@ -690,17 +725,26 @@ export default function CockpitPage() {
                         </span>
 
                         {/* ROE % */}
-                        <span className="text-[11px] font-mono text-right text-slate-200">
+                        <span
+                          title={item.roe_pct == null ? "Statement not yet ingested" : undefined}
+                          className="text-[11px] font-mono text-right text-slate-200"
+                        >
                           {item.roe_pct != null ? `${item.roe_pct.toFixed(1)}%` : "—"}
                         </span>
 
                         {/* D/E */}
-                        <span className="text-[11px] font-mono text-right text-slate-400">
+                        <span
+                          title={item.debt_to_equity == null ? "Statement not yet ingested" : undefined}
+                          className="text-[11px] font-mono text-right text-slate-400"
+                        >
                           {item.debt_to_equity != null ? item.debt_to_equity.toFixed(2) : "—"}
                         </span>
 
                         {/* OPM % */}
-                        <span className="text-[11px] font-mono text-right text-slate-200">
+                        <span
+                          title={item.opm_pct == null ? "Statement not yet ingested" : undefined}
+                          className="text-[11px] font-mono text-right text-slate-200"
+                        >
                           {item.opm_pct != null ? `${item.opm_pct.toFixed(1)}%` : "—"}
                         </span>
 
@@ -728,7 +772,7 @@ export default function CockpitPage() {
           <div className="shrink-0 border-t border-white/[0.05] px-3.5 py-1.5 flex items-center justify-between text-[10px] font-mono text-slate-500 bg-[#030508]">
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              <span>Settled Session: {asOfDate || "2026-10-28"}</span>
+              <span>Settled Session: {supervisor?.latest_settled_session || asOfDate || "2026-11-05"}</span>
             </div>
             <div className="flex items-center gap-3">
               <span>↑↓ Arrow Keys to scrub</span>
@@ -788,8 +832,11 @@ export default function CockpitPage() {
                         {activeCandidate.sector || "General"}
                       </span>
 
-                      {/* Live Close Price */}
-                      <span className="text-xl font-mono font-black text-white tabular-nums tracking-tight">
+                      {/* Latest EOD Close Price */}
+                      <span
+                        title="Latest settled EOD close price"
+                        className="text-xl font-mono font-black text-white tabular-nums tracking-tight"
+                      >
                         ₹{currentPrice.toFixed(2)}
                       </span>
 

@@ -20,6 +20,7 @@ import requests
 
 from src.storage.database import DatabaseManager
 from src.explanation.news_impact_engine import NewsImpactEngine
+from src.config import is_network_allowed
 
 
 class NewsClient:
@@ -126,8 +127,8 @@ class NewsClient:
             if not title or not link:
                 continue
 
-            # Parse RFC 2822 date to ISO-8601 UTC
-            published_at = datetime.now(timezone.utc).isoformat()
+            # Parse RFC 2822 date to ISO-8601 UTC (P0-10: Unknown published_at remains None)
+            published_at = None
             if pub_date_str:
                 try:
                     dt = email.utils.parsedate_to_datetime(pub_date_str)
@@ -137,7 +138,7 @@ class NewsClient:
                         dt = dt.astimezone(timezone.utc)
                     published_at = dt.isoformat()
                 except Exception:
-                    published_at = datetime.now(timezone.utc).isoformat()
+                    published_at = None
 
             parsed_articles.append({
                 "symbol": symbol_upper,
@@ -188,16 +189,17 @@ class NewsClient:
                 except Exception:
                     pass
 
-        # 2. Fetch external RSS feed
-        url = self.build_rss_url(symbol_upper, days=days)
+        # 2. Fetch external RSS feed (P0-10: Guarded by network governance)
         raw_items: List[Dict[str, Any]] = []
-        try:
-            resp = self.session.get(url, timeout=10)
-            if resp.status_code == 200:
-                raw_items = self.parse_rss_payload(resp.content, symbol_upper)
-        except Exception as e:
-            # Graceful network error fallback
-            pass
+        if is_network_allowed():
+            url = self.build_rss_url(symbol_upper, days=days)
+            try:
+                resp = self.session.get(url, timeout=10)
+                if resp.status_code == 200:
+                    raw_items = self.parse_rss_payload(resp.content, symbol_upper)
+            except Exception as e:
+                # Graceful network error fallback
+                pass
 
         # 3. Process, deduplicate, and persist new items
         new_records = []

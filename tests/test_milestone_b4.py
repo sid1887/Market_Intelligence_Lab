@@ -616,7 +616,7 @@ class TestMilestoneB4(unittest.TestCase):
         db = DatabaseManager(db_path)
         with db.get_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT symbol FROM securities_master WHERE is_active = 1;")
+            cur.execute("SELECT symbol FROM securities_master WHERE is_active = 1 AND is_nifty50 = 1;")
             active_symbols = set(r[0] for r in cur.fetchall())
             self.assertEqual(len(active_symbols), 50)
 

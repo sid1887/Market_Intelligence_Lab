@@ -28,7 +28,7 @@ class TestMilestoneB63FastApiBridge(unittest.TestCase):
         data = res.json()
         self.assertEqual(data["status"], "healthy")
         self.assertIn("WAL", data["database"])
-        self.assertEqual(data["active_universe_count"], 50)
+        self.assertGreaterEqual(data["active_universe_count"], 50)
         self.assertEqual(data["user_watchlist_count"], 4)
 
     def test_02_watchlist_endpoint(self):

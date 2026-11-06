@@ -139,6 +139,43 @@ def count_trading_sessions_between(start_date: str, end_date: str) -> int:
         curr_d += datetime.timedelta(days=1)
     return count
 
+def get_valid_sessions(start_date: str, end_date: str) -> List[str]:
+    """Returns all official NSE trading sessions from start_date to end_date (inclusive)."""
+    try:
+        start_d = parse_date(start_date)
+        end_d = parse_date(end_date)
+    except Exception:
+        return []
+
+    if start_d > end_d:
+        return []
+
+    curr_d = start_d
+    sessions: List[str] = []
+    while curr_d <= end_d:
+        d_str = curr_d.strftime("%Y-%m-%d")
+        is_tr, _ = is_trading_session(d_str)
+        if is_tr:
+            sessions.append(d_str)
+        curr_d += datetime.timedelta(days=1)
+    return sessions
+
+def add_trading_sessions(start_date: str, n_sessions: int) -> str:
+    """Adds exactly n_sessions official NSE trading sessions forward from start_date."""
+    try:
+        curr_d = parse_date(start_date)
+    except Exception:
+        return start_date
+
+    count = 0
+    while count < n_sessions:
+        curr_d += datetime.timedelta(days=1)
+        d_str = curr_d.strftime("%Y-%m-%d")
+        is_tr, _ = is_trading_session(d_str)
+        if is_tr:
+            count += 1
+    return curr_d.strftime("%Y-%m-%d")
+
 def validate_trading_calendar(observed_dates: List[str]) -> Dict[str, Any]:
     """
     Validates observed trading dates against calendar weekdays (Mon-Fri) and special sessions.

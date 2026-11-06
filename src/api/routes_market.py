@@ -429,28 +429,7 @@ def get_stock_forecast(
         forecaster = EconometricForecaster(DatabaseManager(DATABASE_PATH))
         forecast = forecaster.generate_forecast(sym, horizon_days=horizon_days)
 
-        # Compounding ML feedback hook: record forecast prediction to audit ledger
-        try:
-            projections = forecast.get("projections", [])
-            if projections:
-                from src.quant.feedback_evaluator import FeedbackEvaluator
-                evaluator = FeedbackEvaluator(DatabaseManager(DATABASE_PATH))
-                last_p = projections[-1]
-                evaluator.record_forecast(
-                    symbol=sym,
-                    prediction_date=forecast.get("as_of_date", datetime.date.today().isoformat()),
-                    horizon_days=horizon_days,
-                    target_evaluation_date=last_p["target_date"],
-                    current_price=forecast["current_close"],
-                    expected_price=last_p["expected"],
-                    lower_80=last_p["lower_80"],
-                    upper_80=last_p["upper_80"],
-                    lower_95=last_p["lower_95"],
-                    upper_95=last_p["upper_95"]
-                )
-        except Exception as log_err:
-            logger.warning(f"Could not record forecast audit for {sym}: {log_err}")
-
+        # GET request is strictly read-only (CQRS). No audit ledger mutations on read.
         return sanitize_for_json(forecast)
     except Exception as e:
         logger.error(f"Econometric forecast error for {sym}: {e}", exc_info=True)
@@ -567,7 +546,7 @@ def run_backtest_endpoint(request: BacktestRequest):
 def get_latest_backtest():
     """
     Returns the most recent backtest run and equity curve from the ledger.
-    If none exists, executes a default simulation.
+    Strictly read-only: does not trigger on-the-fly execution.
     """
     try:
         db = DatabaseManager(DATABASE_PATH)
@@ -575,10 +554,11 @@ def get_latest_backtest():
         if latest:
             return sanitize_for_json(latest)
 
-        from src.quant.backtest_engine import BacktestEngine
-        engine = BacktestEngine(db)
-        result = engine.run_backtest(save_to_db=True)
-        return sanitize_for_json(result)
+        return sanitize_for_json({
+            "status": "NOT_RUN",
+            "run": None,
+            "message": "No backtest runs found. Execute backtest pipeline via POST /api/v1/backtest/run."
+        })
     except Exception as e:
         logger.error(f"Latest backtest retrieval error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve latest backtest: {str(e)}")

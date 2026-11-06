@@ -189,7 +189,7 @@ class TestMilestoneB9Compounding(unittest.TestCase):
         acc_json = r_acc.json()
         self.assertIn("forecast_model", acc_json)
         self.assertIn("catalyst_model", acc_json)
-        self.assertIn(acc_json["forecast_model"]["status"], ["CALIBRATED", "DRIFT_DETECTED"])
+        self.assertIn(acc_json["forecast_model"]["status"], ["CALIBRATED", "DRIFT_DETECTED", "PENDING_MATURITY"])
 
 
 if __name__ == "__main__":

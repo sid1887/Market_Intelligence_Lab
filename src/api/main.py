@@ -49,26 +49,48 @@ from src.api.routes_market import (
     run_dynamic_ingestion
 )
 
+from contextlib import asynccontextmanager
+import asyncio
+from src.tasks.daemon import platform_daemon, run_autonomous_platform_daemon
+
 logger = logging.getLogger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start autonomous platform daemon
+    daemon_task = asyncio.create_task(run_autonomous_platform_daemon())
+    try:
+        yield
+    finally:
+        platform_daemon.stop()
+        daemon_task.cancel()
+        try:
+            await daemon_task
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(
     title="Market Intelligence Lab API",
-    version="1.1.0",
-    description="Local-first quantitative analytics & market terminal REST API."
+    version="2.4.0",
+    description="Local-first quantitative analytics & autonomous market terminal REST API.",
+    lifespan=lifespan
 )
 
-# CORS Configuration
-# Allow local Next.js frontend, all Vercel deployment preview/production URLs, and any remote origin
+# CORS Configuration (ADR-0001: Explicit trusted local origins)
+cors_origins_env = os.getenv("MIL_CORS_ORIGINS", "")
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://market-intelligence-lab-vert.vercel.app",
+]
+if cors_origins_env:
+    allowed_origins.extend([o.strip() for o in cors_origins_env.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://market-intelligence-lab-vert.vercel.app",
-    ],
-    allow_origin_regex=r".*",
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
@@ -104,6 +126,14 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
         raise HTTPException(status_code=500, detail=f"Database health check failed: {str(e)}")
 
 
+@app.get("/supervisor/status")
+@app.get("/api/v1/supervisor/status")
+def get_supervisor_status():
+    """Returns real-time status of the autonomous supervisor, EOD daemon, and universe health."""
+    return platform_daemon.get_status()
+
+
+@app.get("/screener")
 @app.get("/api/v1/screener")
 def get_screener(
     min_roe: Optional[float] = Query(None, description="Minimum Return on Equity (%)"),
@@ -283,47 +313,11 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
 @app.get("/api/v1/macro")
 def get_macro_telemetry():
     """
-    Returns live institutional macro indicators sourced from AlphaVantage
-    for the top telemetry ribbon: USD/INR, Brent Crude, US 10Y Yield, and India 10Y Yield.
+    Returns verified macro telemetry with real observed timestamps (P0-05, ADR-0002).
     """
-    return sanitize_for_json({
-        "status": "live",
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "indicators": [
-            {
-                "symbol": "USD/INR",
-                "label": "USD / INR",
-                "value": 94.63,
-                "unit": "₹",
-                "change_pct": 0.05,
-                "source": "alphavantage_fx"
-            },
-            {
-                "symbol": "BRENT",
-                "label": "Brent Crude",
-                "value": 123.10,
-                "unit": "$/bbl",
-                "change_pct": -0.42,
-                "source": "alphavantage_commodities"
-            },
-            {
-                "symbol": "US10Y",
-                "label": "US 10Y Yield",
-                "value": 4.91,
-                "unit": "%",
-                "change_pct": -0.03,
-                "source": "alphavantage_treasury"
-            },
-            {
-                "symbol": "IN10Y",
-                "label": "India 10Y G-Sec",
-                "value": 6.82,
-                "unit": "%",
-                "change_pct": 0.01,
-                "source": "ccil_settlement"
-            }
-        ]
-    })
+    from src.client.macro_client import MacroClient
+    data = MacroClient.get_macro_telemetry()
+    return sanitize_for_json(data)
 
 
 class CopilotStreamRequest(BaseModel):

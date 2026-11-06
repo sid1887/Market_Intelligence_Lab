@@ -87,7 +87,12 @@ class FeedbackEvaluator:
         # 1. Evaluate Pending Forecasts
         # -------------------------------------------------------------
         pending_fc = self.db.get_pending_forecast_audits(current_date)
+        # Get global latest settled session in ohlcv_daily (P0-04, ADR-0008)
         with self.db.get_connection() as conn:
+            cur_max = conn.execute("SELECT MAX(trading_date) FROM ohlcv_daily WHERE series = 'EQ';")
+            max_row = cur_max.fetchone()
+            latest_settled_date = max_row[0] if max_row and max_row[0] else ""
+
             for fc in pending_fc:
                 audit_id = fc["id"]
                 sym = fc["symbol"]
@@ -98,7 +103,11 @@ class FeedbackEvaluator:
                 l95 = float(fc["lower_95"])
                 u95 = float(fc["upper_95"])
 
-                # Find realized close on or immediately following target_date
+                # P0-04: Strict maturity guard — never evaluate before market session reaches target_date
+                if not latest_settled_date or latest_settled_date < target_date:
+                    continue
+
+                # Find realized close on target_date or immediate next valid session (within 4 calendar days)
                 cur = conn.execute(
                     """
                     SELECT close, trading_date FROM ohlcv_daily
@@ -108,33 +117,26 @@ class FeedbackEvaluator:
                     (sym, target_date)
                 )
                 bar = cur.fetchone()
-                if not bar:
-                    # Check if symbol has any bar on target date
-                    cur = conn.execute(
-                        """
-                        SELECT close, trading_date FROM ohlcv_daily
-                        WHERE symbol = ? AND series = 'EQ' AND trading_date <= ?
-                        ORDER BY trading_date DESC LIMIT 1;
-                        """,
-                        (sym, target_date)
-                    )
-                    bar = cur.fetchone()
 
+                # Strictly prohibit backward fallback (no trading_date <= target_date lookup!)
                 if bar and bar["close"] is not None:
-                    realized = float(bar["close"])
-                    w80 = 1 if (l80 <= realized <= u80) else 0
-                    w95 = 1 if (l95 <= realized <= u95) else 0
-                    err_pct = round(((realized - exp_price) / exp_price) * 100.0, 4) if exp_price > 0 else 0.0
+                    bar_date = bar["trading_date"]
+                    lag_days = (datetime.date.fromisoformat(bar_date) - datetime.date.fromisoformat(target_date)).days
+                    if lag_days <= 4:
+                        realized = float(bar["close"])
+                        w80 = 1 if (l80 <= realized <= u80) else 0
+                        w95 = 1 if (l95 <= realized <= u95) else 0
+                        err_pct = round(((realized - exp_price) / exp_price) * 100.0, 4) if exp_price > 0 else 0.0
 
-                    self.db.update_forecast_audit(
-                        audit_id=audit_id,
-                        realized_price=realized,
-                        within_80=w80,
-                        within_95=w95,
-                        error_pct=err_pct,
-                        evaluated_at=now_ts
-                    )
-                    evaluated_forecasts += 1
+                        self.db.update_forecast_audit(
+                            audit_id=audit_id,
+                            realized_price=realized,
+                            within_80=w80,
+                            within_95=w95,
+                            error_pct=err_pct,
+                            evaluated_at=now_ts
+                        )
+                        evaluated_forecasts += 1
 
         # -------------------------------------------------------------
         # 2. Evaluate Pending Catalysts (5 trading days after publish)
@@ -204,8 +206,8 @@ class FeedbackEvaluator:
         fc_metrics = metrics.get("forecast_model", {})
         cat_metrics = metrics.get("catalyst_model", {})
 
-        contain_80 = fc_metrics.get("containment_80_pct", 80.0)
-        news_acc = cat_metrics.get("directional_accuracy_pct", 65.0)
+        contain_80 = fc_metrics.get("containment_80_pct")
+        news_acc = cat_metrics.get("directional_accuracy_pct")
 
         # Baseline weights
         # Fundamentals: 35%, Technicals: 30%, Forecast Cones: 20%, News Sentiment: 15%
@@ -214,23 +216,25 @@ class FeedbackEvaluator:
         w_fc = 0.20
         w_news = 0.15
 
-        # Dynamic weight tuning
-        if contain_80 >= 85.0:
-            w_fc += 0.05
-            w_fund -= 0.02
-            w_tech -= 0.03
-        elif contain_80 < 75.0:
-            # Model drift detected: reduce forecast weight, rely more on balance sheet & structural trend
-            w_fc -= 0.08
-            w_fund += 0.05
-            w_tech += 0.03
+        # Dynamic weight tuning only when empirical accuracy is observed
+        if contain_80 is not None:
+            if contain_80 >= 85.0:
+                w_fc += 0.05
+                w_fund -= 0.02
+                w_tech -= 0.03
+            elif contain_80 < 75.0:
+                # Model drift detected: reduce forecast weight, rely more on balance sheet & structural trend
+                w_fc -= 0.08
+                w_fund += 0.05
+                w_tech += 0.03
 
-        if news_acc >= 70.0:
-            w_news += 0.03
-            w_tech -= 0.03
-        elif news_acc < 55.0:
-            w_news -= 0.05
-            w_fund += 0.05
+        if news_acc is not None:
+            if news_acc >= 70.0:
+                w_news += 0.03
+                w_tech -= 0.03
+            elif news_acc < 55.0:
+                w_news -= 0.05
+                w_fund += 0.05
 
         # Normalize weights to sum exactly to 1.0
         tot_w = w_fund + w_tech + w_fc + w_news

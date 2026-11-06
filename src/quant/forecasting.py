@@ -35,18 +35,20 @@ class EconometricForecaster:
     @staticmethod
     def get_forward_trading_dates(start_date_str: str, num_days: int) -> List[str]:
         """
-        Generates forward trading session dates starting after start_date_str,
-        skipping weekends (Saturdays and Sundays).
+        Generates forward trading session dates starting strictly after start_date_str,
+        skipping weekends and official NSE holidays (P0-07, ADR-0008).
         """
+        from src.quant.calendar import is_trading_session
         start_date = datetime.date.fromisoformat(start_date_str)
         trading_dates = []
         curr = start_date
 
         while len(trading_dates) < num_days:
             curr += datetime.timedelta(days=1)
-            # Skip weekends (5=Sat, 6=Sun)
-            if curr.weekday() < 5:
-                trading_dates.append(curr.isoformat())
+            d_str = curr.isoformat()
+            is_tr, _ = is_trading_session(d_str)
+            if is_tr:
+                trading_dates.append(d_str)
 
         return trading_dates
 
@@ -234,14 +236,12 @@ class EconometricForecaster:
             )
             expected_price = math.exp(expected_log_p)
 
-            # Probabilistic Fan Cones (80% CI: z=1.282, 95% CI: z=1.960)
-            spread_80 = 1.282 * expected_price * cum_std
-            spread_95 = 1.960 * expected_price * cum_std
-
-            upper_80 = round(expected_price + spread_80, 2)
-            lower_80 = round(max(0.01, expected_price - spread_80), 2)
-            upper_95 = round(expected_price + spread_95, 2)
-            lower_95 = round(max(0.01, expected_price - spread_95), 2)
+            # Exact Log-Normal Probabilistic Fan Cones (ADR-0008, Section 13)
+            # z_80 = 1.28155, z_95 = 1.95996
+            upper_80 = round(math.exp(expected_log_p + 1.28155 * cum_std), 2)
+            lower_80 = round(math.exp(expected_log_p - 1.28155 * cum_std), 2)
+            upper_95 = round(math.exp(expected_log_p + 1.95996 * cum_std), 2)
+            lower_95 = round(math.exp(expected_log_p - 1.95996 * cum_std), 2)
             exp_rounded = round(expected_price, 2)
 
             # Invariant check: upper_95 >= upper_80 >= expected >= lower_80 >= lower_95 > 0
