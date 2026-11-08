@@ -131,6 +131,62 @@ def test_zero_candles_ingestion_fails_closed(tmp_path):
         assert res["records_ingested"] == 0
 
 
+def test_partial_ingestion_under_85_pct_fails_closed(tmp_path):
+    """Partial ingestion returning < 85% of active universe must fail closed with INSUFFICIENT_COVERAGE."""
+    db_file = str(tmp_path / "test_partial_coverage.db")
+    db = DatabaseManager(db_file)
+    with db.get_connection() as conn:
+        for i in range(20):
+            conn.execute(f"""
+                INSERT OR REPLACE INTO securities_master (symbol, company_name, isin, industry, sector, macro_sector, updated_at, is_active)
+                VALUES ('SYM{i}', 'Test Company {i}', 'INE000000{i}', 'IT', 'Tech', 'IT', '2026-11-06T00:00:00Z', 1);
+            """)
+        conn.commit()
+
+    mgr = universe_ingestion_module.UniverseIngestionManager(db_file)
+
+    # Mock _fetch_symbol_candles to only return candles for 5 symbols (out of 20 = 25% < 85%)
+    def mock_fetch(symbol):
+        if symbol in ["SYM0", "SYM1", "SYM2", "SYM3", "SYM4"]:
+            return symbol, [{
+                "symbol": symbol, "trading_date": "2026-11-06", "series": "EQ",
+                "open": 100.0, "high": 105.0, "low": 95.0, "close": 102.0, "ltp": 102.0,
+                "prev_close": 100.0, "volume": 10000, "source": "test",
+                "retrieval_timestamp": "2026-11-06T18:00:00Z", "data_status": "final_settled",
+                "provenance_class": "EXCHANGE_OFFICIAL", "is_synthetic": 0,
+                "is_eligible_for_live_analytics": 1, "is_eligible_for_backtest": 1, "is_eligible_for_training": 1
+            }]
+        return symbol, []
+
+    with patch.object(mgr, "_fetch_symbol_candles", side_effect=mock_fetch):
+        res = mgr.execute_universe_ingestion(target_date="2026-11-06")
+        assert res["status"] == "FAILED"
+        assert res["error_code"] == "INSUFFICIENT_COVERAGE"
+        assert res["reason"] == "PARTIAL_UNIVERSE_COVERAGE"
+        assert res["records_ingested"] == 5
+        assert res["settled_date"] is None
+
+
+@pytest.mark.asyncio
+async def test_empty_ingestion_returns_failed_and_does_not_advance_daemon(daemon_test_db):
+    """Zero-candle fetch must return status: 'FAILED', records_ingested: 0, and daemon must not advance last_eod_date."""
+    daemon = AutonomousPlatformDaemon(db_path=daemon_test_db)
+    daemon.last_eod_date = None
+
+    ist_time = datetime(2026, 11, 6, 17, 0, 0)
+    with patch.object(daemon, "_get_ist_now", return_value=ist_time), \
+         patch("src.tasks.daemon.is_trading_session", return_value=True), \
+         patch("src.pipeline.universe_ingestion.UniverseIngestionManager.execute_universe_ingestion", return_value={
+             "status": "FAILED",
+             "error_code": "NO_NEW_BARS",
+             "records_ingested": 0,
+             "reason": "NO_NEW_BARS"
+         }):
+        settled = await daemon.check_and_run_eod_settlement()
+        assert settled is False
+        assert daemon.last_eod_date is None
+
+
 def test_macro_telemetry_truthfulness_on_provider_failure():
     """When external providers fail, values must be None and status must NOT masquerade as live_observed."""
     with patch.object(macro_client_module, "yf", None):

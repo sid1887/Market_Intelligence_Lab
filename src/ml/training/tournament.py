@@ -12,7 +12,7 @@ import pickle
 import math
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Callable
 import pandas as pd
 import numpy as np
 from scipy.stats import spearmanr
@@ -21,6 +21,7 @@ from sklearn.linear_model import Ridge
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
 
 from src.storage.database import DatabaseManager
 from src.ml.features.builder import PITFeatureExtractor, FEATURE_COLUMNS
@@ -54,14 +55,15 @@ class ModelTournament:
         self,
         start_date: str,
         end_date: str,
-        symbols: Optional[List[str]] = None
+        symbols: Optional[List[str]] = None,
+        horizon_sessions: Optional[int] = None
     ) -> pd.DataFrame:
         """Extracts aligned feature-label dataset with matured labels only."""
         feats = self.feature_extractor.extract_panel(start_date, end_date, symbols)
         if feats.empty:
             return pd.DataFrame()
 
-        labels = self.label_builder.build_labels(symbols, as_of_cutoff=end_date)
+        labels = self.label_builder.build_labels(symbols, as_of_cutoff=end_date, horizon_sessions=horizon_sessions)
         if labels.empty:
             return pd.DataFrame()
 
@@ -374,3 +376,403 @@ class ModelTournament:
             "n_folds": len(folds),
             "leaderboard": leaderboard
         }
+
+
+def load_clean_training_panel(
+    db_manager: DatabaseManager,
+    start_date: str = "2024-10-21",
+    end_date: str = "2026-10-28",
+    horizon_days: int = 20
+) -> pd.DataFrame:
+    """
+    Loads authentic point-in-time factor features aligned with forward relative return labels.
+    Strict Invariants enforced:
+    - series = 'EQ'
+    - is_orphaned = 0
+    - is_synthetic = 0
+    - is_eligible_for_training = 1
+    """
+    tourney = ModelTournament(db_manager)
+    df = tourney.prepare_dataset(start_date=start_date, end_date=end_date, horizon_sessions=horizon_days)
+    if df.empty:
+        return df
+
+    # Prefix factor columns to match tournament convention
+    for c in FEATURE_COLUMNS:
+        if c in df.columns:
+            df[f"factor_{c}"] = df[c]
+
+    # Canonical target column
+    target_col = f"forward_relative_return_{horizon_days}d"
+    if "label_excess_ret_net" in df.columns:
+        df[target_col] = df["label_excess_ret_net"]
+        if target_col != "forward_relative_return_20d" and "forward_relative_return_20d" not in df.columns:
+            df["forward_relative_return_20d"] = df["label_excess_ret_net"]
+
+    return df
+
+
+def generate_walk_forward_folds(
+    df: pd.DataFrame,
+    n_folds: int = 5,
+    horizon_days: int = 20,
+    embargo_days: int = 5
+) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """
+    Constructs expanding-window walk-forward folds with strict purge of overlapping
+    forward return periods and embargo buffers.
+    Returns list of (train_idx, val_idx) numpy integer row indices for df.iloc[...].
+    """
+    if "trading_date" not in df.columns or len(df) == 0:
+        return []
+
+    dates = sorted(df["trading_date"].unique())
+    if len(dates) < 30:
+        return []
+
+    min_train_dates = int(len(dates) * 0.4)
+    eval_dates = dates[min_train_dates:]
+    fold_size = max(10, len(eval_dates) // n_folds)
+
+    folds: List[Tuple[np.ndarray, np.ndarray]] = []
+    for fold_idx in range(n_folds):
+        start_i = fold_idx * fold_size
+        end_i = (fold_idx + 1) * fold_size if fold_idx < n_folds - 1 else len(eval_dates)
+        fold_test_dates = eval_dates[start_i:end_i]
+        if not fold_test_dates:
+            continue
+
+        test_start = fold_test_dates[0]
+        test_start_idx = dates.index(test_start)
+        train_cutoff_idx = max(0, test_start_idx - embargo_days)
+        train_cutoff = dates[train_cutoff_idx]
+
+        if "target_date" in df.columns:
+            train_mask = (df["trading_date"] <= train_cutoff) & (df["target_date"] < test_start)
+        else:
+            purge_cutoff_idx = max(0, test_start_idx - horizon_days - embargo_days)
+            train_mask = df["trading_date"] <= dates[purge_cutoff_idx]
+
+        test_mask = df["trading_date"].isin(fold_test_dates)
+
+        train_indices = np.where(train_mask.values)[0]
+        val_indices = np.where(test_mask.values)[0]
+
+        if len(train_indices) >= 50 and len(val_indices) >= 10:
+            folds.append((train_indices, val_indices))
+
+    return folds
+
+
+def run_purged_walk_forward_tournament(
+    db_manager: DatabaseManager,
+    registry_manager: Optional[ModelRegistryManager] = None,
+    progress_callback: Optional[Callable[[int, int, Dict[str, Any]], None]] = None
+) -> Optional[str]:
+    """
+    Executes a 5-fold purged walk-forward cross-validation tournament.
+    Enforces out-of-sample IC > 0.02 and Sharpe > 0 hurdles before promoting to CHAMPION.
+    """
+    logger.info("Executing Stage 4 Model Tournament with Purged Walk-Forward CV...")
+
+    # 1. Fetch training data (Strict Invariants: is_orphaned = 0, is_synthetic = 0, series = 'EQ')
+    df = load_clean_training_panel(db_manager)
+    if len(df) < 5000:
+        logger.error(f"Insufficient training observations: {len(df)} rows.")
+        return None
+
+    features = [c for c in df.columns if c.startswith("factor_")]
+    target_col = "forward_relative_return_20d"
+    if not features or target_col not in df.columns:
+        logger.error("Required features or target column missing from clean panel.")
+        return None
+
+    # 2. Build 5 Expanding Window Folds with 20-Day Target Purge & Embargo
+    folds = generate_walk_forward_folds(df, n_folds=5, horizon_days=20, embargo_days=5)
+    if not folds:
+        logger.error("Failed to construct walk-forward cross validation folds.")
+        return None
+
+    # Feature selection: Select roe_pct and debt_to_equity
+    idx1 = features.index("factor_roe_pct") if "factor_roe_pct" in features else FEATURE_COLUMNS.index("roe_pct")
+    idx2 = features.index("factor_debt_to_equity") if "factor_debt_to_equity" in features else FEATURE_COLUMNS.index("debt_to_equity")
+    selector = ColumnTransformer(
+        transformers=[("select", "passthrough", [idx1, idx2])],
+        remainder="drop"
+    )
+
+    candidate_pipeline = Pipeline([
+        ("selector", selector),
+        ("imputer", SimpleImputer(strategy="median")),
+        ("regressor", HistGradientBoostingRegressor(
+            max_iter=80,
+            learning_rate=0.03,
+            max_depth=3,
+            min_samples_leaf=100,
+            l2_regularization=10.0,
+            random_state=42
+        ))
+    ])
+
+    fold_ics = []
+    fold_sharpes = []
+
+    for fold_idx, (train_idx, val_idx) in enumerate(folds):
+        X_train, y_train = df.iloc[train_idx][features], df.iloc[train_idx][target_col]
+        X_val, y_val = df.iloc[val_idx][features], df.iloc[val_idx][target_col]
+
+        # Fit pipeline hermetically on training fold only
+        candidate_pipeline.fit(X_train, y_train)
+
+        # Predict on out-of-sample validation fold
+        val_preds = candidate_pipeline.predict(X_val)
+
+        # Calculate cross-sectional Spearman Rank IC and top quintile Sharpe
+        val_df = df.iloc[val_idx].copy()
+        val_df["pred"] = val_preds
+
+        daily_ics = []
+        top_returns = []
+        for date, group in val_df.groupby("trading_date"):
+            if len(group) >= 10 and group["pred"].std() > 1e-8:
+                ic, _ = spearmanr(group["pred"], group[target_col])
+                if not np.isnan(ic):
+                    daily_ics.append(ic)
+                q80 = group["pred"].quantile(0.8)
+                top = group[group["pred"] >= q80]
+                if len(top) > 0:
+                    top_returns.append(float(top[target_col].mean()))
+
+        mean_fold_ic = float(np.mean(daily_ics)) if daily_ics else 0.0
+        fold_ics.append(mean_fold_ic)
+        fold_sh = (np.mean(top_returns) / np.std(top_returns)) * np.sqrt(252 / 20) if len(top_returns) > 1 and np.std(top_returns) > 1e-8 else 0.0
+        fold_sharpes.append(float(fold_sh))
+        logger.info(f"Fold {fold_idx + 1}/5 Out-of-Sample IC: {mean_fold_ic:.4f}, Sharpe: {fold_sh:.4f}")
+
+        if progress_callback:
+            try:
+                progress_callback(fold_idx + 1, len(folds), {
+                    "fold": fold_idx + 1,
+                    "validation_ic": round(mean_fold_ic, 4),
+                    "validation_sharpe": round(fold_sh, 4)
+                })
+            except Exception as cb_err:
+                logger.warning(f"Progress callback error in fold {fold_idx + 1}: {cb_err}")
+
+    aggregate_ic = float(np.mean(fold_ics))
+    aggregate_sharpe = float(np.mean(fold_sharpes))
+    logger.info(f"Aggregate Walk-Forward Out-of-Sample IC: {aggregate_ic:.4f}, Sharpe: {aggregate_sharpe:.4f}")
+
+    # 3. Governance Gate Evaluation
+    if aggregate_ic <= 0.02 or aggregate_sharpe <= 0.0:
+        logger.warning(
+            f"Candidate rejected: Aggregate IC ({aggregate_ic:.4f}) or Sharpe ({aggregate_sharpe:.4f}) "
+            f"did not clear hurdle (IC > 0.02, Sharpe > 0.0)."
+        )
+        return None
+
+    # Fit final champion model on full history up to evaluation cutoff
+    final_pipeline = candidate_pipeline.fit(df[features], df[target_col])
+
+    metrics = {
+        "walk_forward_folds": len(folds),
+        "validation_ic": round(aggregate_ic, 4),
+        "validation_sharpe": round(aggregate_sharpe, 4),
+        "aggregate_val_ic": round(aggregate_ic, 4),
+        "aggregate_val_sharpe": round(aggregate_sharpe, 4),
+        "fold_ics": [round(x, 4) for x in fold_ics],
+        "fold_sharpes": [round(x, 4) for x in fold_sharpes],
+        "algorithm": "HistGradientBoostingRegressor",
+        "pipeline": "ColumnTransformer+SimpleImputer+HistGradientBoostingRegressor"
+    }
+
+    if registry_manager is None:
+        registry_manager = ModelRegistryManager(db_manager)
+
+    # 4. Register and Atomically Promote
+    model_id = registry_manager.register_model(
+        model_name="HistGradientBoosting_Alpha5D",
+        model_version="3.0.0",
+        task_type="REGRESSION",
+        artifact_pipeline=final_pipeline,
+        metrics=metrics,
+        status="CANDIDATE"
+    )
+
+    promotion_success = registry_manager.promote_model(
+        model_id=model_id,
+        approved_by="STAGE_4_WALK_FORWARD_TOURNAMENT",
+        min_ic_hurdle=0.02
+    )
+
+    if promotion_success:
+        logger.info(f"Successfully promoted model '{model_id}' to active CHAMPION.")
+        return model_id
+    else:
+        logger.error(f"Promotion failed at registry manager for '{model_id}'.")
+        return None
+
+
+def run_multi_horizon_tournament(
+    db_manager: DatabaseManager,
+    registry_manager: Optional[ModelRegistryManager] = None,
+    horizon_days: int = 20,
+    progress_callback: Optional[Callable[[int, int, Dict[str, Any]], None]] = None
+) -> Optional[str]:
+    """
+    Executes a 5-fold purged walk-forward cross-validation tournament for arbitrary horizon H in {5, 20, 60}.
+    - For H=5: Purge window = 5 days, Embargo = 2 days
+    - For H=20: Purge window = 20 days, Embargo = 5 days
+    - For H=60: Purge window = 60 days, Embargo = 10 days
+    """
+    if horizon_days == 20:
+        return run_purged_walk_forward_tournament(
+            db_manager=db_manager,
+            registry_manager=registry_manager,
+            progress_callback=progress_callback
+        )
+
+    logger.info(f"Executing Multi-Horizon ({horizon_days}D) Walk-Forward Tournament...")
+
+    df = load_clean_training_panel(db_manager, horizon_days=horizon_days)
+    if len(df) < 5000:
+        logger.error(f"Insufficient training observations for {horizon_days}D: {len(df)} rows.")
+        return None
+
+    features = [c for c in df.columns if c.startswith("factor_")]
+    target_col = f"forward_relative_return_{horizon_days}d"
+    if not features or target_col not in df.columns:
+        logger.error(f"Required features or target column {target_col} missing from clean panel.")
+        return None
+
+    embargo_days = 2 if horizon_days == 5 else (10 if horizon_days == 60 else 5)
+    folds = generate_walk_forward_folds(df, n_folds=5, horizon_days=horizon_days, embargo_days=embargo_days)
+    if not folds:
+        logger.error(f"Failed to construct walk-forward folds for {horizon_days}D.")
+        return None
+
+    annualization = np.sqrt(252 / horizon_days)
+
+    # Candidate pipelines
+    if horizon_days == 5:
+        # Swing: short-term signals with L2 regularization
+        candidate_pipeline = Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("regressor", Ridge(alpha=100.0))
+        ])
+        candidate_name = "Ridge_Alpha5D_5D"
+        min_ic_hurdle = 0.015
+        min_sharpe_hurdle = 0.70
+    elif horizon_days == 60:
+        # Long-horizon trend & drift
+        candidate_pipeline = Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("regressor", HistGradientBoostingRegressor(
+                max_iter=80,
+                learning_rate=0.03,
+                max_depth=3,
+                min_samples_leaf=100,
+                l2_regularization=10.0,
+                random_state=42
+            ))
+        ])
+        candidate_name = "HistGradientBoosting_Alpha5D_60D"
+        min_ic_hurdle = 0.010
+        min_sharpe_hurdle = 0.70
+    else:
+        raise ValueError(f"Unsupported horizon: {horizon_days}")
+
+    fold_ics = []
+    fold_sharpes = []
+
+    for fold_idx, (train_idx, val_idx) in enumerate(folds):
+        X_train, y_train = df.iloc[train_idx][features], df.iloc[train_idx][target_col]
+        X_val, y_val = df.iloc[val_idx][features], df.iloc[val_idx][target_col]
+
+        candidate_pipeline.fit(X_train, y_train)
+        val_preds = candidate_pipeline.predict(X_val)
+
+        val_df = df.iloc[val_idx].copy()
+        val_df["pred"] = val_preds
+
+        daily_ics = []
+        top_returns = []
+        for date, group in val_df.groupby("trading_date"):
+            if len(group) >= 10 and group["pred"].std() > 1e-8:
+                ic, _ = spearmanr(group["pred"], group[target_col])
+                if not np.isnan(ic):
+                    daily_ics.append(ic)
+                q80 = group["pred"].quantile(0.8)
+                top = group[group["pred"] >= q80]
+                if len(top) > 0:
+                    top_returns.append(float(top[target_col].mean()))
+
+        mean_fold_ic = float(np.mean(daily_ics)) if daily_ics else 0.0
+        fold_ics.append(mean_fold_ic)
+        fold_sh = (np.mean(top_returns) / np.std(top_returns)) * annualization if len(top_returns) > 1 and np.std(top_returns) > 1e-8 else 0.0
+        fold_sharpes.append(float(fold_sh))
+        logger.info(f"Horizon {horizon_days}D Fold {fold_idx + 1}/5: IC={mean_fold_ic:.4f}, Sharpe={fold_sh:.4f}")
+
+        if progress_callback:
+            try:
+                progress_callback(fold_idx + 1, len(folds), {
+                    "horizon_days": horizon_days,
+                    "fold": fold_idx + 1,
+                    "validation_ic": round(mean_fold_ic, 4),
+                    "validation_sharpe": round(fold_sh, 4)
+                })
+            except Exception as cb_err:
+                logger.warning(f"Progress callback error: {cb_err}")
+
+    aggregate_ic = float(np.mean(fold_ics))
+    aggregate_sharpe = float(np.mean(fold_sharpes))
+    logger.info(f"Horizon {horizon_days}D Aggregate Out-of-Sample IC: {aggregate_ic:.4f}, Sharpe: {aggregate_sharpe:.4f}")
+
+    if aggregate_ic < min_ic_hurdle or aggregate_sharpe < min_sharpe_hurdle:
+        logger.warning(
+            f"{horizon_days}D Candidate rejected: Aggregate IC ({aggregate_ic:.4f}) or Sharpe ({aggregate_sharpe:.4f}) "
+            f"below hurdle (IC > {min_ic_hurdle}, Sharpe > {min_sharpe_hurdle})."
+        )
+        return None
+
+    # Fit final champion on full panel
+    final_pipeline = candidate_pipeline.fit(df[features], df[target_col])
+
+    metrics = {
+        "target_horizon_days": horizon_days,
+        "walk_forward_folds": len(folds),
+        "validation_ic": round(aggregate_ic, 4),
+        "validation_sharpe": round(aggregate_sharpe, 4),
+        "aggregate_val_ic": round(aggregate_ic, 4),
+        "aggregate_val_sharpe": round(aggregate_sharpe, 4),
+        "fold_ics": [round(x, 4) for x in fold_ics],
+        "fold_sharpes": [round(x, 4) for x in fold_sharpes],
+        "algorithm": candidate_name,
+        "pipeline": str(candidate_pipeline)
+    }
+
+    if registry_manager is None:
+        registry_manager = ModelRegistryManager(db_manager)
+
+    model_id = registry_manager.register_model(
+        model_name=candidate_name,
+        model_version="1.0.0",
+        task_type="REGRESSION",
+        artifact_pipeline=final_pipeline,
+        metrics=metrics,
+        status="CANDIDATE",
+        target_horizon_days=horizon_days
+    )
+
+    promotion_success = registry_manager.promote_model(
+        model_id=model_id,
+        approved_by=f"MULTI_HORIZON_TOURNAMENT_{horizon_days}D",
+        min_ic_hurdle=min_ic_hurdle
+    )
+
+    if promotion_success:
+        logger.info(f"Successfully promoted {horizon_days}D champion model '{model_id}'.")
+        return model_id
+    else:
+        logger.error(f"Promotion failed for {horizon_days}D model '{model_id}'.")
+        return None

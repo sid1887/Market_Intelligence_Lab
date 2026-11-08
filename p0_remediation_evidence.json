@@ -1,0 +1,167 @@
+{
+  "supervisor_state": {
+    "singleton_id": 1,
+    "current_state": "NORMAL",
+    "active_model_id": "model_HistGradientBoosting_Alpha5D_20261107_131103_e80532",
+    "last_transition_at": "2026-11-07T07:41:03.257473+00:00",
+    "transition_reason": "MODEL_PROMOTION: model_HistGradientBoosting_Alpha5D_20261107_131103_e80532",
+    "quarantined_symbols_json": "[]",
+    "auto_retrain_enabled": 1,
+    "updated_at": "2026-11-07T07:41:03.257473+00:00"
+  },
+  "active_models": [
+    {
+      "model_id": "model_HistGradientBoosting_Alpha5D_20261107_131103_e80532",
+      "model_name": "HistGradientBoosting_Alpha5D",
+      "status": "CHAMPION",
+      "validation_ic": 0.0349,
+      "validation_sharpe": 1.4206
+    }
+  ],
+  "factor_counts": {
+    "total_factors": 256175,
+    "flagged_orphans": 168163,
+    "unflagged_factors": 88012
+  },
+  "orphan_eq_mismatches": {
+    "unflagged_factors_without_eq_bar": 0
+  },
+  "ohlcv_provenance": [
+    {
+      "provenance": "EXCHANGE_OFFICIAL",
+      "source": "cm_udiff",
+      "is_synthetic": 0,
+      "count": 265
+    },
+    {
+      "provenance": "EXCHANGE_OFFICIAL",
+      "source": "cm_udiff_alias_zomato",
+      "is_synthetic": 0,
+      "count": 1
+    },
+    {
+      "provenance": "EXCHANGE_OFFICIAL",
+      "source": "nse_bhavcopy",
+      "is_synthetic": 0,
+      "count": 60544
+    },
+    {
+      "provenance": "EXCHANGE_OFFICIAL",
+      "source": "nse_mcp",
+      "is_synthetic": 0,
+      "count": 23870
+    },
+    {
+      "provenance": "EXCHANGE_OFFICIAL",
+      "source": "nse_mcp_alias_zomato",
+      "is_synthetic": 0,
+      "count": 493
+    },
+    {
+      "provenance": "SYNTHETIC_TEST",
+      "source": "offline_multi_regime_generator",
+      "is_synthetic": 1,
+      "count": 1781
+    },
+    {
+      "provenance": "VENDOR_OBSERVED",
+      "source": "yfinance_reconciled",
+      "is_synthetic": 0,
+      "count": 2486
+    }
+  ],
+  "disclosure_statuses": [
+    {
+      "verification_status": "PENDING_VERIFICATION",
+      "count": 95766
+    },
+    {
+      "verification_status": "SOURCE_UNVERIFIED",
+      "count": 1
+    },
+    {
+      "verification_status": "SYNTHETIC_SEED_QUARANTINED",
+      "count": 25
+    },
+    {
+      "verification_status": "VERIFIED",
+      "count": 4
+    }
+  ],
+  "migrations_applied": [
+    {
+      "migration_id": "0001_baseline_schema",
+      "checksum": "453dd7ac673b3d2d",
+      "applied_at": "2026-11-05T11:06:24.143434+00:00"
+    },
+    {
+      "migration_id": "0002_truth_layer_invariants",
+      "checksum": "0af490a05269fd4c",
+      "applied_at": "2026-11-05T11:51:15.421031+00:00"
+    },
+    {
+      "migration_id": "0003_adaptive_ml_and_supervisor",
+      "checksum": "b47f6ad83136f174",
+      "applied_at": "2026-11-05T11:51:15.575590+00:00"
+    },
+    {
+      "migration_id": "0004_data_provenance_and_synthetic_quarantine",
+      "checksum": "e19a2c4faf58508d",
+      "applied_at": "2026-11-06T12:57:43.014849+00:00"
+    },
+    {
+      "migration_id": "0005_corporate_disclosures_truth_and_eq_reconciliation",
+      "checksum": "3062140aa1036945",
+      "applied_at": "2026-11-06T16:46:03.314445+00:00"
+    },
+    {
+      "migration_id": "0006_model_registry_metrics_and_supervisor_invariant",
+      "checksum": "573cadda711709fe",
+      "applied_at": "2026-11-07T07:26:55.417125+00:00"
+    },
+    {
+      "migration_id": "0007_durable_job_engine_and_event_stream",
+      "checksum": "792b7e4e5af9dddd",
+      "applied_at": "2026-11-07T08:20:40.187706+00:00"
+    }
+  ],
+  "recent_job_runs": [
+    {
+      "job_id": "job_chk_934c2d36",
+      "job_type": "UNIVERSE_EOD",
+      "status": "RUNNING",
+      "progress_pct": 100.0,
+      "attempt_count": 0,
+      "lease_owner": null,
+      "created_at": "2026-11-07T14:30:00Z"
+    },
+    {
+      "job_id": "job_a23b0f283a27",
+      "job_type": "FACTOR_RECOMPUTE",
+      "status": "SUCCEEDED",
+      "progress_pct": 100.0,
+      "attempt_count": 1,
+      "lease_owner": null,
+      "created_at": "2026-11-07T09:02:35.817678+00:00"
+    },
+    {
+      "job_id": "job_6cd4c190295f",
+      "job_type": "FACTOR_RECOMPUTE",
+      "status": "SUCCEEDED",
+      "progress_pct": 100.0,
+      "attempt_count": 1,
+      "lease_owner": null,
+      "created_at": "2026-11-07T08:26:54.387963+00:00"
+    }
+  ],
+  "recent_job_checkpoints": [
+    {
+      "checkpoint_id": "job_chk_934c2d36_chk",
+      "job_id": "job_chk_934c2d36",
+      "stage": "COMPLETED",
+      "checkpoint_key": "SUMMARY",
+      "cursor_json": "{\"status\": \"COMPLETED\", \"symbols_processed\": 180, \"bars_persisted\": 0, \"factors_computed\": 177}",
+      "created_at": "2026-11-07T09:03:13.067448+00:00"
+    }
+  ]
+}

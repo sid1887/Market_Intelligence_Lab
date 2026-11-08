@@ -6,6 +6,7 @@ import {
   BrainCircuit,
   X,
   Send,
+  Square,
   Sparkles,
   TrendingUp,
   ShieldAlert,
@@ -19,14 +20,16 @@ import {
   Maximize2,
   Minimize2
 } from "lucide-react";
+import { RobustSSEParser, ServerSentEvent } from "@/lib/sseParser";
 
 interface CopilotDrawerProps {
-  activeSymbol: string;
+  activeSymbol?: string;
   activePrice?: number;
   activeVerdict?: string;
   isOpen?: boolean;
   onClose?: () => void;
   onToggle?: () => void;
+  showFloatingTrigger?: boolean;
 }
 
 interface DeliberationState {
@@ -49,13 +52,181 @@ interface DeliberationState {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+export function FormattedMarkdown({
+  content,
+  role,
+}: {
+  content: string;
+  role?: "bull" | "bear" | "judge" | "general";
+}) {
+  if (!content) return null;
+
+  const lines = content.split("\n");
+
+  const parseInline = (text: string) => {
+    const parts: React.ReactNode[] = [];
+    let remaining = text;
+    let keyIdx = 0;
+    const tokenRegex = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/;
+
+    while (remaining.length > 0) {
+      const match = remaining.match(tokenRegex);
+      if (!match || match.index === undefined) {
+        parts.push(remaining);
+        break;
+      }
+
+      if (match.index > 0) {
+        parts.push(remaining.substring(0, match.index));
+      }
+
+      const rawToken = match[0];
+      if (rawToken.startsWith("**") && rawToken.endsWith("**")) {
+        parts.push(
+          <strong key={keyIdx++} className="font-semibold text-slate-100">
+            {rawToken.slice(2, -2)}
+          </strong>
+        );
+      } else if (rawToken.startsWith("`") && rawToken.endsWith("`")) {
+        parts.push(
+          <code
+            key={keyIdx++}
+            className="px-1.5 py-0.5 rounded font-mono text-[11px] bg-slate-900 border border-slate-700/60 text-cyan-300"
+          >
+            {rawToken.slice(1, -1)}
+          </code>
+        );
+      } else if (rawToken.startsWith("*") && rawToken.endsWith("*")) {
+        parts.push(
+          <em key={keyIdx++} className="italic text-slate-300">
+            {rawToken.slice(1, -1)}
+          </em>
+        );
+      }
+
+      remaining = remaining.substring(match.index + rawToken.length);
+    }
+
+    return parts;
+  };
+
+  return (
+    <div className="space-y-1.5 text-xs leading-relaxed font-sans text-slate-200">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <div key={idx} className="h-1" />;
+        }
+
+        // Horizontal rule
+        if (trimmed === "---" || trimmed === "***") {
+          return <hr key={idx} className="border-t border-white/[0.08] my-2" />;
+        }
+
+        // H3 Header (### Title)
+        if (trimmed.startsWith("### ")) {
+          const headerText = trimmed.replace(/^###\s+/, "");
+          const headerBorder =
+            role === "bull"
+              ? "border-emerald-500/40 text-emerald-300"
+              : role === "bear"
+              ? "border-rose-500/40 text-rose-300"
+              : role === "judge"
+              ? "border-cyan-500/40 text-cyan-200"
+              : "border-white/[0.1] text-white";
+          return (
+            <div
+              key={idx}
+              className={`font-mono font-bold text-xs pt-1.5 pb-1 border-b ${headerBorder} tracking-wide uppercase flex items-center gap-1.5 mt-2`}
+            >
+              <span>{headerText}</span>
+            </div>
+          );
+        }
+
+        // H2 Header (## Title)
+        if (trimmed.startsWith("## ")) {
+          const headerText = trimmed.replace(/^##\s+/, "");
+          return (
+            <div
+              key={idx}
+              className="font-mono font-bold text-sm pt-2 pb-1 border-b border-white/[0.1] text-white tracking-wide mt-2"
+            >
+              {headerText}
+            </div>
+          );
+        }
+
+        // Numbered list item: e.g. "1. **Moat:**" or "1. Item"
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+        if (numMatch) {
+          const num = numMatch[1];
+          const text = numMatch[2];
+          return (
+            <div key={idx} className="flex items-start gap-2 pt-1">
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 shrink-0 font-bold">
+                {num}
+              </span>
+              <div className="flex-1 min-w-0">{parseInline(text)}</div>
+            </div>
+          );
+        }
+
+        // Sub-bullet (indented): "   - ..." or "  - ..."
+        if (
+          line.startsWith("   - ") ||
+          line.startsWith("  - ") ||
+          line.startsWith("    - ")
+        ) {
+          const text = trimmed.replace(/^-\s+/, "");
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-5 text-slate-300">
+              <span className="w-1 h-1 rounded-full bg-slate-500 shrink-0 mt-2" />
+              <div className="flex-1 min-w-0">{parseInline(text)}</div>
+            </div>
+          );
+        }
+
+        // Top bullet item: "- ..." or "* ..."
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+          const text = trimmed.substring(2);
+          const dotColor =
+            role === "bull"
+              ? "bg-emerald-400"
+              : role === "bear"
+              ? "bg-rose-400"
+              : role === "judge"
+              ? "bg-cyan-400"
+              : "bg-slate-400";
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-2">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0 mt-1.5 opacity-80`}
+              />
+              <div className="flex-1 min-w-0">{parseInline(text)}</div>
+            </div>
+          );
+        }
+
+        // Standard paragraph line
+        return (
+          <p key={idx} className="text-slate-200">
+            {parseInline(line)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CopilotDrawer({
-  activeSymbol = "SUZLON",
-  activePrice = 36.85,
-  activeVerdict = "TACTICAL_SWING_LONG",
+  activeSymbol,
+  activePrice,
+  activeVerdict,
   isOpen: controlledIsOpen,
   onClose,
-  onToggle
+  onToggle,
+  showFloatingTrigger = false,
 }: CopilotDrawerProps) {
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
@@ -122,9 +293,22 @@ export default function CopilotDrawer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleToggle, handleClose, isOpen]);
 
+  const stopDeliberation = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setState(prev => ({
+      ...prev,
+      stage: prev.stage === "idle" || prev.stage === "complete" ? prev.stage : "complete",
+      statusText: "Deliberation halted by user."
+    }));
+  }, []);
+
   // Start Multi-Agent Deliberation Stream
   const runDeliberation = async (customPrompt?: string) => {
     const userInstruction = customPrompt || prompt || "Debate Bull vs Bear Thesis";
+    const targetSymbol = activeSymbol || "NIFTY 50";
     
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -134,7 +318,9 @@ export default function CopilotDrawer({
 
     setState({
       stage: "telemetry",
-      statusText: `Initializing deliberation engine for ${activeSymbol}...`,
+      statusText: activeSymbol 
+        ? `Initializing deliberation engine for ${activeSymbol}...`
+        : "Initializing quantitative deliberation engine...",
       progressPct: 5,
       conversationalText: "",
       bullText: "",
@@ -147,10 +333,11 @@ export default function CopilotDrawer({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "text/event-stream",
           "ngrok-skip-browser-warning": "true"
         },
         body: JSON.stringify({
-          symbol: activeSymbol,
+          symbol: targetSymbol,
           prompt: userInstruction
         }),
         signal: controller.signal
@@ -162,80 +349,73 @@ export default function CopilotDrawer({
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
+      const parser = new RobustSSEParser();
 
       bullStartTimeRef.current = null;
       bearStartTimeRef.current = null;
       setBullElapsed("00:00");
       setBearElapsed("00:00");
 
+      const handleParsedEvent = (ev: ServerSentEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+
+          if (data.stage === "bull_analyst") {
+            if (!bullStartTimeRef.current) bullStartTimeRef.current = Date.now();
+            setBullElapsed(formatSeconds((Date.now() - bullStartTimeRef.current) / 1000));
+          } else if (data.stage === "bear_analyst") {
+            if (!bearStartTimeRef.current) bearStartTimeRef.current = Date.now();
+            setBearElapsed(formatSeconds((Date.now() - bearStartTimeRef.current) / 1000));
+          }
+
+          setState(prev => {
+            const next = { ...prev };
+            if (data.status) next.statusText = data.status;
+            if (data.progress !== undefined) next.progressPct = data.progress;
+
+            if (data.stage === "conversational") {
+              next.stage = "conversational";
+              if (data.delta) next.conversationalText = (prev.conversationalText || "") + data.delta;
+            } else if (data.stage === "bull_analyst") {
+              next.stage = "bull_analyst";
+              if (data.delta) next.bullText = prev.bullText + data.delta;
+            } else if (data.stage === "bear_analyst") {
+              next.stage = "bear_analyst";
+              if (data.delta) next.bearText = prev.bearText + data.delta;
+            } else if (data.stage === "judge_synthesis") {
+              next.stage = "judge_synthesis";
+              if (data.delta) next.judgeText = prev.judgeText + data.delta;
+            } else if (data.stage === "complete") {
+              next.stage = "complete";
+              next.progressPct = 100;
+              if (data.result) {
+                next.decisionResult = data.result;
+                if (data.result.bull_thesis) next.bullText = data.result.bull_thesis;
+                if (data.result.bear_thesis) next.bearText = data.result.bear_thesis;
+                if (data.result.judge_memo) next.judgeText = data.result.judge_memo;
+                if (data.result.conversational_response) next.conversationalText = data.result.conversational_response;
+              }
+            }
+            return next;
+          });
+
+          // Auto-scroll
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+        } catch {
+          // Ignore partial or non-JSON frames
+        }
+      };
+
       while (true) {
         const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith(":")) continue;
-
-          if (trimmed.startsWith("data:")) {
-            const rawJson = trimmed.slice(5).trim();
-            if (!rawJson) continue;
-
-            try {
-              const data = JSON.parse(rawJson);
-
-              if (data.stage === "bull_analyst") {
-                if (!bullStartTimeRef.current) bullStartTimeRef.current = Date.now();
-                setBullElapsed(formatSeconds((Date.now() - bullStartTimeRef.current) / 1000));
-              } else if (data.stage === "bear_analyst") {
-                if (!bearStartTimeRef.current) bearStartTimeRef.current = Date.now();
-                setBearElapsed(formatSeconds((Date.now() - bearStartTimeRef.current) / 1000));
-              }
-
-              setState(prev => {
-                const next = { ...prev };
-                if (data.status) next.statusText = data.status;
-                if (data.progress !== undefined) next.progressPct = data.progress;
-
-                if (data.stage === "conversational") {
-                  next.stage = "conversational";
-                  if (data.delta) next.conversationalText = (prev.conversationalText || "") + data.delta;
-                } else if (data.stage === "bull_analyst") {
-                  next.stage = "bull_analyst";
-                  if (data.delta) next.bullText = prev.bullText + data.delta;
-                } else if (data.stage === "bear_analyst") {
-                  next.stage = "bear_analyst";
-                  if (data.delta) next.bearText = prev.bearText + data.delta;
-                } else if (data.stage === "judge_synthesis") {
-                  next.stage = "judge_synthesis";
-                  if (data.delta) next.judgeText = prev.judgeText + data.delta;
-                } else if (data.stage === "complete") {
-                  next.stage = "complete";
-                  next.progressPct = 100;
-                  if (data.result) {
-                    next.decisionResult = data.result;
-                    if (data.result.bull_thesis) next.bullText = data.result.bull_thesis;
-                    if (data.result.bear_thesis) next.bearText = data.result.bear_thesis;
-                    if (data.result.judge_memo) next.judgeText = data.result.judge_memo;
-                    if (data.result.conversational_response) next.conversationalText = data.result.conversational_response;
-                  }
-                }
-                return next;
-              });
-
-              // Auto-scroll
-              if (scrollContainerRef.current) {
-                scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-              }
-            } catch {
-              // Ignore partial JSON
-            }
-          }
+        if (done) {
+          parser.flush(handleParsedEvent);
+          break;
         }
+        const textChunk = decoder.decode(value, { stream: true });
+        parser.feed(textChunk, handleParsedEvent);
       }
     } catch (err: unknown) {
       if ((err as Error)?.name === "AbortError") {
@@ -246,6 +426,8 @@ export default function CopilotDrawer({
         stage: "error",
         statusText: `Deliberation interrupted: ${(err as Error)?.message || "Unknown error"}`
       }));
+    } finally {
+      abortControllerRef.current = null;
     }
   };
 
@@ -256,9 +438,9 @@ export default function CopilotDrawer({
   return (
     <>
       {/* ─────────────────────────────────────────────────────────────────── */}
-      {/* 1. FLOATING LAUNCH TRIGGER BUTTON (Always visible when drawer closed) */}
+      {/* 1. FLOATING LAUNCH TRIGGER BUTTON (Optional, off by default)         */}
       {/* ─────────────────────────────────────────────────────────────────── */}
-      {!isOpen && (
+      {showFloatingTrigger && !isOpen && (
         <button
           onClick={handleToggle}
           title="Open Quant Copilot Multi-Agent Drawer (⌘J / Ctrl+J)"
@@ -345,14 +527,31 @@ export default function CopilotDrawer({
               <div className="px-4 py-2 bg-slate-900/60 border-b border-white/[0.06] flex items-center justify-between font-mono text-xs shrink-0">
                 <div className="flex items-center space-x-2">
                   <span className="text-slate-500 text-[11px]">Active Context:</span>
-                  <span className="text-white font-bold tracking-tight px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700">
-                    {activeSymbol}
-                  </span>
-                  <span className="text-slate-300 font-medium">₹{activePrice.toFixed(2)}</span>
+                  {activeSymbol ? (
+                    <span className="text-white font-bold tracking-tight px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700">
+                      {activeSymbol}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 italic text-[11px]">Market Overview</span>
+                  )}
+                  {activePrice !== undefined ? (
+                    <span className="text-slate-300 font-medium">₹{activePrice.toFixed(2)}</span>
+                  ) : activeSymbol ? (
+                    <span className="text-slate-500 text-[11px] flex items-center space-x-1">
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                      <span>Syncing...</span>
+                    </span>
+                  ) : null}
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-950 text-emerald-300 border border-emerald-800/80">
-                  {activeVerdict.replace(/_/g, " ")}
-                </span>
+                {activeVerdict ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-950 text-emerald-300 border border-emerald-800/80">
+                    {activeVerdict.replace(/_/g, " ")}
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono text-slate-500 border border-slate-800">
+                    {activeSymbol ? "Pending Verdict" : "NIFTY 50 Active"}
+                  </span>
+                )}
               </div>
 
               {/* Progress Indicator */}
@@ -400,8 +599,8 @@ export default function CopilotDrawer({
                         Quant Copilot · Verified Telemetry Context
                       </span>
                     </div>
-                    <div className="text-xs text-slate-200 font-sans leading-relaxed whitespace-pre-line">
-                      {state.conversationalText}
+                    <div className="text-xs text-slate-200 font-sans leading-relaxed">
+                      <FormattedMarkdown content={state.conversationalText} role="general" />
                     </div>
                     <div className="pt-2 flex flex-wrap gap-1.5 border-t border-white/[0.06]">
                       <button
@@ -433,8 +632,12 @@ export default function CopilotDrawer({
                       </span>
                     </button>
                     {expandedSections.bull && (
-                      <div className="p-3.5 text-xs text-slate-200 font-sans leading-relaxed whitespace-pre-line space-y-2">
-                        {state.bullText || <span className="text-slate-500 font-mono italic animate-pulse">Deliberating growth catalysts...</span>}
+                      <div className="p-3.5 text-xs text-slate-200 font-sans leading-relaxed space-y-2">
+                        {state.bullText ? (
+                          <FormattedMarkdown content={state.bullText} role="bull" />
+                        ) : (
+                          <span className="text-slate-500 font-mono italic animate-pulse">Deliberating growth catalysts...</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -458,8 +661,12 @@ export default function CopilotDrawer({
                       </span>
                     </button>
                     {expandedSections.bear && (
-                      <div className="p-3.5 text-xs text-slate-200 font-sans leading-relaxed whitespace-pre-line space-y-2">
-                        {state.bearText || <span className="text-slate-500 font-mono italic animate-pulse">Scrutinizing leverage and tail risks...</span>}
+                      <div className="p-3.5 text-xs text-slate-200 font-sans leading-relaxed space-y-2">
+                        {state.bearText ? (
+                          <FormattedMarkdown content={state.bearText} role="bear" />
+                        ) : (
+                          <span className="text-slate-500 font-mono italic animate-pulse">Scrutinizing leverage and tail risks...</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -503,8 +710,12 @@ export default function CopilotDrawer({
                           </div>
                         )}
 
-                        <div className="text-xs text-slate-200 font-sans leading-relaxed whitespace-pre-line">
-                          {state.judgeText || <span className="text-slate-500 font-mono italic animate-pulse">Adjudicating trade parameters...</span>}
+                        <div className="text-xs text-slate-200 font-sans leading-relaxed">
+                          {state.judgeText ? (
+                            <FormattedMarkdown content={state.judgeText} role="judge" />
+                          ) : (
+                            <span className="text-slate-500 font-mono italic animate-pulse">Adjudicating trade parameters...</span>
+                          )}
                         </div>
                       </div>
                     )}
@@ -562,18 +773,34 @@ export default function CopilotDrawer({
                       type="text"
                       value={prompt}
                       onChange={e => setPrompt(e.target.value)}
-                      placeholder={`Ask Quant Copilot about ${activeSymbol}...`}
+                      placeholder={
+                        activeSymbol
+                          ? `Ask Quant Copilot about ${activeSymbol}...`
+                          : "Ask Quant Copilot about NIFTY 50, sector rotations, or backtests..."
+                      }
                       className="w-full bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                     />
                   </div>
-                  <button
-                    type="submit"
-                    disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="p-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white transition-colors shrink-0 shadow-md shadow-cyan-950/40"
-                    title="Send Prompt"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
+                  {state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error" ? (
+                    <button
+                      type="button"
+                      onClick={stopDeliberation}
+                      className="px-3 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-300 text-xs font-mono transition-colors flex items-center space-x-1.5 shadow-md shrink-0"
+                      title="Stop Generating (Abort Stream)"
+                    >
+                      <Square className="w-3.5 h-3.5 fill-rose-400 text-rose-400" />
+                      <span className="hidden sm:inline">Stop</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={!prompt.trim()}
+                      className="p-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white transition-colors shrink-0 shadow-md shadow-cyan-950/40"
+                      title="Send Prompt"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  )}
                 </form>
               </div>
             </motion.aside>

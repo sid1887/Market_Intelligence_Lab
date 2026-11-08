@@ -12,9 +12,15 @@ import {
 } from "lightweight-charts";
 
 export interface EquityCurvePoint {
-  trading_date: string;
-  portfolio_value: number;
-  benchmark_value: number;
+  trading_date?: string;
+  date?: string;
+  strategy_nav?: number;
+  portfolio_value?: number;
+  nav?: number;
+  benchmark_value?: number;
+  benchmark_nav?: number;
+  cash_balance?: number;
+  cash?: number;
   drawdown_pct?: number;
   benchmark_drawdown_pct?: number;
 }
@@ -102,7 +108,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
     equityChartRef.current = eqChart;
 
     const strategySeries = eqChart.addSeries(LineSeries, {
-      color: "#06b6d4",
+      color: "#10b981",
       lineWidth: 2,
       title: "Strategy",
     });
@@ -149,10 +155,13 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
     const ddBenchmarkData: { time: string; value: number }[] = [];
 
     data.forEach((pt) => {
-      strategyData.push({ time: pt.trading_date, value: pt.portfolio_value });
-      benchmarkData.push({ time: pt.trading_date, value: pt.benchmark_value });
-      ddStrategyData.push({ time: pt.trading_date, value: pt.drawdown_pct || 0.0 });
-      ddBenchmarkData.push({ time: pt.trading_date, value: pt.benchmark_drawdown_pct || 0.0 });
+      const timeStr = pt.trading_date || pt.date || "";
+      const pVal = pt.strategy_nav ?? pt.portfolio_value ?? pt.nav ?? 0.0;
+      const bVal = pt.benchmark_nav ?? pt.benchmark_value ?? 0.0;
+      strategyData.push({ time: timeStr, value: pVal });
+      benchmarkData.push({ time: timeStr, value: bVal });
+      ddStrategyData.push({ time: timeStr, value: pt.drawdown_pct || 0.0 });
+      ddBenchmarkData.push({ time: timeStr, value: pt.benchmark_drawdown_pct || 0.0 });
     });
 
     strategySeries.setData(strategyData);
@@ -180,7 +189,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
       const timeStr = String(param.time);
       const sVal = param.seriesData.get(strategySeries) as { value?: number };
       const bVal = param.seriesData.get(benchmarkSeries) as { value?: number };
-      const matched = data.find((d) => d.trading_date === timeStr);
+      const matched = data.find((d) => (d.trading_date || d.date) === timeStr);
 
       if (sVal?.value !== undefined && bVal?.value !== undefined) {
         setHoveredPoint({
@@ -196,12 +205,12 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
     ddChart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.seriesData) return;
       const timeStr = String(param.time);
-      const matched = data.find((d) => d.trading_date === timeStr);
+      const matched = data.find((d) => (d.trading_date || d.date) === timeStr);
       if (matched) {
         setHoveredPoint({
           date: timeStr,
-          portfolio: matched.portfolio_value,
-          benchmark: matched.benchmark_value,
+          portfolio: matched.strategy_nav ?? matched.portfolio_value ?? matched.nav ?? 0,
+          benchmark: matched.benchmark_nav ?? matched.benchmark_value ?? 0,
           drawdown: matched.drawdown_pct || 0.0,
           benchmarkDrawdown: matched.benchmark_drawdown_pct || 0.0,
         });
@@ -233,11 +242,11 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
   }, [data]);
 
   const latestPoint = data && data.length > 0 ? data[data.length - 1] : null;
-  const currentNav = hoveredPoint ? hoveredPoint.portfolio : (latestPoint?.portfolio_value || initialCapital);
-  const currentBench = hoveredPoint ? hoveredPoint.benchmark : (latestPoint?.benchmark_value || initialCapital);
+  const currentNav = hoveredPoint ? hoveredPoint.portfolio : (latestPoint?.strategy_nav ?? latestPoint?.portfolio_value ?? latestPoint?.nav ?? initialCapital);
+  const currentBench = hoveredPoint ? hoveredPoint.benchmark : (latestPoint?.benchmark_nav ?? latestPoint?.benchmark_value ?? initialCapital);
   const currentDd = hoveredPoint ? hoveredPoint.drawdown : (latestPoint?.drawdown_pct || 0.0);
   const currentBenchDd = hoveredPoint ? hoveredPoint.benchmarkDrawdown : (latestPoint?.benchmark_drawdown_pct || 0.0);
-  const currentDate = hoveredPoint ? hoveredPoint.date : (latestPoint?.trading_date || "—");
+  const currentDate = hoveredPoint ? hoveredPoint.date : (latestPoint?.trading_date || latestPoint?.date || "—");
 
   const pReturn = ((currentNav / initialCapital) - 1.0) * 100.0;
   const bReturn = ((currentBench / initialCapital) - 1.0) * 100.0;
@@ -254,9 +263,9 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
 
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             <span className="text-slate-400">Strategy NAV:</span>
-            <span className="font-semibold text-cyan-300">
+            <span className="font-semibold text-emerald-300">
               ₹{currentNav.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             </span>
             <span className={`text-[11px] ${pReturn >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
@@ -295,8 +304,8 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
         <div className="flex items-center justify-between pb-2 px-2 text-xs font-mono text-slate-400 border-b border-slate-900">
           <span>PORTFOLIO EQUITY CURVE (INR)</span>
           <div className="flex items-center space-x-3 text-[11px]">
-            <span className="flex items-center space-x-1 text-cyan-400">
-              <span className="w-3 h-0.5 bg-cyan-400 inline-block" />
+            <span className="flex items-center space-x-1 text-emerald-400">
+              <span className="w-3 h-0.5 bg-emerald-400 inline-block" />
               <span>Strategy</span>
             </span>
             <span className="flex items-center space-x-1 text-slate-400">

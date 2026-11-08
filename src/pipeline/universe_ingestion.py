@@ -32,12 +32,68 @@ logger = logging.getLogger("universe_ingestion")
 class UniverseIngestionManager:
     """Orchestrates live on-demand EOD ingestion and factor computation for the entire universe."""
 
-    def __init__(self, db_path: str = "data/market_lab.db"):
-        self.db_path = db_path
-        self.db = DatabaseManager(db_path)
+    def __init__(self, db_path: Any = "data/market_lab.db"):
+        if isinstance(db_path, DatabaseManager):
+            self.db = db_path
+            self.db_path = getattr(db_path, "db_path", "data/market_lab.db")
+        else:
+            self.db_path = str(db_path)
+            self.db = DatabaseManager(self.db_path)
         self.pipeline = FactorPipeline(self.db)
+        self.factor_pipeline = self.pipeline
         self.supervisor = SupervisorStateMachine(self.db)
         self.lock = threading.Lock()
+
+    def get_active_universe(self) -> List[str]:
+        """Returns list of active equity symbols from securities_master."""
+        with self.db.get_connection() as conn:
+            cur = conn.execute("SELECT symbol FROM securities_master WHERE is_active = 1 ORDER BY symbol ASC;")
+            rows = cur.fetchall()
+            return [r[0] for r in rows] if rows else ["TCS", "INFY", "RELIANCE"]
+
+    def fetch_and_persist_symbol(self, symbol: str, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetches candles for symbol and persists valid EQ bars to ohlcv_daily."""
+        _, candles = self._fetch_symbol_candles(symbol)
+        if not candles:
+            return []
+
+        if target_date:
+            candles = [c for c in candles if c.get("trading_date") == target_date]
+            if not candles:
+                return []
+
+        with self.db.get_connection() as conn:
+            for c in candles:
+                conn.execute("""
+                    INSERT INTO ohlcv_daily (
+                        symbol, trading_date, series, open, high, low, close, ltp, prev_close,
+                        volume, source, retrieval_timestamp, data_status,
+                        provenance_class, is_synthetic,
+                        is_eligible_for_live_analytics, is_eligible_for_backtest, is_eligible_for_training
+                    ) VALUES (
+                        :symbol, :trading_date, :series, :open, :high, :low, :close, :ltp, :prev_close,
+                        :volume, :source, :retrieval_timestamp, :data_status,
+                        :provenance_class, :is_synthetic,
+                        :is_eligible_for_live_analytics, :is_eligible_for_backtest, :is_eligible_for_training
+                    )
+                    ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
+                        open = excluded.open,
+                        high = excluded.high,
+                        low = excluded.low,
+                        close = excluded.close,
+                        ltp = excluded.ltp,
+                        volume = excluded.volume,
+                        source = excluded.source,
+                        retrieval_timestamp = excluded.retrieval_timestamp,
+                        data_status = excluded.data_status,
+                        provenance_class = excluded.provenance_class,
+                        is_synthetic = excluded.is_synthetic,
+                        is_eligible_for_live_analytics = excluded.is_eligible_for_live_analytics,
+                        is_eligible_for_backtest = excluded.is_eligible_for_backtest,
+                        is_eligible_for_training = excluded.is_eligible_for_training;
+                """, c)
+            conn.commit()
+        return candles
 
     def _fetch_symbol_candles(self, symbol: str) -> Tuple[str, List[Dict[str, Any]]]:
         """Fetches the latest 5-day settlement candles for a symbol from authentic exchange feeds."""
@@ -135,7 +191,7 @@ class UniverseIngestionManager:
             logger.warning(f"Benchmark fetch error: {e}")
             return []
 
-    def execute_universe_ingestion(self) -> Dict[str, Any]:
+    def execute_universe_ingestion(self, target_date: Optional[str] = None) -> Dict[str, Any]:
         """
         Executes end-to-end universal ingestion:
         1. Queries active symbols from securities_master.
@@ -144,7 +200,8 @@ class UniverseIngestionManager:
         4. Updates supervisor state and telemetry.
         """
         t0 = time.time()
-        logger.info("Initiating Universal Dynamic Ingestion...")
+        eff_target_date = target_date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        logger.info(f"Initiating Universal Dynamic Ingestion for session: {eff_target_date}...")
 
         # 1. Resolve active symbols
         with self.db.get_connection() as conn:
@@ -152,10 +209,16 @@ class UniverseIngestionManager:
             symbols = [r["symbol"] for r in cur.fetchall()]
 
         if not symbols:
+            logger.error("Active universe resolution failed: zero active securities found.")
             return {
                 "status": "FAILED",
-                "message": "No active equities found in securities_master.",
-                "duration_seconds": round(time.time() - t0, 2)
+                "error_code": "EMPTY_UNIVERSE",
+                "reason": "EMPTY_UNIVERSE",
+                "records_ingested": 0,
+                "symbols_updated": 0,
+                "target_date": eff_target_date,
+                "duration_seconds": round(time.time() - t0, 2),
+                "message": "No active equities found in securities_master."
             }
 
         # 2. Ingest benchmark candles
@@ -177,6 +240,7 @@ class UniverseIngestionManager:
         # 3. Concurrent live equity candle fetching
         all_candles: List[Dict[str, Any]] = []
         updated_symbols = set()
+        failed_symbols = []
 
         with ThreadPoolExecutor(max_workers=20) as executor:
             future_to_sym = {executor.submit(self._fetch_symbol_candles, sym): sym for sym in symbols}
@@ -185,60 +249,104 @@ class UniverseIngestionManager:
                 if c_list:
                     all_candles.extend(c_list)
                     updated_symbols.add(sym)
+                else:
+                    failed_symbols.append(sym)
 
-        # 4. Upsert into ohlcv_daily under thread lock
-        total_upserted = 0
-        latest_date = None
-
-        if all_candles:
-            with self.db.get_connection() as conn:
-                for c in all_candles:
-                    cur = conn.execute("""
-                        INSERT INTO ohlcv_daily (
-                            symbol, trading_date, series, open, high, low, close, ltp, prev_close,
-                            volume, source, retrieval_timestamp, data_status,
-                            provenance_class, is_synthetic,
-                            is_eligible_for_live_analytics, is_eligible_for_backtest, is_eligible_for_training
-                        ) VALUES (
-                            :symbol, :trading_date, :series, :open, :high, :low, :close, :ltp, :prev_close,
-                            :volume, :source, :retrieval_timestamp, :data_status,
-                            :provenance_class, :is_synthetic,
-                            :is_eligible_for_live_analytics, :is_eligible_for_backtest, :is_eligible_for_training
-                        )
-                        ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
-                            open = excluded.open,
-                            high = excluded.high,
-                            low = excluded.low,
-                            close = excluded.close,
-                            ltp = excluded.ltp,
-                            volume = excluded.volume,
-                            source = excluded.source,
-                            retrieval_timestamp = excluded.retrieval_timestamp,
-                            data_status = excluded.data_status,
-                            provenance_class = excluded.provenance_class,
-                            is_synthetic = excluded.is_synthetic,
-                            is_eligible_for_live_analytics = excluded.is_eligible_for_live_analytics,
-                            is_eligible_for_backtest = excluded.is_eligible_for_backtest,
-                            is_eligible_for_training = excluded.is_eligible_for_training;
-                    """, c)
-                    total_upserted += cur.rowcount
-                    if latest_date is None or c["trading_date"] > latest_date:
-                        latest_date = c["trading_date"]
-                conn.commit()
-
-        # Fail closed if no bars were fetched
-        if not latest_date or total_upserted == 0:
+        # STRICT INVARIANT: Zero records fetched MUST NEVER return SUCCESS
+        if not all_candles:
             elapsed = round(time.time() - t0, 2)
-            logger.warning("Universe ingestion fetched 0 new bars. Failing closed without advancing settlement.")
+            logger.critical(f"EOD ingestion aborted: 0 valid bars retrieved for {eff_target_date}. Providers unavailable or non-trading session.")
             return {
                 "status": "FAILED",
+                "error_code": "NO_NEW_BARS",
                 "reason": "NO_NEW_BARS",
                 "settled_date": None,
                 "symbols_updated": 0,
                 "records_ingested": 0,
                 "factors_computed": 0,
+                "failed_symbols_count": len(failed_symbols),
+                "target_date": eff_target_date,
                 "duration_seconds": elapsed,
-                "message": "Zero bars fetched from provider feeds; cannot advance settlement."
+                "message": f"Zero valid bars retrieved for {eff_target_date}. Providers unavailable or non-trading session."
+            }
+
+        # 4. Upsert into ohlcv_daily under thread lock
+        total_upserted = 0
+        latest_date = None
+
+        with self.db.get_connection() as conn:
+            for c in all_candles:
+                cur = conn.execute("""
+                    INSERT INTO ohlcv_daily (
+                        symbol, trading_date, series, open, high, low, close, ltp, prev_close,
+                        volume, source, retrieval_timestamp, data_status,
+                        provenance_class, is_synthetic,
+                        is_eligible_for_live_analytics, is_eligible_for_backtest, is_eligible_for_training
+                    ) VALUES (
+                        :symbol, :trading_date, :series, :open, :high, :low, :close, :ltp, :prev_close,
+                        :volume, :source, :retrieval_timestamp, :data_status,
+                        :provenance_class, :is_synthetic,
+                        :is_eligible_for_live_analytics, :is_eligible_for_backtest, :is_eligible_for_training
+                    )
+                    ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
+                        open = excluded.open,
+                        high = excluded.high,
+                        low = excluded.low,
+                        close = excluded.close,
+                        ltp = excluded.ltp,
+                        volume = excluded.volume,
+                        source = excluded.source,
+                        retrieval_timestamp = excluded.retrieval_timestamp,
+                        data_status = excluded.data_status,
+                        provenance_class = excluded.provenance_class,
+                        is_synthetic = excluded.is_synthetic,
+                        is_eligible_for_live_analytics = excluded.is_eligible_for_live_analytics,
+                        is_eligible_for_backtest = excluded.is_eligible_for_backtest,
+                        is_eligible_for_training = excluded.is_eligible_for_training;
+                """, c)
+                total_upserted += cur.rowcount
+                if latest_date is None or c["trading_date"] > latest_date:
+                    latest_date = c["trading_date"]
+            conn.commit()
+
+        # Fail closed if no bars were persisted
+        if not latest_date or total_upserted == 0:
+            elapsed = round(time.time() - t0, 2)
+            logger.warning("Universe ingestion persisted 0 new bars. Failing closed without advancing settlement.")
+            return {
+                "status": "FAILED",
+                "error_code": "NO_NEW_BARS",
+                "reason": "NO_NEW_BARS",
+                "settled_date": None,
+                "symbols_updated": 0,
+                "records_ingested": 0,
+                "factors_computed": 0,
+                "failed_symbols_count": len(failed_symbols),
+                "target_date": eff_target_date,
+                "duration_seconds": elapsed,
+                "message": "Zero bars persisted from provider feeds; cannot advance settlement."
+            }
+
+        # Strict universe coverage floor (minimum 85% of active universe)
+        min_required_bars = max(1, int(len(symbols) * 0.85))
+        if len(symbols) >= 10 and total_upserted < min_required_bars:
+            elapsed = round(time.time() - t0, 2)
+            logger.warning(
+                f"Universe ingestion coverage below 85% floor: {total_upserted}/{len(symbols)} "
+                f"(min required: {min_required_bars}). Failing closed without advancing settlement."
+            )
+            return {
+                "status": "FAILED",
+                "error_code": "INSUFFICIENT_COVERAGE",
+                "reason": "PARTIAL_UNIVERSE_COVERAGE",
+                "settled_date": None,
+                "symbols_updated": len(updated_symbols),
+                "records_ingested": total_upserted,
+                "factors_computed": 0,
+                "failed_symbols_count": len(failed_symbols),
+                "target_date": eff_target_date,
+                "duration_seconds": elapsed,
+                "message": f"Coverage {total_upserted}/{len(symbols)} is below 85% threshold."
             }
 
         # 5. Compute factors for the latest session

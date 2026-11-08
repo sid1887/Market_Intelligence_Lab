@@ -41,23 +41,27 @@ class MaturedForwardLabelBuilder:
     def build_labels(
         self,
         symbols: Optional[List[str]] = None,
-        as_of_cutoff: Optional[str] = None
+        as_of_cutoff: Optional[str] = None,
+        horizon_sessions: Optional[int] = None
     ) -> pd.DataFrame:
         """
         Builds matured forward returns for all observations.
-        Observations whose T + horizon_sessions > max_settled_date are flagged matured=False.
+        Supports arbitrary target horizons (e.g. 5, 20, 60 sessions).
+        Observations whose T + horizon > max_settled_date are flagged matured=False.
         Strictly requires series = 'EQ', non-synthetic, and is_eligible_for_training = 1.
         """
+        horizon = horizon_sessions if horizon_sessions is not None else self.horizon_sessions
         calendar = self.get_trading_calendar()
-        if not calendar or len(calendar) <= self.horizon_sessions:
+        if not calendar or len(calendar) <= horizon:
             return pd.DataFrame(columns=[
                 "symbol", "trading_date", "target_date", "matured",
-                "stock_fwd_ret", "bench_fwd_ret", "label_excess_ret_net", "label_up", "status"
+                "stock_fwd_ret", "bench_fwd_ret", "label_excess_ret_net", "label_up", "status",
+                "horizon_sessions"
             ])
 
         date_to_idx = {d: i for i, d in enumerate(calendar)}
         max_idx = len(calendar) - 1
-        max_evaluable_idx = max_idx - self.horizon_sessions
+        max_evaluable_idx = max_idx - horizon
 
         # Fetch stock close prices strictly requiring EQ series & training eligibility
         where_clauses = [
@@ -128,7 +132,7 @@ class MaturedForwardLabelBuilder:
             if idx is None:
                 continue
 
-            target_idx = idx + self.horizon_sessions
+            target_idx = idx + horizon
             if target_idx > max_idx:
                 # Unsettled / in flight
                 target_date = None
@@ -193,7 +197,8 @@ class MaturedForwardLabelBuilder:
                 "bench_fwd_ret": bench_fwd_ret,
                 "label_excess_ret_net": net_excess,
                 "label_up": label_up,
-                "status": status
+                "status": status,
+                "horizon_sessions": horizon
             })
 
         return pd.DataFrame(records)

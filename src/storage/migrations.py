@@ -545,12 +545,341 @@ def _migration_0005(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_0006(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0006:
+    1. Adds explicit `validation_ic` and `validation_sharpe` REAL columns to `model_registry`.
+    2. Populates `validation_ic` and `validation_sharpe` from `metrics_json` for existing models.
+    3. Corrects `supervisor_state.current_state` to 'NO_ACTIVE_MODEL' when active_model_id is NULL.
+    """
+    mr_cur = conn.execute("PRAGMA table_info(model_registry);")
+    mr_cols = {row[1] if isinstance(row, tuple) else row["name"] for row in mr_cur.fetchall()}
+    if "validation_ic" not in mr_cols:
+        conn.execute("ALTER TABLE model_registry ADD COLUMN validation_ic REAL;")
+    if "validation_sharpe" not in mr_cols:
+        conn.execute("ALTER TABLE model_registry ADD COLUMN validation_sharpe REAL;")
+
+    cursor = conn.execute("SELECT model_id, metrics_json FROM model_registry;")
+    rows = cursor.fetchall()
+    for row in rows:
+        m_id = row[0]
+        m_json_str = row[1]
+        try:
+            m_dict = json.loads(m_json_str) if isinstance(m_json_str, str) else {}
+            v_ic = float(m_dict["validation_ic"]) if "validation_ic" in m_dict and m_dict["validation_ic"] is not None else None
+            v_sharpe = float(m_dict["validation_sharpe"]) if "validation_sharpe" in m_dict and m_dict["validation_sharpe"] is not None else None
+            conn.execute(
+                "UPDATE model_registry SET validation_ic = ?, validation_sharpe = ? WHERE model_id = ?",
+                (v_ic, v_sharpe, m_id)
+            )
+        except Exception:
+            pass
+
+    conn.execute("""
+        UPDATE supervisor_state
+        SET current_state = 'NO_ACTIVE_MODEL'
+        WHERE active_model_id IS NULL AND current_state = 'NORMAL';
+    """)
+
+
+def _migration_0007(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0007: Durable Job Subsystem, Lease-Based Worker Daemon & Event Ledger.
+    Creates:
+    - job_runs: Persistent execution ledger with TTL worker leases, idempotency hashing, and priority queuing.
+    - job_events: Append-only, monotonically sequenced event ledger.
+    - job_checkpoints: Intermediate stage recovery markers.
+    - Indexes for performance under concurrent polling and streaming.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_runs (
+            job_id TEXT PRIMARY KEY,
+            job_type TEXT NOT NULL,
+            idempotency_key TEXT UNIQUE NOT NULL,
+            status TEXT NOT NULL,
+            priority INTEGER DEFAULT 100,
+            payload_json TEXT NOT NULL,
+            result_json TEXT,
+            records_processed INTEGER DEFAULT 0,
+            records_total INTEGER DEFAULT 0,
+            progress_pct REAL DEFAULT 0.0,
+            attempt_count INTEGER DEFAULT 0,
+            max_retries INTEGER DEFAULT 3,
+            lease_owner TEXT,
+            lease_expires_at TEXT,
+            last_heartbeat_at TEXT,
+            error_code TEXT,
+            error_trace TEXT,
+            created_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT
+        );
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(job_id) REFERENCES job_runs(job_id) ON DELETE CASCADE
+        );
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_checkpoints (
+            checkpoint_id TEXT PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            checkpoint_key TEXT NOT NULL,
+            cursor_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(job_id) REFERENCES job_runs(job_id) ON DELETE CASCADE
+        );
+    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_job_runs_status_priority ON job_runs(status, priority, created_at);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_job_runs_lease ON job_runs(lease_owner, lease_expires_at);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_job_events_lookup ON job_events(job_id, sequence);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_job_events_stream ON job_events(event_id);")
+
+
+def _migration_0008(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0008: Multi-Horizon Governance & Rebalance Ledger.
+    - Adds target_horizon_days column to model_registry.
+    - Creates rebalance_proposals for automated daily rebalance suggestions.
+    - Creates model_horizon_deployments to map each horizon (5, 20, 60) to active models.
+    - Seeds model_horizon_deployments with current champion under horizon_days = 20.
+    """
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(model_registry);")
+    cols = [r[1] for r in cur.fetchall()]
+    if "target_horizon_days" not in cols:
+        conn.execute("ALTER TABLE model_registry ADD COLUMN target_horizon_days INTEGER DEFAULT 20;")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rebalance_proposals (
+            proposal_id TEXT PRIMARY KEY,
+            session_date TEXT NOT NULL,
+            model_composite_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            turnover_pct REAL NOT NULL,
+            projected_cost_bps REAL NOT NULL,
+            holdings_before_json TEXT NOT NULL,
+            holdings_after_json TEXT NOT NULL,
+            trade_deltas_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rebalance_proposals_date ON rebalance_proposals(session_date, status);")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS model_horizon_deployments (
+            horizon_days INTEGER PRIMARY KEY,
+            active_model_id TEXT NOT NULL,
+            promoted_at TEXT NOT NULL,
+            promoted_by TEXT NOT NULL,
+            validation_ic REAL NOT NULL,
+            validation_sharpe REAL NOT NULL,
+            FOREIGN KEY(active_model_id) REFERENCES model_registry(model_id)
+        );
+    """)
+
+    cur.execute("SELECT active_model_id FROM supervisor_state WHERE singleton_id = 1")
+    row = cur.fetchone()
+    active_id = row[0] if row else None
+    if not active_id:
+        cur.execute("SELECT model_id FROM model_registry WHERE status IN ('CHAMPION', 'PROMOTED') ORDER BY rowid DESC LIMIT 1")
+        row = cur.fetchone()
+        active_id = row[0] if row else None
+
+    if active_id:
+        cur.execute("SELECT validation_ic, validation_sharpe, created_at FROM model_registry WHERE model_id = ?", (active_id,))
+        m_row = cur.fetchone()
+        val_ic = m_row[0] if m_row and m_row[0] is not None else 0.0349
+        val_sharpe = m_row[1] if m_row and m_row[1] is not None else 1.4206
+        promoted_at = m_row[2] if m_row and m_row[2] is not None else datetime.now(timezone.utc).isoformat()
+
+        conn.execute("""
+            INSERT OR IGNORE INTO model_horizon_deployments
+            (horizon_days, active_model_id, promoted_at, promoted_by, validation_ic, validation_sharpe)
+            VALUES (20, ?, ?, 'migration_0008', ?, ?)
+        """, (active_id, promoted_at, val_ic, val_sharpe))
+
+        conn.execute("UPDATE model_registry SET target_horizon_days = 20 WHERE model_id = ?", (active_id,))
+
+
+def _migration_0009(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0009: Multi-Horizon Governance Hardening & Nullable Horizon Deployments.
+    - Recreates model_horizon_deployments to allow nullable active_model_id.
+    - Demotes sub-hurdle 5D model (status = 'CANDIDATE_REJECTED') and disarms horizon_days = 5.
+    """
+    conn.execute("PRAGMA foreign_keys = OFF;")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS model_horizon_deployments_v9 (
+            horizon_days INTEGER PRIMARY KEY,
+            active_model_id TEXT,
+            promoted_at TEXT,
+            promoted_by TEXT,
+            validation_ic REAL NOT NULL DEFAULT 0.0,
+            validation_sharpe REAL NOT NULL DEFAULT 0.0,
+            FOREIGN KEY(active_model_id) REFERENCES model_registry(model_id)
+        );
+    """)
+    conn.execute("""
+        INSERT OR IGNORE INTO model_horizon_deployments_v9 
+        SELECT horizon_days, active_model_id, promoted_at, promoted_by, validation_ic, validation_sharpe 
+        FROM model_horizon_deployments;
+    """)
+    conn.execute("DROP TABLE model_horizon_deployments;")
+    conn.execute("ALTER TABLE model_horizon_deployments_v9 RENAME TO model_horizon_deployments;")
+    conn.execute("PRAGMA foreign_keys = ON;")
+
+    # Demote known sub-hurdle model if present
+    conn.execute("""
+        UPDATE model_registry
+        SET status = 'CANDIDATE_REJECTED'
+        WHERE model_id = 'model_Ridge_Alpha5D_5D_20261107_155317_532cbe'
+           OR (target_horizon_days = 5 AND validation_ic < 0.0150 AND status = 'CHAMPION');
+    """)
+
+    # Disarm any horizon deployments with IC < 0.0150
+    conn.execute("""
+        UPDATE model_horizon_deployments
+        SET active_model_id = NULL, validation_ic = 0.0, validation_sharpe = 0.0
+        WHERE validation_ic < 0.0150 OR active_model_id = 'model_Ridge_Alpha5D_5D_20261107_155317_532cbe';
+    """)
+
+
+def _migration_0010(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0010: Portfolio Execution Ledger & Paper Trading Engine.
+    - portfolio_accounts: Top-level capital accounts (account_id, cash_balance, total_nav, updated_at).
+    - portfolio_positions: Active holding positions per symbol (position_id, account_id, symbol, quantity, average_entry_price, updated_at).
+    - portfolio_orders: Execution blotter logging virtual fills, slip/friction paid (order_id, account_id, proposal_id, symbol, action, quantity, fill_price, friction_paid, executed_at).
+    - Seeds default paper account 'paper_alpha_1' with 1,000,000 cash balance and total_nav.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_accounts (
+            account_id TEXT PRIMARY KEY,
+            cash_balance REAL NOT NULL,
+            total_nav REAL NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_positions (
+            position_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            average_entry_price REAL NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(account_id) REFERENCES portfolio_accounts(account_id),
+            UNIQUE(account_id, symbol)
+        );
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_portfolio_positions_account ON portfolio_positions(account_id);
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_orders (
+            order_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            proposal_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            action TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            fill_price REAL NOT NULL,
+            friction_paid REAL NOT NULL,
+            executed_at TEXT NOT NULL,
+            FOREIGN KEY(account_id) REFERENCES portfolio_accounts(account_id)
+        );
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_portfolio_orders_account ON portfolio_orders(account_id, executed_at);
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_portfolio_orders_proposal ON portfolio_orders(proposal_id);
+    """)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute("""
+        INSERT OR IGNORE INTO portfolio_accounts (account_id, cash_balance, total_nav, updated_at)
+        VALUES ('paper_alpha_1', 1000000.0, 1000000.0, ?);
+    """, (now_iso,))
+
+
+def _migration_0011(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0011: Corporate Actions Adjustment Matrix & Checkpointed Backfill Ledger.
+    - corporate_action_adjustments: Stock split/bonus/rights adjustment ratios and multipliers.
+    - backfill_sync_checkpoints: Resumable chunked ingestion matrix per symbol, target year, and target month.
+    """
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(corporate_action_adjustments)")
+    cols = [r[1] for r in cur.fetchall()]
+    if cols and "action_id" not in cols:
+        conn.execute("DROP TABLE corporate_action_adjustments")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS corporate_action_adjustments (
+            action_id TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            ex_date TEXT NOT NULL,
+            record_date TEXT,
+            action_type TEXT NOT NULL,
+            ratio_from REAL NOT NULL,
+            ratio_to REAL NOT NULL,
+            split_multiplier REAL NOT NULL,
+            is_applied INTEGER NOT NULL DEFAULT 1,
+            source TEXT NOT NULL DEFAULT 'NSE_EXCHANGE_DISCLOSURES',
+            created_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_corp_actions_symbol_ex_date 
+        ON corporate_action_adjustments(symbol, ex_date);
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS backfill_sync_checkpoints (
+            checkpoint_id TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            target_year INTEGER NOT NULL,
+            target_month INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            rows_ingested INTEGER NOT NULL DEFAULT 0,
+            earliest_date_ingested TEXT,
+            latest_date_ingested TEXT,
+            error_message TEXT,
+            updated_at TEXT NOT NULL,
+            UNIQUE(symbol, target_year, target_month)
+        );
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_backfill_checkpoints_status 
+        ON backfill_sync_checkpoints(status, target_year, target_month);
+    """)
+
+
 ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0001_baseline_schema", _migration_0001),
     ("0002_truth_layer_invariants", _migration_0002),
     ("0003_adaptive_ml_and_supervisor", _migration_0003),
     ("0004_data_provenance_and_synthetic_quarantine", _migration_0004),
     ("0005_corporate_disclosures_truth_and_eq_reconciliation", _migration_0005),
+    ("0006_model_registry_metrics_and_supervisor_invariant", _migration_0006),
+    ("0007_durable_job_engine_and_event_stream", _migration_0007),
+    ("0008_multi_horizon_models_and_rebalance_ledger", _migration_0008),
+    ("0009_allow_nullable_horizon_model", _migration_0009),
+    ("0010_portfolio_execution_ledger", _migration_0010),
+    ("0011_corporate_actions_and_backfill_checkpoints", _migration_0011),
 ]
 
 

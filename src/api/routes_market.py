@@ -9,12 +9,13 @@ Exposes routes for individual stock tearsheets, dynamic status polling, and hist
 
 import re
 import gc
+import json
 import sqlite3
 import logging
 import datetime
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query, Body
 from fastapi.responses import JSONResponse
 
 from src.storage.database import DatabaseManager
@@ -46,6 +47,80 @@ def run_dynamic_ingestion(symbol: str) -> None:
         )
     finally:
         gc.collect()
+
+
+@router.get("/rebalance/latest")
+@router.get("/api/v1/rebalance/latest")
+def get_latest_rebalance_proposal(
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """
+    Returns the latest multi-horizon portfolio rebalance proposal, trade deltas, and active horizon weights.
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT proposal_id, session_date, model_composite_id, status, turnover_pct, projected_cost_bps,
+               holdings_before_json, holdings_after_json, trade_deltas_json, created_at
+        FROM rebalance_proposals
+        ORDER BY session_date DESC, created_at DESC
+        LIMIT 1
+    """)
+    row = cur.fetchone()
+    if not row:
+        return sanitize_for_json({
+            "status": "NO_PROPOSAL",
+            "message": "No rebalance proposal generated yet.",
+            "proposal_id": None,
+            "session_date": None,
+            "trade_deltas": [],
+            "effective_weights": {}
+        })
+
+    cur.execute("SELECT * FROM model_horizon_deployments ORDER BY horizon_days ASC")
+    deployments = {r["horizon_days"]: dict(r) for r in cur.fetchall()}
+
+    holdings_before = json.loads(row["holdings_before_json"]) if row["holdings_before_json"] else {}
+    holdings_after = json.loads(row["holdings_after_json"]) if row["holdings_after_json"] else {}
+    raw_trade_deltas = json.loads(row["trade_deltas_json"]) if row["trade_deltas_json"] else []
+
+    # Map target_weight (decimal e.g. 0.0667) to target_allocation_pct (6.67) for frontend alignment
+    trade_deltas = []
+    for delta in raw_trade_deltas:
+        d_dict = dict(delta)
+        t_wt = safe_float(delta.get("target_weight"), 4) or 0.0
+        c_wt = safe_float(delta.get("current_weight"), 4) or 0.0
+        d_val = safe_float(delta.get("delta"), 4) or 0.0
+        d_dict["target_allocation_pct"] = round(t_wt * 100.0, 2)
+        d_dict["current_allocation_pct"] = round(c_wt * 100.0, 2)
+        d_dict["delta_pct"] = round(d_val * 100.0, 2)
+        trade_deltas.append(d_dict)
+
+    active_horizons = [
+        h for h, d in deployments.items() 
+        if d.get("active_model_id") and float(d.get("validation_ic") or 0.0) >= 0.0150
+    ]
+
+    effective_weights = {
+        "20D": 0.625 if 20 in active_horizons else 0.0,
+        "60D": 0.375 if 60 in active_horizons else 0.0,
+        "5D": 0.0
+    }
+
+    return sanitize_for_json({
+        "proposal_id": row["proposal_id"],
+        "session_date": row["session_date"],
+        "model_composite_id": row["model_composite_id"],
+        "status": row["status"],
+        "turnover_pct": safe_float(row["turnover_pct"], 2),
+        "projected_cost_bps": safe_float(row["projected_cost_bps"], 2),
+        "holdings_before": holdings_before,
+        "holdings_after": holdings_after,
+        "holdings_after_pct": {k: round(v * 100.0, 2) for k, v in holdings_after.items()},
+        "trade_deltas": trade_deltas,
+        "active_horizons": active_horizons,
+        "effective_weights": effective_weights,
+        "created_at": row["created_at"]
+    })
 
 
 @router.get("/stocks/{symbol}/status")
@@ -533,10 +608,17 @@ class BacktestRequest(BaseModel):
 
 @router.post("/backtest/run")
 @router.post("/api/v1/backtest/run")
-def run_backtest_endpoint(request: BacktestRequest):
+def run_backtest_endpoint(raw_body: Dict[str, Any] = Body(...)):
     """
-    Executes a multi-factor systematic backtest with full frictional drag and NIFTY 50 TRI benchmarking.
+    Executes backtest:
+    - If payload specifies 'strategy_mode' or 'rebalance_cadence', routes to Phase 9.0 systematic PortfolioBacktester.
+    - Otherwise, routes to legacy single-strategy BacktestEngine.
     """
+    if "strategy_mode" in raw_body or "rebalance_cadence" in raw_body:
+        from src.api.routes_backtest import run_portfolio_backtest, PortfolioBacktestRequest
+        return run_portfolio_backtest(PortfolioBacktestRequest(**raw_body))
+
+    request = BacktestRequest(**raw_body)
     try:
         from src.quant.backtest_engine import BacktestEngine
         engine = BacktestEngine(DatabaseManager(DATABASE_PATH))

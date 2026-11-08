@@ -362,6 +362,13 @@ class MultiAgentDeliberationEngine:
         stop_floor = fc.get("invalidation_floor", round(price * 0.94, 2))
         tail_95 = fc.get("lower_95", round(price * 0.90, 2))
 
+        in10y = macro.get("india_10y_yield_pct")
+        in10y_str = f"{in10y:.2f}%" if in10y is not None else "unconfigured (CCIL feed pending)"
+        usd = macro.get("usd_inr")
+        usd_str = f"₹{usd:.2f}" if usd is not None else "telemetry offline"
+        brent = macro.get("brent_crude_usd")
+        brent_str = f"${brent:.2f}/bbl" if brent is not None else "telemetry offline"
+
         return (
             f"### Bear Thesis: Valuation Friction & Tail-Risk Constraints\n\n"
             f"1. **Valuation Multiple & Expectation Treadmill:**\n"
@@ -371,8 +378,8 @@ class MultiAgentDeliberationEngine:
             f"   - GARCH(1,1) dispersion highlights an 80% downside invalidation floor at **₹{stop_floor:.2f}** (-{((price - stop_floor)/price)*100:.1f}% risk).\n"
             f"   - Under extreme 95% tail-risk stress scenarios, the volatility cone extends down to **₹{tail_95:.2f}**.\n\n"
             f"3. **Macro Headwinds & Leverage Pressure:**\n"
-            f"   - Debt-to-Equity is positioned at **{de_str}**; elevated yields (India 10Y at **{macro.get('india_10y_yield_pct', 6.8)}%**) increase cost of capital.\n"
-            f"   - Forex fluctuations (USD/INR at **₹{macro.get('usd_inr', 84.0)}**) present imported inflation pressure on raw material inputs."
+            f"   - Debt-to-Equity is positioned at **{de_str}**; sovereign yield dynamics (India 10Y G-Sec: **{in10y_str}**) impact corporate refinancing hurdles.\n"
+            f"   - Currency & commodity pressure (USD/INR at **{usd_str}**, Brent at **{brent_str}**) drives imported inflation and operating margin friction."
         )
 
     def _generate_deterministic_judge(self, ctx: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:

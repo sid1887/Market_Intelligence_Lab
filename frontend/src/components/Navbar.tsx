@@ -1,14 +1,48 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, LayoutDashboard, BookmarkCheck, Search, ArrowRight, LineChart, Loader2 } from "lucide-react";
-import { triggerSystemIngest } from "@/lib/api";
+import {
+  Activity,
+  LayoutDashboard,
+  BookmarkCheck,
+  Search,
+  ArrowRight,
+  LineChart,
+  Briefcase,
+  Loader2,
+  CheckCircle2,
+  AlertCircle
+} from "lucide-react";
+import { submitJob, clearMemoryCache } from "@/lib/api";
+import { useJobStream } from "@/hooks/useJobStream";
 
 export default function Navbar() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleJobComplete = useCallback(() => {
+    clearMemoryCache();
+    router.refresh();
+    setTimeout(() => {
+      setActiveJobId(null);
+    }, 4000);
+  }, [router]);
+
+  const handleJobError = useCallback(() => {
+    setTimeout(() => {
+      setActiveJobId(null);
+    }, 6000);
+  }, []);
+
+  const { status, progress, stage, error } = useJobStream(activeJobId, {
+    onComplete: handleJobComplete,
+    onError: handleJobError,
+    autoCloseOnTerminal: true,
+  });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,18 +53,24 @@ export default function Navbar() {
     }
   };
 
-  const [isIngesting, setIsIngesting] = useState(false);
-
   const handleIngest = async () => {
-    if (isIngesting) return;
-    setIsIngesting(true);
+    if (isSubmitting || (activeJobId && (status === "RUNNING" || status === "QUEUED"))) {
+      return;
+    }
+    setIsSubmitting(true);
     try {
-      await triggerSystemIngest();
-      router.refresh();
-    } catch {
-      // Ignored
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const idempotencyKey = `universe-eod-${todayIso}-${Date.now()}`;
+      const res = await submitJob({
+        job_type: "UNIVERSE_EOD",
+        payload: { date: todayIso, run_factors: true },
+        idempotency_key: idempotencyKey,
+      });
+      setActiveJobId(res.job_id);
+    } catch (err) {
+      console.error("Failed to enqueue ingestion job:", err);
     } finally {
-      setIsIngesting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -91,6 +131,13 @@ export default function Navbar() {
             <span className="hidden sm:inline">Backtester</span>
           </Link>
           <Link
+            href="/portfolio"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+          >
+            <Briefcase className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Portfolio</span>
+          </Link>
+          <Link
             href="/stocks/SUZLON"
             className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors font-mono"
           >
@@ -106,16 +153,48 @@ export default function Navbar() {
 
           <div className="h-4 w-px bg-slate-800 hidden lg:block" />
 
+          {/* Real-time Durable Job Engine Status / Action Pill */}
           <button
             onClick={handleIngest}
-            disabled={isIngesting}
-            title="Execute Universal Dynamic Ingestion for live NSE settlement"
-            className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/40 hover:border-emerald-600/60 text-emerald-400 text-xs font-mono transition-colors disabled:opacity-60"
+            disabled={isSubmitting || (activeJobId !== null && (status === "RUNNING" || status === "QUEUED"))}
+            title={
+              activeJobId
+                ? `Job ${activeJobId}: ${status} (${progress}%)`
+                : "Execute Universal Dynamic Ingestion via V8 Durable Asynchronous Engine"
+            }
+            className={`hidden lg:flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-mono transition-all border ${
+              status === "SUCCEEDED"
+                ? "bg-emerald-950/60 border-emerald-500/80 text-emerald-300 shadow-sm shadow-emerald-900/40"
+                : status === "FAILED"
+                ? "bg-rose-950/60 border-rose-500/80 text-rose-300 shadow-sm shadow-rose-900/40"
+                : activeJobId && (status === "RUNNING" || status === "QUEUED")
+                ? "bg-cyan-950/60 border-cyan-500/80 text-cyan-300 shadow-sm shadow-cyan-900/40"
+                : "bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-800/40 hover:border-emerald-600/60 text-emerald-400"
+            } disabled:cursor-not-allowed`}
           >
-            {isIngesting ? (
+            {isSubmitting ? (
               <>
-                <Loader2 className="w-3 h-3 text-emerald-400 animate-spin" />
-                <span>Ingesting Live Market Data...</span>
+                <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                <span>Dispatching Job...</span>
+              </>
+            ) : status === "SUCCEEDED" ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Settlement Complete (100%)</span>
+              </>
+            ) : status === "FAILED" ? (
+              <>
+                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                <span className="truncate max-w-[140px]" title={error || "Job failed"}>
+                  {error || "Ingestion Failed"}
+                </span>
+              </>
+            ) : activeJobId && (status === "RUNNING" || status === "QUEUED") ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
+                <span className="truncate max-w-[180px]">
+                  {stage ? `${stage.replace(/_/g, " ")} (${progress}%)` : `Processing (${progress}%)`}
+                </span>
               </>
             ) : (
               <>

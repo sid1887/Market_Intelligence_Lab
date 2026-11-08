@@ -3,10 +3,22 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import StockChart, { CandleData, ForecastData } from "@/components/StockChart";
+import dynamic from "next/dynamic";
+import type { CandleData, ForecastData } from "@/components/StockChart";
+
+const StockChart = dynamic(() => import("@/components/StockChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[440px] w-full flex items-center justify-center bg-[#050811] rounded-xl border border-white/[0.06] text-xs font-mono text-slate-500">
+      Loading chart engine...
+    </div>
+  ),
+});
+
 import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
 import Navbar from "@/components/Navbar";
+import { requestLifecycle, API_BASE, DEFAULT_HEADERS } from "@/lib/api";
 import {
   ArrowLeft,
   TrendingUp,
@@ -25,12 +37,6 @@ import {
   Circle,
   SearchX
 } from "lucide-react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-const NGROK_HEADERS = {
-  "Content-Type": "application/json",
-  "ngrok-skip-browser-warning": "true",
-};
 
 interface Disclosure {
   disclosure_id: string;
@@ -119,15 +125,23 @@ export default function StockTearsheetPage() {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const fetchTearsheetRef = useRef<() => Promise<void>>();
 
-  const startPolling = useCallback(() => {
+  const startPolling = useCallback((generation: number, signal: AbortSignal) => {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     pollIntervalRef.current = setInterval(async () => {
+      if (!requestLifecycle.isLatest('stock_detail_active', generation) || signal.aborted) {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        return;
+      }
       try {
         const statusRes = await fetch(`${API_BASE}/stocks/${symbol}/status`, {
-          headers: NGROK_HEADERS
+          headers: DEFAULT_HEADERS,
+          signal,
+          cache: "no-store",
         });
         if (!statusRes.ok) return;
         const statusJson = await statusRes.json();
+        if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
+
         if (statusJson.status === "READY") {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           fetchTearsheetRef.current?.();
@@ -143,19 +157,35 @@ export default function StockTearsheetPage() {
             detail: statusJson.detail || "Ingesting..."
           });
         }
-      } catch (e) {
+      } catch (e: unknown) {
+        if (e instanceof Error && e.name === "AbortError") return;
         console.error("Polling error:", e);
       }
     }, 1500);
   }, [symbol]);
 
   const fetchTearsheet = useCallback(async () => {
+    if (!symbol) return;
+    const { signal, generation } = requestLifecycle.prepareRequest('stock_detail_active');
+
     try {
+      setLoading(true);
+      setError(null);
+      setNotFound(false);
+
       const res = await fetch(`${API_BASE}/stocks/${symbol}/tearsheet`, {
-        headers: NGROK_HEADERS
+        headers: DEFAULT_HEADERS,
+        signal,
+        cache: "no-store",
       });
+
+      if (!requestLifecycle.isLatest('stock_detail_active', generation)) {
+        return; // Dropped: Out-of-order response superseded by a newer ticker request
+      }
+
       if (res.status === 202) {
         const json = await res.json();
+        if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
         setIngestion({
           isIngesting: true,
           progressPct: json.progress_pct || 25,
@@ -163,11 +193,12 @@ export default function StockTearsheetPage() {
           detail: json.message || "Discovered unseeded ticker. Ingesting 24-month historical series, fundamentals, and factors..."
         });
         setLoading(false);
-        startPolling();
+        startPolling(generation, signal);
         return;
       }
 
       if (res.status === 404) {
+        if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
         setNotFound(true);
         setLoading(false);
         return;
@@ -178,27 +209,36 @@ export default function StockTearsheetPage() {
       }
 
       const json = await res.json();
+      if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
       setData(json);
 
-      // Fetch Forecast, News, and Memo concurrently in parallel (Milestones B7.0, B7.5, B9.0)
+      // Fetch Forecast, News, and Memo concurrently in parallel with monotonic signal guard
       setNewsLoading(true);
       const [fRes, nRes, mRes] = await Promise.allSettled([
-        fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`, { headers: NGROK_HEADERS }),
-        fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`, { headers: NGROK_HEADERS }),
-        fetch(`${API_BASE}/stocks/${symbol}/memo`, { headers: NGROK_HEADERS })
+        fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`, { headers: DEFAULT_HEADERS, signal, cache: "no-store" }),
+        fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`, { headers: DEFAULT_HEADERS, signal, cache: "no-store" }),
+        fetch(`${API_BASE}/stocks/${symbol}/memo`, { headers: DEFAULT_HEADERS, signal, cache: "no-store" })
       ]);
+
+      if (!requestLifecycle.isLatest('stock_detail_active', generation)) {
+        return; // Dropped: superseded while secondary fetches were in-flight
+      }
 
       if (fRes.status === "fulfilled" && fRes.value.ok) {
         try {
           const fJson = await fRes.value.json();
-          setForecast(fJson);
+          if (requestLifecycle.isLatest('stock_detail_active', generation)) {
+            setForecast(fJson);
+          }
         } catch {}
       }
 
       if (nRes.status === "fulfilled" && nRes.value.ok) {
         try {
           const nJson = await nRes.value.json();
-          setNewsArticles(nJson.articles || []);
+          if (requestLifecycle.isLatest('stock_detail_active', generation)) {
+            setNewsArticles(nJson.articles || []);
+          }
         } catch {}
       }
       setNewsLoading(false);
@@ -206,7 +246,9 @@ export default function StockTearsheetPage() {
       if (mRes.status === "fulfilled" && mRes.value.ok) {
         try {
           const mJson = await mRes.value.json();
-          setMemo(mJson);
+          if (requestLifecycle.isLatest('stock_detail_active', generation)) {
+            setMemo(mJson);
+          }
         } catch {}
       }
 
@@ -214,11 +256,18 @@ export default function StockTearsheetPage() {
       setNotFound(false);
       setError(null);
     } catch (err: unknown) {
-      console.error("Tearsheet fetch error:", err);
-      const msg = err instanceof Error ? err.message : "Failed to load stock data";
-      setError(msg);
+      if (err instanceof Error && err.name === "AbortError") {
+        return; // Stale fetch aborted cleanly; do not update UI or show error
+      }
+      if (requestLifecycle.isLatest('stock_detail_active', generation)) {
+        console.error("Tearsheet fetch error:", err);
+        const msg = err instanceof Error ? err.message : "Failed to load stock data";
+        setError(msg);
+      }
     } finally {
-      setLoading(false);
+      if (requestLifecycle.isLatest('stock_detail_active', generation)) {
+        setLoading(false);
+      }
     }
   }, [symbol, startPolling]);
 
@@ -228,11 +277,11 @@ export default function StockTearsheetPage() {
 
   useEffect(() => {
     if (!symbol) return;
-    setLoading(true);
     fetchTearsheet();
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      requestLifecycle.cleanup('stock_detail_active');
     };
   }, [symbol, fetchTearsheet]);
 
@@ -250,7 +299,7 @@ export default function StockTearsheetPage() {
     return (
       <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
         <Navbar />
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
+        <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
           <div className="max-w-2xl w-full p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl space-y-8 backdrop-blur-xl">
             <div className="text-center space-y-2">
               <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-700/60 text-cyan-400 text-xs font-mono">
@@ -352,7 +401,7 @@ export default function StockTearsheetPage() {
     return (
       <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
         <Navbar />
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
+        <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
           <div className="p-8 rounded-2xl bg-slate-900/90 border border-rose-900/40 text-center space-y-4 max-w-lg w-full shadow-2xl backdrop-blur-md">
             <div className="w-14 h-14 rounded-full bg-rose-950/60 border border-rose-800/60 flex items-center justify-center mx-auto text-rose-400">
               <SearchX className="w-7 h-7" />
@@ -382,7 +431,7 @@ export default function StockTearsheetPage() {
     return (
       <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
         <Navbar />
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 pb-24 animate-pulse">
+        <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 pb-24 animate-pulse">
           <div className="h-8 w-48 bg-slate-900 rounded" />
           <div className="h-28 bg-slate-900/80 rounded-xl" />
           <div className="h-96 bg-slate-900/80 rounded-xl" />
@@ -400,7 +449,7 @@ export default function StockTearsheetPage() {
     return (
       <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
         <Navbar />
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
+        <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
           <div className="p-8 rounded-xl bg-slate-900/80 border border-slate-800 text-center space-y-4 max-w-xl w-full shadow-2xl">
             <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
             <h2 className="text-xl font-bold text-white">Stock Tearsheet Unavailable</h2>
@@ -424,7 +473,7 @@ export default function StockTearsheetPage() {
   return (
     <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
       <Navbar />
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-24">
+      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-24">
         {/* Back Link & Navigation Bar */}
         <div className="flex items-center justify-between">
           <Link
@@ -519,123 +568,129 @@ export default function StockTearsheetPage() {
         )}
       </div>
 
+      {/* Bento Grid Row 1: StockChart (8 cols) + 20-Day Forecast Cone (4 cols) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        {/* Candlestick Chart */}
+        <section className={forecast && forecast.projections && forecast.projections.length > 0 ? "xl:col-span-8" : "xl:col-span-12"}>
+          <StockChart
+            symbol={data.symbol}
+            data={data.history}
+            sma200={data.technicals.sma_200}
+            forecast={forecast}
+          />
+        </section>
+
+        {/* Milestone B7.0: 20-Day Econometric Forecast & Tail Risk Card */}
+        {forecast && forecast.projections && forecast.projections.length > 0 && (
+          <section className="xl:col-span-4 bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 rounded-lg bg-cyan-950/70 border border-cyan-800/80 text-cyan-400">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white font-mono tracking-tight">
+                      20D Forecast &amp; Tail Risk
+                    </h3>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      GARCH(1,1) &middot; OU Mean-Reversion
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span
+                    className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold border ${
+                      forecast.volatility_regime === "LOW"
+                        ? "bg-emerald-950/70 text-emerald-400 border-emerald-800/80"
+                        : forecast.volatility_regime === "NORMAL"
+                        ? "bg-cyan-950/70 text-cyan-400 border-cyan-800/80"
+                        : "bg-amber-950/70 text-amber-400 border-amber-800/80"
+                    }`}
+                  >
+                    {forecast.volatility_regime} DISPERSION
+                  </span>
+                </div>
+              </div>
+
+              {/* Forecast Telemetry Grid (2x2) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                {/* 1. Expected 20D Price */}
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
+                  <span className="text-[11px] text-slate-400 block">Expected 20D Price</span>
+                  <div className="text-xl font-black text-cyan-300 mt-1">
+                    ₹{forecast.projections[forecast.projections.length - 1].expected.toFixed(2)}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    {(() => {
+                      const expPrice = forecast.projections[forecast.projections.length - 1].expected;
+                      const diff = expPrice - data.latest_ohlcv.close;
+                      const pct = (diff / data.latest_ohlcv.close) * 100;
+                      return (
+                        <span className={diff >= 0 ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
+                          {diff >= 0 ? "+" : ""}{diff.toFixed(2)} ({pct >= 0 ? "+" : ""}{pct.toFixed(1)}%)
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* 2. 80% Expected Range */}
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
+                  <span className="text-[11px] text-slate-400 block">80% Trajectory Band</span>
+                  <div className="text-sm font-bold text-white mt-1">
+                    ₹{forecast.projections[forecast.projections.length - 1].lower_80.toFixed(0)} – ₹{forecast.projections[forecast.projections.length - 1].upper_80.toFixed(0)}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    High Probability Band
+                  </div>
+                </div>
+
+                {/* 3. 95% Tail Risk Floor */}
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
+                  <span className="text-[11px] text-slate-400 block">95% Downside Floor</span>
+                  <div className="text-xl font-black text-rose-400 mt-1">
+                    ₹{forecast.projections[forecast.projections.length - 1].lower_95.toFixed(2)}
+                  </div>
+                  <div className="text-[10px] text-rose-400/90 mt-1">
+                    {(() => {
+                      const floorPrice = forecast.projections[forecast.projections.length - 1].lower_95;
+                      const maxDrawdownPct = ((floorPrice / data.latest_ohlcv.close) - 1.0) * 100;
+                      return `${maxDrawdownPct.toFixed(1)}% Max Tail Risk`;
+                    })()}
+                  </div>
+                </div>
+
+                {/* 4. Model Calibration */}
+                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
+                  <span className="text-[11px] text-slate-400 block">Annualized Vol</span>
+                  <div className="text-xl font-black text-white mt-1">
+                    {(forecast.annualized_volatility * 100).toFixed(1)}%
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    {forecast.garch_parameters ? (
+                      <span>α+β: <strong>{forecast.garch_parameters.persistence.toFixed(3)}</strong></span>
+                    ) : (
+                      <span>Calibrated</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs font-mono text-slate-400">
+              <span>Risk Anchor:</span>
+              <span className="text-cyan-300 font-semibold">GARCH(1,1) Volatility Envelope</span>
+            </div>
+          </section>
+        )}
+      </div>
+
       {/* Milestone B9.0: Institutional Investment Decision Memo */}
       <section>
         <InvestmentMemoCard symbol={data.symbol} initialMemo={memo} />
       </section>
-
-      {/* Embed TradingView HTML5 Lightweight-Charts Candlestick Component */}
-      <section>
-        <StockChart
-          symbol={data.symbol}
-          data={data.history}
-          sma200={data.technicals.sma_200}
-          forecast={forecast}
-        />
-      </section>
-
-      {/* Milestone B7.0: 20-Day Econometric Forecast & Tail Risk Card */}
-      {forecast && forecast.projections && forecast.projections.length > 0 && (
-        <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl backdrop-blur-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
-            <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-lg bg-cyan-950/70 border border-cyan-800/80 text-cyan-400">
-                <Activity className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white font-mono tracking-tight">
-                  20-Day Econometric Forecast &amp; Tail Risk
-                </h3>
-                <p className="text-[11px] text-slate-400 font-mono">
-                  GARCH(1,1) Conditional Volatility &middot; Ornstein-Uhlenbeck Mean-Reverting Drift
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-mono text-slate-400">Regime:</span>
-              <span
-                className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold border ${
-                  forecast.volatility_regime === "LOW"
-                    ? "bg-emerald-950/70 text-emerald-400 border-emerald-800/80"
-                    : forecast.volatility_regime === "NORMAL"
-                    ? "bg-cyan-950/70 text-cyan-400 border-cyan-800/80"
-                    : "bg-amber-950/70 text-amber-400 border-amber-800/80"
-                }`}
-              >
-                {forecast.volatility_regime} DISPERSION
-              </span>
-            </div>
-          </div>
-
-          {/* Forecast Telemetry Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-            {/* 1. Expected 20D Price */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
-              <span className="text-xs text-slate-400 block">Expected 20D Price</span>
-              <div className="text-2xl font-black text-cyan-300 mt-1">
-                ₹{forecast.projections[forecast.projections.length - 1].expected.toFixed(2)}
-              </div>
-              <div className="text-[11px] text-slate-400 mt-1">
-                {(() => {
-                  const expPrice = forecast.projections[forecast.projections.length - 1].expected;
-                  const diff = expPrice - data.latest_ohlcv.close;
-                  const pct = (diff / data.latest_ohlcv.close) * 100;
-                  return (
-                    <span className={diff >= 0 ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
-                      {diff >= 0 ? "+" : ""}{diff.toFixed(2)} ({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)
-                    </span>
-                  );
-                })()}
-                <span className="text-slate-500 ml-1">expected return</span>
-              </div>
-            </div>
-
-            {/* 2. 80% Expected Range */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
-              <span className="text-xs text-slate-400 block">80% Expected Range</span>
-              <div className="text-lg font-bold text-white mt-1">
-                ₹{forecast.projections[forecast.projections.length - 1].lower_80.toFixed(2)} – ₹{forecast.projections[forecast.projections.length - 1].upper_80.toFixed(2)}
-              </div>
-              <div className="text-[11px] text-slate-400 mt-1">
-                High Probability Trajectory Envelope
-              </div>
-            </div>
-
-            {/* 3. 95% Tail Risk Floor */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
-              <span className="text-xs text-slate-400 block">95% Tail Risk Floor</span>
-              <div className="text-2xl font-black text-rose-400 mt-1">
-                ₹{forecast.projections[forecast.projections.length - 1].lower_95.toFixed(2)}
-              </div>
-              <div className="text-[11px] text-rose-400/90 mt-1">
-                {(() => {
-                  const floorPrice = forecast.projections[forecast.projections.length - 1].lower_95;
-                  const maxDrawdownPct = ((floorPrice / data.latest_ohlcv.close) - 1.0) * 100;
-                  return `${maxDrawdownPct.toFixed(1)}% Max Modeled Drawdown`;
-                })()}
-              </div>
-            </div>
-
-            {/* 4. Model Calibration Telemetry */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/80 font-mono">
-              <span className="text-xs text-slate-400 block">Annualized Volatility</span>
-              <div className="text-2xl font-black text-white mt-1">
-                {(forecast.annualized_volatility * 100).toFixed(2)}%
-              </div>
-              <div className="text-[11px] text-slate-400 mt-1">
-                {forecast.garch_parameters ? (
-                  <span>
-                    Persistence (α+β): <strong className="text-slate-200">{forecast.garch_parameters.persistence.toFixed(3)}</strong>
-                  </span>
-                ) : (
-                  <span>Walk-Forward Risk Calibrated</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* Core 4-Card Grid: Fundamentals & Technicals */}
       <section className="space-y-3">
@@ -759,107 +814,109 @@ export default function StockTearsheetPage() {
         </div>
       </section>
 
-      {/* Section: Real-Time Equity News & Impact Analysis (Milestone B7.5) */}
-      <NewsImpactCard
-        symbol={data.symbol}
-        articles={newsArticles}
-        loading={newsLoading}
-      />
-
-      {/* Section: Recent Corporate Filings & Disclosures Timeline */}
-      <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-          <div className="flex items-center space-x-2">
-            <FileText className="w-4 h-4 text-cyan-400" />
-            <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">
-              Recent Corporate Disclosures & Regulatory Filings
-            </h2>
+      {/* 2-Column Responsive Grid: Corporate Disclosures (Left) + Real-Time News (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Section: Recent Corporate Filings & Disclosures Timeline */}
+        <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">
+                Corporate Disclosures &amp; Filings
+              </h2>
+            </div>
+            <span className="text-xs text-slate-400 font-mono">Official Broadcasts</span>
           </div>
-          <span className="text-xs text-slate-400 font-mono">Official Exchange Broadcasts</span>
-        </div>
 
-        {data.recent_disclosures.length === 0 ? (
-          <p className="text-xs text-slate-500 font-mono py-4 text-center">
-            No official exchange disclosures recorded in local database for {data.symbol}.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {data.recent_disclosures.map(d => {
-              const isQuarantined = d.verification_status === "SYNTHETIC_SEED_QUARANTINED";
-              const isVerified = d.verification_status === "VERIFIED";
-              const isFlagged = d.verification_status === "SOURCE_UNVERIFIED";
+          {data.recent_disclosures.length === 0 ? (
+            <p className="text-xs text-slate-500 font-mono py-4 text-center">
+              No official exchange disclosures recorded in local database for {data.symbol}.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {data.recent_disclosures.map(d => {
+                const isQuarantined = d.verification_status === "SYNTHETIC_SEED_QUARANTINED";
+                const isVerified = d.verification_status === "VERIFIED";
+                const isFlagged = d.verification_status === "SOURCE_UNVERIFIED";
 
-              return (
-                <div
-                  key={d.disclosure_id}
-                  className={`border rounded-lg p-4 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs font-mono ${
-                    isQuarantined
-                      ? "bg-rose-950/20 border-rose-900/60"
-                      : "bg-slate-950/80 border-slate-800/80 hover:border-slate-700"
-                  }`}
-                >
-                  <div className="space-y-1 max-w-3xl">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-bold text-slate-200 text-sm">{d.category}</span>
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                          isQuarantined
-                            ? "bg-rose-950 text-rose-300 border border-rose-800"
-                            : isVerified
-                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                            : isFlagged
-                            ? "bg-amber-950 text-amber-300 border border-amber-800"
-                            : "bg-slate-800 text-slate-400"
-                        }`}
-                      >
-                        {isQuarantined ? "SYNTHETIC_SEED_QUARANTINED" : d.verification_status}
-                      </span>
-                      {isQuarantined && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 font-mono">
-                          ⚠ QUARANTINED SEED · EXCLUDED FROM FACTOR / TRUTH LAYER
+                return (
+                  <div
+                    key={d.disclosure_id}
+                    className={`border rounded-lg p-3.5 transition-colors flex flex-col justify-between gap-2.5 text-xs font-mono ${
+                      isQuarantined
+                        ? "bg-rose-950/20 border-rose-900/60"
+                        : "bg-slate-950/80 border-slate-800/80 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-slate-200 text-sm">{d.category}</span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                            isQuarantined
+                              ? "bg-rose-950 text-rose-300 border border-rose-800"
+                              : isVerified
+                              ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                              : isFlagged
+                              ? "bg-amber-950 text-amber-300 border border-amber-800"
+                              : "bg-slate-800 text-slate-400"
+                          }`}
+                        >
+                          {isQuarantined ? "SYNTHETIC_SEED_QUARANTINED" : d.verification_status}
                         </span>
-                      )}
-                      {d.audit_status && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                          {d.audit_status}
+                        {isQuarantined && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 font-mono">
+                            ⚠ QUARANTINED
+                          </span>
+                        )}
+                        <span className="text-slate-500 text-[11px] flex items-center space-x-1">
+                          <Clock className="w-3 h-3" />
+                          <span>{d.effective_session_date}</span>
                         </span>
+                      </div>
+
+                      <p className="text-slate-300 font-medium">{d.subject}</p>
+                      {d.details_summary && (
+                        <p className="text-slate-400 text-[11px] leading-relaxed line-clamp-2">{d.details_summary}</p>
                       )}
-                      <span className="text-slate-500 text-[11px] flex items-center space-x-1">
-                        <Clock className="w-3 h-3" />
-                        <span>Effective: {d.effective_session_date}</span>
-                      </span>
                     </div>
 
-                    <p className="text-slate-300 font-medium">{d.subject}</p>
-                    {d.details_summary && (
-                      <p className="text-slate-400 text-[11px] leading-relaxed">{d.details_summary}</p>
-                    )}
+                    {/* Direct Document Action Link */}
+                    <div>
+                      {isQuarantined ? (
+                        <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs font-mono font-medium opacity-80 cursor-not-allowed">
+                          <span>Quarantined Filing</span>
+                        </span>
+                      ) : d.source_url ? (
+                        <a
+                          href={d.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 hover:text-white transition-colors text-xs font-mono font-medium"
+                        >
+                          <span>{d.source_url.toLowerCase().endsWith(".pdf") ? "View Official PDF" : "Open Exchange Filing"}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="text-slate-600 text-xs italic">No Direct URL</span>
+                      )}
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-                  {/* Direct Document Action Link */}
-                  {isQuarantined ? (
-                    <span className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs font-mono font-medium opacity-80 cursor-not-allowed shrink-0">
-                      <span>Quarantined Filing</span>
-                    </span>
-                  ) : d.source_url ? (
-                    <a
-                      href={d.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 hover:text-white transition-colors shrink-0 text-xs font-mono font-medium"
-                    >
-                      <span>{d.source_url.toLowerCase().endsWith(".pdf") ? "View Official PDF" : "Open Exchange Filing"}</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  ) : (
-                    <span className="text-slate-600 text-xs italic shrink-0">No Direct URL</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+        {/* Section: Real-Time Equity News & Impact Analysis (Milestone B7.5) */}
+        <div>
+          <NewsImpactCard
+            symbol={data.symbol}
+            articles={newsArticles}
+            loading={newsLoading}
+          />
+        </div>
+      </div>
       </main>
     </div>
   );

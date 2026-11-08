@@ -28,6 +28,7 @@ from src.copilot.deliberation import MultiAgentDeliberationEngine
 
 from src.storage.database import DatabaseManager
 from src.quant.screener import FactorScreener
+from src.quant.rebalance_engine import RebalanceEngine
 from src.api.utils import (
     DATABASE_PATH,
     get_db_connection,
@@ -49,6 +50,10 @@ from src.api.routes_market import (
     run_dynamic_ingestion,
     trigger_system_ingest
 )
+from src.api.routes_jobs import router as jobs_router
+from src.api.routes_stream import router as stream_router
+from src.api.routes_portfolio import router as portfolio_router
+from src.api.routes_backtest import router as backtest_router
 
 from contextlib import asynccontextmanager
 import asyncio
@@ -98,6 +103,10 @@ app.add_middleware(
 
 # Mount modular market routes (status, tearsheet, history)
 app.include_router(market_router)
+app.include_router(jobs_router)
+app.include_router(stream_router)
+app.include_router(portfolio_router)
+app.include_router(backtest_router)
 
 
 @app.get("/health")
@@ -182,11 +191,27 @@ def get_screener(
         # Sanitize DataFrame replacing NaNs with None as specified in directive
         df_clean = df.where(pd.notnull(df), None)
 
+        # Compute point-in-time multi-horizon blended scores and target rebalance allocations
+        try:
+            rebalance_engine = RebalanceEngine(db)
+            blended_map = rebalance_engine.compute_universe_blended_scores(latest_date)
+        except Exception as b_err:
+            logger.warning(f"Failed to compute blended scores in screener: {b_err}")
+            blended_map = {}
+
         results = []
         for rank, (_, row) in enumerate(df_clean.head(limit).iterrows(), start=1):
+            sym = str(row["symbol"])
+            b_info = blended_map.get(sym, {})
+            raw_b_score = b_info.get("blended_score") if b_info else None
+            b_score = raw_b_score if (raw_b_score is not None and raw_b_score > 0) else safe_float(row.get("composite_score"), 2)
+            target_alloc = b_info.get("target_allocation_pct", 0.0) if b_info else 0.0
+            drivers = b_info.get("horizon_drivers", []) if b_info else []
+            is_target = bool(b_info.get("is_rebalance_target", False)) if b_info else False
+
             results.append({
                 "rank": rank,
-                "symbol": str(row["symbol"]),
+                "symbol": sym,
                 "company_name": str(row["company_name"]),
                 "sector": str(row["sector"]),
                 "close": safe_float(row.get("close"), 2),
@@ -196,15 +221,26 @@ def get_screener(
                 "opm_pct": safe_float(row.get("opm_pct"), 2),
                 "excess_ret_20d": safe_float(row.get("excess_ret_20d"), 4),
                 "composite_score": safe_float(row.get("composite_score"), 2),
+                "blended_score": safe_float(b_score, 2),
+                "target_allocation_pct": safe_float(target_alloc, 2),
+                "horizon_drivers": drivers,
+                "is_rebalance_target": is_target,
+                "score_20d": safe_float(b_info.get("score_20d"), 1) if b_info else None,
+                "score_60d": safe_float(b_info.get("score_60d"), 1) if b_info else None,
                 "price_above_sma200": bool(row.get("price_above_sma200", False)),
-                "is_watchlist": bool(row.get("is_watchlist", 0))
+                "is_watchlist": bool(row.get("is_watchlist", 0)),
+                "rsi_14": safe_float(row.get("rsi_14"), 2),
+                "volatility_20d": safe_float(row.get("volatility_20d"), 4)
             })
 
         return sanitize_for_json({
+            "trading_date": latest_date,
             "as_of_date": latest_date,
             "total_candidates": len(df),
             "returned_count": len(results),
-            "results": results
+            "candidates": results,
+            "results": results,
+            "items": results
         })
     except Exception as e:
         logger.error(f"Screener execution error: {e}", exc_info=True)

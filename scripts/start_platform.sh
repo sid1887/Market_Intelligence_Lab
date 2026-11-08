@@ -45,6 +45,11 @@ else
     echo "    Run: ./scripts/setup_permanent_tunnel.sh <tunnel_name>"
 fi
 
+echo "Starting Durable Asynchronous Job Worker Daemon..."
+python3 -u scripts/run_worker.py &
+WORKER_PID=$!
+echo "[✓] Durable Job Worker started (PID: $WORKER_PID)."
+
 echo "Starting Next.js frontend on port 3000..."
 # Start Next.js frontend
 cd "$ROOT_DIR/frontend" && npm run dev -- -p 3000 &
@@ -52,16 +57,17 @@ FRONTEND_PID=$!
 
 cleanup() {
     echo "Shutting down Market Intelligence Lab platform..."
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
-    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
+    kill $BACKEND_PID $FRONTEND_PID $WORKER_PID 2>/dev/null || true
+    wait $BACKEND_PID $FRONTEND_PID $WORKER_PID 2>/dev/null || true
 }
 trap cleanup SIGINT SIGTERM EXIT
 
 echo "=== Market Intelligence Lab running ==="
 echo "Backend:  http://localhost:8000 (Docs: http://localhost:8000/docs)"
+echo "Worker:   Durable Job Runner Active (PID: $WORKER_PID)"
 echo "Frontend: http://localhost:3000"
 echo "Tunnel Ingress Target: http://localhost:8000"
 echo "Vercel Environment: Set NEXT_PUBLIC_API_URL to your permanent tunnel URL (e.g. https://<tunnel-host>/api/v1)"
 echo "Press Ctrl+C to terminate."
 
-wait $BACKEND_PID $FRONTEND_PID
+wait $BACKEND_PID $FRONTEND_PID $WORKER_PID

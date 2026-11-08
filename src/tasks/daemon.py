@@ -149,7 +149,7 @@ class AutonomousPlatformDaemon:
         if cnt >= threshold:
             # Already populated for today
             self.last_eod_date = today_str
-            return
+            return True
 
         logger.info(f"Triggering Autonomous EOD Settlement Ingestion for {today_str} (observed {cnt}/{active_cnt} symbols)...")
 
@@ -159,15 +159,17 @@ class AutonomousPlatformDaemon:
         if (
             res.get("status") == "SUCCESS" 
             and res.get("records_ingested", 0) > 0 
-            and res.get("settled_date") == today_str
+            and (res.get("settled_date") == today_str or res.get("target_date") == today_str)
         ):
             self.last_eod_date = today_str
-            logger.info(f"EOD settlement for {today_str} successfully finalized.")
+            logger.info(f"EOD settlement for {today_str} successfully finalized. Ingested: {res.get('records_ingested')} bars.")
+            return True
         else:
-            logger.warning(
-                f"EOD settlement for {today_str} did not succeed or returned no bars "
+            logger.error(
+                f"EOD settlement for {today_str} rejected by quality gate "
                 f"(status={res.get('status')}, records={res.get('records_ingested', 0)}). Will retry on next tick."
             )
+            return False
 
     def _execute_eod_pipeline(self, target_date: str) -> Dict[str, Any]:
         """Ingests settlement prices and recomputes factors for target_date."""
@@ -175,29 +177,30 @@ class AutonomousPlatformDaemon:
             logger.info(f"Running FactorPipeline for session {target_date}...")
             from src.pipeline.universe_ingestion import UniverseIngestionManager
             ingestion_mgr = UniverseIngestionManager(self.db_path)
-            res = ingestion_mgr.execute_universe_ingestion()
-            status = res.get("status", "SUCCESS")
+            res = ingestion_mgr.execute_universe_ingestion(target_date)
+            status = res.get("status", "FAILED")
+            records_ingested = res.get("records_ingested", 0)
             factors_count = res.get("factors_computed", 0)
 
-            logger.info(f"EOD pipeline completed for {target_date}: status={status}, {factors_count} factor rows.")
+            logger.info(f"EOD pipeline completed for {target_date}: status={status}, records={records_ingested}, {factors_count} factor rows.")
             
             # Log telemetry
             self.supervisor.log_telemetry(
-                metric_name="EOD_SETTLEMENT_ADVANCE",
-                metric_value=float(factors_count),
-                threshold_breached=(status != "SUCCESS"),
-                severity="INFO" if status == "SUCCESS" else "WARNING",
-                message=f"Autonomous EOD daemon advanced settlement for {target_date} with status {status}.",
-                context={"session_date": target_date, "factors_upserted": factors_count, "status": status}
+                metric_name="EOD_SETTLEMENT_ADVANCE" if status == "SUCCESS" and records_ingested > 0 else "EOD_SETTLEMENT_FAILURE",
+                metric_value=float(records_ingested),
+                threshold_breached=(status != "SUCCESS" or records_ingested == 0),
+                severity="INFO" if status == "SUCCESS" and records_ingested > 0 else "WARNING",
+                message=f"Autonomous EOD daemon settlement for {target_date}: status={status}, records={records_ingested}.",
+                context={"session_date": target_date, "records_ingested": records_ingested, "factors_upserted": factors_count, "status": status}
             )
             return {
                 "status": status,
                 "target_date": target_date,
                 "settled_date": res.get("settled_date"),
-                "records_ingested": res.get("records_ingested", 0),
+                "records_ingested": records_ingested,
                 "factors_written": factors_count,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
-                "error": None
+                "error": res.get("reason") if status != "SUCCESS" else None
             }
         except Exception as e:
             logger.error(f"Failed to execute EOD pipeline: {e}")
@@ -301,6 +304,8 @@ class AutonomousPlatformDaemon:
         return {
             "status": "ONLINE" if self.is_running else "IDLE",
             "supervisor_state": state_dict.get("current_state", "NORMAL"),
+            "active_model_id": state_dict.get("active_model_id"),
+            "model_name": state_dict.get("model_name"),
             "latest_settled_session": latest_settled,
             "total_active_equities": total_active,
             "universe_health_pct": completeness_pct,

@@ -141,7 +141,7 @@ def test_promotion_synchronizes_supervisor_active_model_id(ml_test_db, tmp_path)
     active_rec = registry.get_active_model_record()
     assert active_rec is not None
     assert active_rec["model_id"] == "test_model_v1"
-    assert active_rec["status"] == "PROMOTED"
+    assert active_rec["status"] in ("PROMOTED", "CHAMPION")
 
     # Verify supervisor_state active_model_id is synchronized
     with ml_test_db.get_connection() as conn:

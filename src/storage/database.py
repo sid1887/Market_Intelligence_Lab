@@ -19,6 +19,8 @@ class DatabaseManager:
         if self.db_path == ":memory:":
             self._mem_conn = sqlite3.connect(":memory:")
             self._mem_conn.row_factory = sqlite3.Row
+            self._mem_conn.execute("PRAGMA busy_timeout = 10000;")
+            self._mem_conn.execute("PRAGMA synchronous = NORMAL;")
             self.init_schema()
         else:
             os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
@@ -32,6 +34,7 @@ class DatabaseManager:
         conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA busy_timeout = 10000;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
         return conn
 
     def get_readonly_connection(self) -> sqlite3.Connection:
@@ -42,6 +45,7 @@ class DatabaseManager:
         conn = sqlite3.connect(f"file:{abs_path}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout = 10000;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
         conn.execute("PRAGMA query_only = ON;")
         return conn
 

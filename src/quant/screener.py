@@ -217,6 +217,8 @@ class FactorScreener:
                 q.ret_5d,
                 q.ret_20d,
                 q.volatility_annualized,
+                fd.volatility_20d,
+                fd.rsi_14,
                 q.beta_60d_nifty,
                 q.volume_ratio_20d,
                 q.volume_zscore_50d,
@@ -230,6 +232,8 @@ class FactorScreener:
             FROM latest_factors q
             JOIN ohlcv_daily o 
               ON q.symbol = o.symbol AND q.trading_date = o.trading_date
+            LEFT JOIN factors_daily fd
+              ON q.symbol = fd.symbol AND q.trading_date = fd.trading_date
             LEFT JOIN securities_master s 
               ON q.symbol = s.symbol
             LEFT JOIN user_watchlists w 
@@ -258,7 +262,7 @@ class FactorScreener:
         # Coerce numeric columns from SQLite to float to safely handle NULLs/None
         numeric_cols = [
             "close", "sma_20", "sma_50", "sma_200", "ret_1d", "ret_5d", "ret_20d",
-            "volatility_annualized", "beta_60d_nifty", "volume_ratio_20d",
+            "volatility_annualized", "volatility_20d", "rsi_14", "beta_60d_nifty", "volume_ratio_20d",
             "volume_zscore_50d", "ttm_pe", "roe_pct", "debt_to_equity", "opm_pct"
         ]
         for col in numeric_cols:

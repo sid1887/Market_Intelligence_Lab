@@ -473,3 +473,8 @@ class FactorPipeline:
             "end_date": end_date,
             "duration_seconds": duration
         }
+
+    def compute_universe_factors(self, target_date: Optional[str] = None) -> int:
+        """Computes factors across active universe for target_date. Returns total factor rows upserted."""
+        res = self.run_universe_pipeline(start_date=target_date, end_date=target_date)
+        return res.get("total_factors_upserted", 0)

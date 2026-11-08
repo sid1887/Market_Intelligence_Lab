@@ -27,6 +27,10 @@ class TestMLLifecycle(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # Record SHA-256 of live database before any test runs to assert zero contamination
+        with open("data/market_lab.db", "rb") as f:
+            cls.live_db_sha_before = hashlib.sha256(f.read()).hexdigest()
+
         # Create an isolated temporary workspace so tests NEVER touch data/market_lab.db
         cls.temp_dir = tempfile.TemporaryDirectory()
         cls.db_path = os.path.join(cls.temp_dir.name, "test_market_lab.db")
@@ -50,6 +54,13 @@ class TestMLLifecycle(unittest.TestCase):
     def tearDownClass(cls):
         # Clean up temporary directory completely
         cls.temp_dir.cleanup()
+
+        # Assert zero contamination on live database
+        with open("data/market_lab.db", "rb") as f:
+            live_db_sha_after = hashlib.sha256(f.read()).hexdigest()
+        assert cls.live_db_sha_before == live_db_sha_after, (
+            "Hermetic isolation violated: live database data/market_lab.db was mutated during test execution!"
+        )
 
     # --------------------------------------------------------------------------
     # 1. Feature Extractor & Deterministic Hash
@@ -234,7 +245,7 @@ class TestMLLifecycle(unittest.TestCase):
         active_rec = self.registry.get_active_model_record()
         self.assertIsNotNone(active_rec)
         self.assertEqual(active_rec["model_id"], valid_id)
-        self.assertEqual(active_rec["status"], "PROMOTED")
+        self.assertIn(active_rec["status"], ["PROMOTED", "CHAMPION"])
 
         # Load active model from disk
         loaded_obj, meta = self.registry.load_active_model()
@@ -294,6 +305,19 @@ class TestMLLifecycle(unittest.TestCase):
         health = self.supervisor.evaluate_system_health()
         self.assertIn(health["status"], ["HEALTHY", "NORMAL_BASELINE", "NO_ACTIVE_MODEL"])
         self.assertEqual(health["contaminated_factors_count"], 0)
+
+    # --------------------------------------------------------------------------
+    # 7. Hermetic Database Isolation Check
+    # --------------------------------------------------------------------------
+    def test_07_hermetic_isolation_asserts_zero_db_mutation(self):
+        """Asserts that live production database data/market_lab.db is completely untouched by test suite."""
+        with open("data/market_lab.db", "rb") as f:
+            current_sha = hashlib.sha256(f.read()).hexdigest()
+        self.assertEqual(
+            self.live_db_sha_before,
+            current_sha,
+            "Contamination detected! Live database SHA-256 changed during ML lifecycle execution."
+        )
 
 
 if __name__ == "__main__":
