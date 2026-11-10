@@ -75,19 +75,61 @@ export class RequestLifecycleManager {
 
 export const requestLifecycle = new RequestLifecycleManager();
 
-// In-memory cache for zero-latency stock switching
+// Memory cache store for instant navigation (SWR: Stale-While-Revalidate)
 const memoryCache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL_MS = 60_000; // 60 seconds
+const CACHE_TTL_MS = 15_000; // 15 seconds fresh window (0ms perceived latency)
+const STALE_TTL_MS = 90_000; // 90 seconds stale window for background revalidation
 
-// In-flight request deduplication (prevents redundant fetches on fast arrow scrubbing)
+// In-flight request deduplication (prevents redundant fetches on fast arrow scrubbing / concurrent mounts)
 const inFlightRequests = new Map<string, Promise<unknown>>();
 
 export interface ApiFetchOptions extends RequestInit {
   useCache?: boolean;
+  forceRefresh?: boolean;
+}
+
+export function clearMemoryCache(prefix?: string) {
+  if (!prefix) {
+    memoryCache.clear();
+    return;
+  }
+  memoryCache.forEach((_, key) => {
+    if (key.includes(prefix)) {
+      memoryCache.delete(key);
+    }
+  });
 }
 
 /**
- * Standardized typed fetch wrapper with AbortSignal, in-flight deduplication, and structured ApiError mapping.
+ * Background revalidation helper for Stale-While-Revalidate caching pattern
+ */
+async function backgroundRevalidate(url: string, options: ApiFetchOptions) {
+  if (inFlightRequests.has(url)) return;
+  try {
+    const headers: Record<string, string> = {
+      ...DEFAULT_HEADERS,
+      ...((options.headers as Record<string, string>) || {}),
+    };
+    const req = fetch(url, {
+      ...options,
+      headers,
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        memoryCache.set(url, { data, timestamp: Date.now() });
+      }
+    }).catch(() => {});
+
+    inFlightRequests.set(url, req);
+    await req;
+  } finally {
+    inFlightRequests.delete(url);
+  }
+}
+
+/**
+ * Standardized typed fetch wrapper with Stale-While-Revalidate (SWR),
+ * in-flight deduplication, and structured ApiError mapping.
  */
 export async function apiFetch<T>(
   endpoint: string,
@@ -98,20 +140,29 @@ export async function apiFetch<T>(
       ? { useCache: optionsOrUseCache }
       : optionsOrUseCache;
 
-  const useCache = options.useCache ?? (options.method === undefined || options.method === "GET");
+  const isGet = options.method === undefined || options.method === "GET";
+  const useCache = (options.useCache !== false) && isGet && !options.body && !options.forceRefresh;
   const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   const url = `${getApiBase()}${normalizedEndpoint}`;
+  const now = Date.now();
+  const cached = memoryCache.get(url);
 
-  // 1. Check valid memory cache (only for GET without custom signal/body)
-  if (useCache && !options.signal && !options.body && memoryCache.has(url)) {
-    const cached = memoryCache.get(url)!;
-    if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
+  // 1. Stale-While-Revalidate (SWR) Instant Return:
+  // If memory cache exists, return it immediately (0ms perceived latency)
+  if (useCache && cached) {
+    const age = now - cached.timestamp;
+    if (age < CACHE_TTL_MS) {
+      return cached.data as T;
+    }
+    if (age < STALE_TTL_MS) {
+      // Revalidate asynchronously in background without delaying user navigation
+      void backgroundRevalidate(url, options);
       return cached.data as T;
     }
   }
 
-  // 2. Reuse in-flight request if one is already pending and no custom signal is provided
-  if (!options.signal && inFlightRequests.has(url)) {
+  // 2. Reuse in-flight request if one is already pending
+  if (inFlightRequests.has(url)) {
     return inFlightRequests.get(url) as Promise<T>;
   }
 
@@ -123,7 +174,6 @@ export async function apiFetch<T>(
   const fetchPromise = (async () => {
     try {
       const res = await fetch(url, {
-        cache: "no-store",
         ...options,
         headers,
       });
@@ -148,7 +198,7 @@ export async function apiFetch<T>(
       }
 
       const data = (await res.json()) as T;
-      if (useCache && !options.signal) {
+      if (useCache) {
         memoryCache.set(url, { data, timestamp: Date.now() });
       }
       return data;
@@ -166,16 +216,11 @@ export async function apiFetch<T>(
         retryable: true,
       });
     } finally {
-      if (!options.signal) {
-        inFlightRequests.delete(url);
-      }
+      inFlightRequests.delete(url);
     }
   })();
 
-  if (!options.signal) {
-    inFlightRequests.set(url, fetchPromise);
-  }
-
+  inFlightRequests.set(url, fetchPromise);
   return fetchPromise;
 }
 
@@ -473,7 +518,7 @@ export async function fetchDisclosures<T = unknown>(
 }
 
 export async function fetchScreener(
-  limit = 250,
+  limit = 1000,
   options: ApiFetchOptions = {}
 ): Promise<ScreenerResponse> {
   return apiFetch<ScreenerResponse>(`/screener?limit=${limit}`, options);
@@ -487,10 +532,6 @@ export interface IngestResponse {
   factors_computed?: number;
   duration_seconds?: number;
   message: string;
-}
-
-export function clearMemoryCache() {
-  memoryCache.clear();
 }
 
 export interface JobSubmissionRequest {
@@ -597,8 +638,14 @@ export async function triggerSystemIngest(): Promise<IngestResponse> {
 
 export interface PortfolioSummary {
   account_id: string;
+  initial_capital?: number;
+  net_capital_deployed?: number;
+  account_type?: "SYSTEMATIC" | "MANUAL";
+  engine_version?: string;
+  fee_tier?: "RETAIL_MICRO" | "INSTITUTIONAL";
   cash_balance: number;
   invested_value: number;
+  equity_value?: number;
   total_nav: number;
   unrealized_pnl: number;
   unrealized_pnl_pct: number;
@@ -606,6 +653,7 @@ export interface PortfolioSummary {
   total_pnl_pct: number;
   total_friction_paid: number;
   positions_count: number;
+  position_count?: number;
   updated_at: string;
 }
 
@@ -632,6 +680,9 @@ export interface PortfolioOrder {
   quantity: number;
   fill_price: number;
   friction_paid: number;
+  thesis_note?: string;
+  realized_pnl?: number;
+  analysis_json?: string;
   executed_at: string;
 }
 
@@ -660,22 +711,68 @@ export interface PortfolioExecuteResponse {
   executed_at: string;
 }
 
+export interface FrontPageAnalysisCard {
+  momentum_verdict: string;
+  trend_regime: string;
+  rsi_14: number;
+  volatility_ann_pct: number;
+  signal_summary: string;
+  tactical_rank?: number;
+}
+
+export interface ManualOrderPreview {
+  account_id: string;
+  symbol: string;
+  action: "BUY" | "SELL";
+  current_price: number;
+  requested_inr?: number;
+  requested_quantity?: number;
+  calculated_quantity: number;
+  gross_value: number;
+  estimated_friction: number;
+  net_cash_required: number;
+  account_cash_balance: number;
+  is_solvency_approved: boolean;
+  reject_reason?: string | null;
+  fee_tier: string;
+  frontpage_card: FrontPageAnalysisCard;
+}
+
+export interface ManualTradeResponse {
+  success: boolean;
+  order_id: string;
+  account_id: string;
+  symbol: string;
+  action: "BUY" | "SELL";
+  quantity: number;
+  fill_price: number;
+  gross_value: number;
+  friction_paid: number;
+  net_cash_impact: number;
+  realized_pnl: number;
+  remaining_cash: number;
+  total_nav: number;
+  thesis_note: string;
+  analysis_card: FrontPageAnalysisCard;
+  executed_at: string;
+}
+
 export async function fetchPortfolioSummary(
-  accountId = "paper_alpha_1",
+  accountId = "paper_alpha_2",
   options: ApiFetchOptions = {}
 ): Promise<PortfolioSummary> {
   return apiFetch<PortfolioSummary>(`/portfolio/summary?account_id=${encodeURIComponent(accountId)}`, options);
 }
 
 export async function fetchPortfolioPositions(
-  accountId = "paper_alpha_1",
+  accountId = "paper_alpha_2",
   options: ApiFetchOptions = {}
 ): Promise<PortfolioPosition[]> {
   return apiFetch<PortfolioPosition[]>(`/portfolio/positions?account_id=${encodeURIComponent(accountId)}`, options);
 }
 
 export async function fetchPortfolioOrders(
-  accountId = "paper_alpha_1",
+  accountId = "paper_alpha_2",
   limit = 100,
   options: ApiFetchOptions = {}
 ): Promise<PortfolioOrder[]> {
@@ -684,7 +781,7 @@ export async function fetchPortfolioOrders(
 
 export async function executePortfolioProposal(
   proposalId?: string,
-  accountId = "paper_alpha_1"
+  accountId = "paper_alpha_2"
 ): Promise<PortfolioExecuteResponse> {
   const url = `${API_BASE}/portfolio/execute`;
   const res = await fetch(url, {
@@ -699,6 +796,214 @@ export async function executePortfolioProposal(
   }
   clearMemoryCache();
   return (await res.json()) as PortfolioExecuteResponse;
+}
+
+export async function previewManualOrder(params: {
+  accountId?: string;
+  symbol: string;
+  action: "BUY" | "SELL";
+  amountInr?: number;
+  quantity?: number;
+}): Promise<ManualOrderPreview> {
+  const query = new URLSearchParams({
+    account_id: params.accountId || "paper_manual_1",
+    symbol: params.symbol.toUpperCase(),
+    action: params.action,
+  });
+  if (params.amountInr !== undefined && params.amountInr !== null) {
+    query.set("amount_inr", params.amountInr.toString());
+  }
+  if (params.quantity !== undefined && params.quantity !== null) {
+    query.set("quantity", params.quantity.toString());
+  }
+  return apiFetch<ManualOrderPreview>(`/portfolio/manual/preview?${query.toString()}`, false);
+}
+
+export async function executeManualTrade(params: {
+  accountId?: string;
+  symbol: string;
+  action: "BUY" | "SELL";
+  amountInr?: number;
+  quantity?: number;
+  thesisNote?: string;
+}): Promise<ManualTradeResponse> {
+  const url = `${API_BASE}/portfolio/manual/execute`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({
+      account_id: params.accountId || "paper_manual_1",
+      symbol: params.symbol.toUpperCase(),
+      action: params.action,
+      amount_inr: params.amountInr || null,
+      quantity: params.quantity || null,
+      thesis_note: params.thesisNote || "",
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Manual execution failed (${res.status}): ${errorText}`);
+  }
+  clearMemoryCache();
+  return (await res.json()) as ManualTradeResponse;
+}
+
+export async function resetAccountCapital(params: {
+  accountId: string;
+  initialCapital: number;
+  feeTier?: "RETAIL_MICRO" | "INSTITUTIONAL";
+}): Promise<PortfolioSummary> {
+  const url = `${API_BASE}/portfolio/capital/reset`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({
+      account_id: params.accountId,
+      initial_capital: params.initialCapital,
+      fee_tier: params.feeTier || "RETAIL_MICRO",
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Reset capital failed (${res.status}): ${errorText}`);
+  }
+  clearMemoryCache();
+  return (await res.json()) as PortfolioSummary;
+}
+
+export async function adjustAccountCash(params: {
+  accountId: string;
+  deltaCash: number;
+}): Promise<PortfolioSummary> {
+  const url = `${API_BASE}/portfolio/capital/adjust`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({
+      account_id: params.accountId,
+      delta_cash: params.deltaCash,
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Adjust cash failed (${res.status}): ${errorText}`);
+  }
+  clearMemoryCache();
+  return (await res.json()) as PortfolioSummary;
+}
+
+export async function executeRebalanceFlow(params: {
+  accountId: string;
+  sessionDate?: string;
+  proposalId?: string;
+}): Promise<PortfolioExecuteResponse> {
+  const url = `${API_BASE}/portfolio/rebalance/execute`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({
+      account_id: params.accountId,
+      session_date: params.sessionDate || null,
+      proposal_id: params.proposalId || null,
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Rebalance execution failed (${res.status}): ${errorText}`);
+  }
+  clearMemoryCache();
+  return (await res.json()) as PortfolioExecuteResponse;
+}
+
+// ─── Universe Expansion & ML Telemetry Client API ─────────────────────────────
+
+export interface UniverseStatus {
+  total_universe_symbols: number;
+  active_ohlcv_symbols: number;
+  completed_symbols: number;
+  pending_symbols: number;
+  in_progress_symbols: number;
+  failed_symbols: number;
+  completion_pct: number;
+  total_bars_ingested: number;
+  earliest_historical_date: string;
+  latest_historical_date: string;
+  target_depth_years: number;
+}
+
+export async function fetchUniverseStatus(options: ApiFetchOptions = {}): Promise<UniverseStatus> {
+  return apiFetch<UniverseStatus>("/system/universe/status", options);
+}
+
+export async function triggerUniverseExpansion(params?: {
+  batchSize?: number;
+  targetStartDate?: string;
+  runSeedOnly?: boolean;
+}): Promise<Record<string, unknown>> {
+  const url = `${API_BASE}/system/universe/expand`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({
+      batch_size: params?.batchSize ?? 15,
+      target_start_date: params?.targetStartDate ?? "2011-01-01",
+      run_seed_only: params?.runSeedOnly ?? false,
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`Universe expansion failed: ${await res.text()}`);
+  }
+  return await res.json();
+}
+
+export interface MLTelemetry {
+  total_runs_evaluated: number;
+  active_champions: Record<string, {
+    model_family: string;
+    rank_ic: number;
+    hit_rate_pct: number;
+    feature_weights: Record<string, number>;
+  }>;
+  training_runs: Array<{
+    run_id: string;
+    trained_at: string;
+    model_family: string;
+    horizon_days: number;
+    train_start_date: string;
+    train_end_date: string;
+    total_samples: number;
+    unique_symbols: number;
+    oos_ic_mean: number;
+    oos_rank_ic_mean: number;
+    oos_ic_ir: number;
+    oos_hit_rate_pct: number;
+    top_decile_spread_bps: number;
+    feature_weights: Record<string, number>;
+    is_champion: boolean;
+  }>;
+}
+
+export async function fetchMLTelemetry(limit = 25, options: ApiFetchOptions = {}): Promise<MLTelemetry> {
+  return apiFetch<MLTelemetry>(`/ml/telemetry?limit=${limit}`, options);
+}
+
+export async function triggerMLTraining(horizons = [5, 20, 60]): Promise<Record<string, unknown>> {
+  const url = `${API_BASE}/ml/train`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({ horizons }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`ML training failed: ${await res.text()}`);
+  }
+  return await res.json();
 }
 
 // ─── Systematic Portfolio Backtest Types & Client API ──────────────────────────
@@ -790,7 +1095,7 @@ export interface BacktestRequestPayload {
 }
 
 export async function fetchBacktestPresets(): Promise<BacktestPresetsResponse> {
-  return apiFetch<BacktestPresetsResponse>("/backtest/presets", { useCache: false });
+  return apiFetch<BacktestPresetsResponse>("/backtest/presets");
 }
 
 export async function runPortfolioBacktest(

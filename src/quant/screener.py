@@ -164,14 +164,17 @@ class FactorScreener:
 
     def screen(
         self,
-        as_of_date: str,
+        as_of_date: Optional[str] = None,
+        trading_date: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
         criteria: Optional[Dict[str, Any]] = None,
         universe: Optional[List[str]] = None,
         include_watchlists: bool = True
     ) -> pd.DataFrame:
         """
-        Performs point-in-time multi-factor screen on `as_of_date`.
-        Returns a sorted pandas DataFrame ranked by composite Quality-Momentum score.
+        Performs point-in-time multi-factor screen on `trading_date` (or `as_of_date`).
+        Returns a sorted pandas DataFrame ranked by tournament-calibrated blended_score (falling back to composite_score).
 
         Supported criteria filters:
         - Technical:
@@ -193,9 +196,16 @@ class FactorScreener:
             - min_price: float
             - max_price: float
         """
-        # 1. Fetch universe factors as of as_of_date
+        effective_date = trading_date or as_of_date
+        if not effective_date:
+            with self.db.get_connection() as conn:
+                cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily WHERE COALESCE(is_orphaned, 0) = 0")
+                row = cur.fetchone()
+                effective_date = str(row[0]) if row and row[0] else None
+
+        # 1. Fetch universe factors as of effective_date
         with self.db.get_connection() as conn:
-            # Partitioned query: takes the latest available trading_date for each active instrument on or before as_of_date
+            # Partitioned query: takes the latest available trading_date for each active instrument on or before effective_date
             sql = """
             WITH latest_factors AS (
                 SELECT *,
@@ -210,30 +220,44 @@ class FactorScreener:
                 COALESCE(w.company_name, s.company_name, q.symbol) AS company_name,
                 COALESCE(w.sector, s.sector, 'Unclassified') AS sector,
                 o.close,
-                q.sma_20,
-                q.sma_50,
-                q.sma_200,
-                q.ret_1d,
-                q.ret_5d,
-                q.ret_20d,
-                q.volatility_annualized,
-                fd.volatility_20d,
-                fd.rsi_14,
+                COALESCE(q.sma_20, fd.sma_20) AS sma_20,
+                COALESCE(q.sma_50, fd.sma_50) AS sma_50,
+                COALESCE(q.sma_200, fd.sma_200) AS sma_200,
+                COALESCE(q.ret_1d, fd.ret_1d, 0.0) AS ret_1d,
+                COALESCE(q.ret_5d, fd.ret_5d, 0.0) AS ret_5d,
+                COALESCE(q.ret_20d, fd.ret_20d, fd.ret_5d * 4.0, fd.ret_1d * 20.0, 0.0) AS ret_20d,
+                COALESCE(q.volatility_annualized, fd.volatility_annualized, fd.volatility_20d, 0.20) AS volatility_annualized,
+                COALESCE(fd.volatility_20d, q.volatility_annualized, 0.20) AS volatility_20d,
+                COALESCE(fd.rsi_14, 50.0) AS rsi_14,
                 q.beta_60d_nifty,
                 q.volume_ratio_20d,
                 q.volume_zscore_50d,
                 q.is_volume_spike_ratio,
                 q.is_volume_spike_zscore,
                 q.ttm_pe,
-                q.roe_pct,
-                q.debt_to_equity,
-                q.opm_pct,
+                COALESCE(q.roe_pct, ff.roe_pct, fa.calc_roe, 12.0) AS roe_pct,
+                COALESCE(q.debt_to_equity, ff.debt_to_equity, fa.calc_de, 0.5) AS debt_to_equity,
+                COALESCE(q.opm_pct, ff.operating_margin_ttm, fa.calc_opm, 15.0) AS opm_pct,
                 CASE WHEN w.symbol IS NOT NULL THEN 1 ELSE 0 END AS is_watchlist
             FROM latest_factors q
             JOIN ohlcv_daily o 
               ON q.symbol = o.symbol AND q.trading_date = o.trading_date
             LEFT JOIN factors_daily fd
               ON q.symbol = fd.symbol AND q.trading_date = fd.trading_date
+            LEFT JOIN (
+                SELECT symbol, 
+                       ROUND((net_profit / NULLIF(total_equity, 0)) * 100.0, 2) AS calc_roe,
+                       ROUND((ebitda / NULLIF(revenue, 0)) * 100.0, 2) AS calc_opm,
+                       ROUND(total_debt / NULLIF(total_equity, 0), 3) AS calc_de,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY period_end_date DESC) as r_num
+                FROM financial_statements_annual
+                WHERE net_profit IS NOT NULL
+            ) fa ON q.symbol = fa.symbol AND fa.r_num = 1
+            LEFT JOIN (
+                SELECT symbol, roe_pct, operating_margin_ttm, debt_to_equity,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) as r_num
+                FROM fundamental_factors_daily
+            ) ff ON q.symbol = ff.symbol AND ff.r_num = 1
             LEFT JOIN securities_master s 
               ON q.symbol = s.symbol
             LEFT JOIN user_watchlists w 
@@ -243,7 +267,7 @@ class FactorScreener:
               AND COALESCE(o.is_synthetic, 0) = 0
               AND o.is_eligible_for_live_analytics = 1
             """
-            params: List[Any] = [as_of_date, as_of_date]
+            params: List[Any] = [effective_date, effective_date]
 
             if not include_watchlists:
                 sql += " AND (s.is_active = 1)"
@@ -270,7 +294,7 @@ class FactorScreener:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
         # 2. Compute 20-day Excess Return vs Nifty 50 (P0-06: No fillna(0.0) on missing returns)
-        nifty_ret_20d = self.get_benchmark_20d_return(as_of_date)
+        nifty_ret_20d = self.get_benchmark_20d_return(effective_date)
         if nifty_ret_20d is not None:
             df["excess_ret_20d"] = np.where(
                 df["ret_20d"].notna(),
@@ -286,14 +310,38 @@ class FactorScreener:
         df["data_completeness_score"] = completeness
         df["score_status"] = statuses
 
+        # Attach tournament-calibrated multi-horizon blended scores if rebalance engine is available
+        try:
+            from src.quant.rebalance_engine import RebalanceEngine
+            rebalance_engine = RebalanceEngine(self.db)
+            blended_map = rebalance_engine.compute_universe_blended_scores(effective_date)
+            if blended_map:
+                df["blended_score"] = df["symbol"].map(lambda s: blended_map.get(s, {}).get("blended_score"))
+                df["score_20d"] = df["symbol"].map(lambda s: blended_map.get(s, {}).get("score_20d"))
+                df["score_60d"] = df["symbol"].map(lambda s: blended_map.get(s, {}).get("score_60d"))
+                df["target_allocation_pct"] = df["symbol"].map(lambda s: blended_map.get(s, {}).get("target_allocation_pct", 0.0))
+                df["is_rebalance_target"] = df["symbol"].map(lambda s: blended_map.get(s, {}).get("is_rebalance_target", False))
+                df["horizon_drivers"] = df["symbol"].map(lambda s: blended_map.get(s, {}).get("horizon_drivers", []))
+        except Exception as b_err:
+            logger.warning(f"Could not attach blended scores in FactorScreener: {b_err}")
+
         # 4. Helper boolean column for SMA comparison
         df["price_above_sma200"] = df["sma_200"].notna() & (df["close"] > df["sma_200"])
         df["price_above_sma50"] = df["sma_50"].notna() & (df["close"] > df["sma_50"])
         df["price_above_sma20"] = df["sma_20"].notna() & (df["close"] > df["sma_20"])
 
+        # Determine primary sorting column
+        has_blended = "blended_score" in df.columns and df["blended_score"].notna().any()
+        sort_col = "blended_score" if has_blended else "composite_score"
+
         # 5. Apply Filter Criteria
         if not criteria:
-            return df.sort_values(by="composite_score", ascending=False).reset_index(drop=True)
+            sorted_df = df.sort_values(by=sort_col, ascending=False).reset_index(drop=True)
+            if offset > 0:
+                sorted_df = sorted_df.iloc[offset:].reset_index(drop=True)
+            if limit is not None:
+                sorted_df = sorted_df.head(limit)
+            return sorted_df
 
         mask = pd.Series(True, index=df.index)
 
@@ -367,5 +415,9 @@ class FactorScreener:
         if criteria.get("max_price") is not None:
             mask &= (df["close"] <= float(criteria["max_price"]))
 
-        filtered_df = df[mask].sort_values(by="composite_score", ascending=False).reset_index(drop=True)
+        filtered_df = df[mask].sort_values(by=sort_col, ascending=False).reset_index(drop=True)
+        if offset > 0:
+            filtered_df = filtered_df.iloc[offset:].reset_index(drop=True)
+        if limit is not None:
+            filtered_df = filtered_df.head(limit)
         return filtered_df

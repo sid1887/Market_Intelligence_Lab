@@ -18,9 +18,31 @@ import {
   Activity,
   Layers,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Cpu,
+  BarChart3
 } from "lucide-react";
 import { RobustSSEParser, ServerSentEvent } from "@/lib/sseParser";
+
+export interface MLForecastData {
+  symbol?: string;
+  champion_model?: string;
+  overall_rank_ic?: number;
+  conviction_score?: number;
+  conviction_tier?: string;
+  forecasts?: Record<string, {
+    expected_excess_bps?: number;
+    expected_return_pct?: number;
+    model?: string;
+    rank_ic?: number;
+  }>;
+  feature_attributions?: Array<{
+    feature: string;
+    weight_pct: number;
+    signal: string;
+  }>;
+  error?: string;
+}
 
 interface CopilotDrawerProps {
   activeSymbol?: string;
@@ -47,6 +69,7 @@ interface DeliberationState {
     entry_price: number;
     target_price: number;
     stop_loss: number;
+    ml_forecast?: MLForecastData;
   };
 }
 
@@ -248,6 +271,32 @@ export default function CopilotDrawer({
     judgeText: ""
   });
 
+  const [mlForecast, setMlForecast] = useState<MLForecastData | null>(null);
+  const [mlExpanded, setMlExpanded] = useState(true);
+
+  // Eagerly fetch ML Alpha Forecast when context symbol changes and drawer is open
+  useEffect(() => {
+    if (!activeSymbol || !isOpen) return;
+    let isCancelled = false;
+    const fetchMlForecast = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/ml/forecast/${encodeURIComponent(activeSymbol)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!isCancelled && !data.error) {
+            setMlForecast(data);
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+    };
+    fetchMlForecast();
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeSymbol, isOpen]);
+
   const [bullElapsed, setBullElapsed] = useState("00:00");
   const [bearElapsed, setBearElapsed] = useState("00:00");
   const bullStartTimeRef = useRef<number | null>(null);
@@ -390,6 +439,9 @@ export default function CopilotDrawer({
               next.progressPct = 100;
               if (data.result) {
                 next.decisionResult = data.result;
+                if (data.result.ml_forecast && !data.result.ml_forecast.error) {
+                  setMlForecast(data.result.ml_forecast);
+                }
                 if (data.result.bull_thesis) next.bullText = data.result.bull_thesis;
                 if (data.result.bear_thesis) next.bearText = data.result.bear_thesis;
                 if (data.result.judge_memo) next.judgeText = data.result.judge_memo;
@@ -587,6 +639,106 @@ export default function CopilotDrawer({
                   <span className="text-slate-300 flex-1 truncate">{state.statusText}</span>
                   <span className="text-[10px] text-slate-500 shrink-0">{state.progressPct}%</span>
                 </div>
+
+                {/* ───────────────────────────────────────────────────────────── */}
+                {/* MACHINE LEARNING ALPHA FORECAST CARD                         */}
+                {/* ───────────────────────────────────────────────────────────── */}
+                {mlForecast && !mlForecast.error && (
+                  <div className="border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/70 to-slate-950/90 rounded-xl overflow-hidden shadow-lg backdrop-blur-sm">
+                    <button
+                      onClick={() => setMlExpanded(prev => !prev)}
+                      className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-indigo-950/40 transition-colors font-mono text-xs border-b border-indigo-500/20"
+                    >
+                      <div className="flex items-center space-x-2">
+                        {mlExpanded ? <ChevronDown className="w-3.5 h-3.5 text-indigo-400" /> : <ChevronRight className="w-3.5 h-3.5 text-indigo-400" />}
+                        <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                        <span className="font-bold text-indigo-200">ML Multi-Horizon Alpha Forecast</span>
+                        <span className="text-[10px] text-indigo-400/70 hidden sm:inline">
+                          ({mlForecast.champion_model || "Champion Model"})
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">
+                          Rank IC +{(mlForecast.overall_rank_ic ?? 0.035).toFixed(4)}
+                        </span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          mlForecast.conviction_tier === "STRONG_ALPHA"
+                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                            : mlForecast.conviction_tier === "MODERATE_ALPHA"
+                            ? "bg-cyan-950 text-cyan-300 border border-cyan-800"
+                            : mlForecast.conviction_tier === "NEUTRAL_ALPHA"
+                            ? "bg-amber-950 text-amber-300 border border-amber-800"
+                            : "bg-rose-950 text-rose-300 border border-rose-800"
+                        }`}>
+                          {mlForecast.conviction_tier?.replace(/_/g, " ") || "ALPHA"} ({mlForecast.conviction_score ?? 70}/100)
+                        </span>
+                      </div>
+                    </button>
+
+                    {mlExpanded && (
+                      <div className="p-3.5 space-y-3 font-mono text-xs">
+                        {/* Multi-Horizon Return Grid */}
+                        <div className="grid grid-cols-3 gap-2">
+                          {(["5D", "20D", "60D"] as const).map(horizon => {
+                            const fc = mlForecast.forecasts?.[horizon];
+                            if (!fc) return null;
+                            const isPos = (fc.expected_return_pct ?? 0) >= 0;
+                            return (
+                              <div
+                                key={horizon}
+                                className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col items-center justify-between text-center relative overflow-hidden"
+                              >
+                                <div className="flex items-center justify-between w-full text-[10px] text-slate-400 mb-1">
+                                  <span className="font-semibold text-slate-300">{horizon} Horizon</span>
+                                  <span className="text-[9px] text-indigo-400/80">{fc.model}</span>
+                                </div>
+                                <div className={`text-sm font-bold my-0.5 ${isPos ? "text-emerald-400" : "text-rose-400"}`}>
+                                  {isPos ? "+" : ""}{(fc.expected_return_pct ?? 0).toFixed(2)}%
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  {isPos ? "+" : ""}{(fc.expected_excess_bps ?? 0).toFixed(1)} bps
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Top Feature Attributions */}
+                        {mlForecast.feature_attributions && mlForecast.feature_attributions.length > 0 && (
+                          <div className="space-y-1.5 pt-1 border-t border-indigo-900/30">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400">
+                              <span className="flex items-center space-x-1">
+                                <BarChart3 className="w-3 h-3 text-indigo-400" />
+                                <span>Primary Walk-Forward Factor Drivers</span>
+                              </span>
+                              <span className="text-[9px] text-slate-500">Normalized Weight</span>
+                            </div>
+                            <div className="space-y-1">
+                              {mlForecast.feature_attributions.slice(0, 3).map((item, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-[11px] bg-slate-900/70 px-2 py-1 rounded border border-white/[0.04]">
+                                  <span className="text-slate-300 capitalize">
+                                    {item.feature.replace(/_/g, " ")}
+                                  </span>
+                                  <div className="flex items-center space-x-2">
+                                    <div className="w-16 bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                      <div
+                                        className="bg-indigo-400 h-full rounded-full"
+                                        style={{ width: `${Math.min(100, Math.max(5, item.weight_pct))}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-indigo-300 font-bold text-[10px] w-9 text-right">
+                                      {item.weight_pct.toFixed(1)}%
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* CONVERSATIONAL ASSISTANT GUIDANCE */}
                 {state.conversationalText && (

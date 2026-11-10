@@ -9,6 +9,7 @@ interface MacroRibbonProps {
   supervisorStatus: SupervisorStatus | null;
   isConnected: boolean;
   lastTickAt: number | null;
+  lastIngestTimestamp?: string | null;
 }
 
 export default function MacroRibbon({
@@ -16,27 +17,49 @@ export default function MacroRibbon({
   supervisorStatus,
   isConnected,
   lastTickAt,
+  lastIngestTimestamp,
 }: MacroRibbonProps) {
-  const [secondsAgo, setSecondsAgo] = useState<number | null>(null);
+  const [ingestElapsed, setIngestElapsed] = useState<string>("syncing...");
   const prevValuesRef = useRef<Map<string, number | null>>(new Map());
   const [flashingKeys, setFlashingKeys] = useState<Record<string, "tick-up" | "tick-down">>({});
 
-  // 1. Elapsed Time Ticker
+  const effectiveIngestTime = lastIngestTimestamp || supervisorStatus?.last_ingestion_timestamp;
+
+  // 1. Elapsed Time Ticker since last dynamic ingest
   useEffect(() => {
-    if (!lastTickAt) {
-      setSecondsAgo(null);
+    if (!effectiveIngestTime) {
+      setIngestElapsed("just now");
       return;
     }
 
-    const updateAge = () => {
-      const diffSec = Math.floor((Date.now() - lastTickAt) / 1000);
-      setSecondsAgo(Math.max(0, diffSec));
+    const targetMs = Date.parse(effectiveIngestTime);
+    if (isNaN(targetMs)) {
+      setIngestElapsed("just now");
+      return;
+    }
+
+    const updateTimer = () => {
+      const diffSec = Math.max(0, Math.floor((Date.now() - targetMs) / 1000));
+      if (diffSec < 60) {
+        setIngestElapsed(`${diffSec}s ago`);
+      } else if (diffSec < 3600) {
+        const m = Math.floor(diffSec / 60);
+        const s = diffSec % 60;
+        setIngestElapsed(`${m}m ${s}s ago`);
+      } else if (diffSec < 86400) {
+        const h = Math.floor(diffSec / 3600);
+        const m = Math.floor((diffSec % 3600) / 60);
+        setIngestElapsed(`${h}h ${m}m ago`);
+      } else {
+        const d = Math.floor(diffSec / 86400);
+        setIngestElapsed(`${d}d ago`);
+      }
     };
 
-    updateAge();
-    const interval = setInterval(updateAge, 1000);
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [lastTickAt]);
+  }, [effectiveIngestTime]);
 
   // 2. Kinetic Flash Detection on SSE Ticks
   useEffect(() => {
@@ -98,36 +121,26 @@ export default function MacroRibbon({
       <div
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#050811] border border-white/[0.08] text-slate-300 whitespace-nowrap shadow-sm shrink-0"
         title={
-          isConnected
-            ? `Live SSE stream active. Last tick: ${secondsAgo !== null ? `${secondsAgo}s ago` : "just now"}`
-            : "Stream reconnecting..."
+          effectiveIngestTime
+            ? `Last Dynamic Ingestion: ${new Date(effectiveIngestTime).toLocaleString()} (Continuous feed)`
+            : "NSE Dynamic Ingestion Stream"
         }
       >
         <span className="relative flex h-2 w-2">
           {isConnected && (
-            <span
-              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                secondsAgo !== null && secondsAgo < 15 ? "bg-emerald-400" : "bg-amber-400"
-              }`}
-            />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400" />
           )}
           <span
             className={`relative inline-flex rounded-full h-2 w-2 ${
-              isConnected
-                ? secondsAgo !== null && secondsAgo < 15
-                  ? "bg-emerald-500"
-                  : "bg-amber-500"
-                : "bg-rose-500"
+              isConnected ? "bg-emerald-500" : "bg-rose-500"
             }`}
           />
         </span>
-        <span className="font-semibold tracking-wider text-[10px] text-slate-400">
+        <span className="font-semibold tracking-wider text-[10px] text-slate-400 flex items-center gap-1.5">
           {isConnected ? (
             <>
-              LIVE SSE
-              {secondsAgo !== null && (
-                <span className="text-slate-500 font-normal ml-1">· {secondsAgo}s ago</span>
-              )}
+              <span className="text-emerald-400 font-bold">LIVE NSE</span>
+              <span className="text-slate-400 font-normal">· {ingestElapsed}</span>
             </>
           ) : (
             <span className="text-rose-400 flex items-center gap-1">

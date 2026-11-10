@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.26",
     "framer-motion": "^14.9.1",
     "lightweight-charts": "^5.2.1",
     "lucide-react": "^1.68.0",

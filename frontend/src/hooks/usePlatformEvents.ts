@@ -28,6 +28,7 @@ export interface PlatformEventsState {
   supervisorStatus: SupervisorStatus | null;
   activeJob: ActivePlatformJob | null;
   lastTickAt: number | null;
+  lastIngestTimestamp: string | null;
   isConnected: boolean;
   error: string | null;
 }
@@ -37,6 +38,7 @@ export function usePlatformEvents() {
   const [supervisorStatus, setSupervisorStatus] = useState<SupervisorStatus | null>(null);
   const [activeJob, setActiveJob] = useState<ActivePlatformJob | null>(null);
   const [lastTickAt, setLastTickAt] = useState<number | null>(null);
+  const [lastIngestTimestamp, setLastIngestTimestamp] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +69,9 @@ export function usePlatformEvents() {
       .then((status) => {
         if (active && status) {
           setSupervisorStatus(status);
+          if (status.last_ingestion_timestamp) {
+            setLastIngestTimestamp(status.last_ingestion_timestamp);
+          }
         }
       })
       .catch((err) => {
@@ -161,6 +166,9 @@ export function usePlatformEvents() {
               prev ? { ...prev, supervisor_state: payload.supervisor } : null
             );
           }
+          if (payload.last_ingestion_timestamp) {
+            setLastIngestTimestamp(payload.last_ingestion_timestamp);
+          }
           setLastTickAt(Date.now());
         } catch (e) {
           console.error("Malformed TELEMETRY_TICK payload:", e);
@@ -232,9 +240,11 @@ export function usePlatformEvents() {
     supervisorStatus,
     activeJob,
     lastTickAt,
+    lastIngestTimestamp,
     isConnected,
     error,
     dismissActiveJob,
     setActiveJob,
+    setLastIngestTimestamp,
   };
 }

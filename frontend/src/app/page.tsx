@@ -48,8 +48,10 @@ export default function CockpitPage() {
     activeJob,
     isConnected,
     lastTickAt,
+    lastIngestTimestamp,
     dismissActiveJob,
     setActiveJob,
+    setLastIngestTimestamp,
   } = usePlatformEvents();
 
   // 2. Initial Screener & Watchlist Data Fetch
@@ -60,7 +62,7 @@ export default function CockpitPage() {
     }
     try {
       const [scrRes, wlRes] = await Promise.allSettled([
-        apiFetch<ScreenerResponse>("/screener?limit=250", !invalidateCache),
+        apiFetch<ScreenerResponse>("/screener?limit=1000", !invalidateCache),
         apiFetch<WatchlistResponse>("/watchlist", !invalidateCache),
       ]);
 
@@ -70,9 +72,7 @@ export default function CockpitPage() {
         if (scrRes.value.as_of_date) {
           setAsOfDate(scrRes.value.as_of_date);
         }
-        if (results.length > 0 && !selectedSymbol) {
-          setSelectedSymbol(results[0].symbol);
-        }
+        setSelectedSymbol((prev) => prev || (results.length > 0 ? results[0].symbol : null));
         // Prefetch first 6 stocks for instant switching
         results.slice(0, 6).forEach((c) => prefetchStockBundle(c.symbol));
       }
@@ -85,7 +85,7 @@ export default function CockpitPage() {
     } finally {
       setPageLoading(false);
     }
-  }, [selectedSymbol]);
+  }, []);
 
   useEffect(() => {
     void loadPageData();
@@ -97,30 +97,80 @@ export default function CockpitPage() {
     return candidates.find((c) => c.symbol === selectedSymbol) || null;
   }, [candidates, selectedSymbol]);
 
-  // 3. Universal Ingest Action
+  // 3. Universal Ingest Action with Dynamic Animated Progress Stages
   const handleUniversalIngest = async () => {
     if (isIngesting) return;
     setIsIngesting(true);
+    const jobId = `sys-ingest-${Date.now()}`;
     setActiveJob({
-      job_id: `sys-ingest-${Date.now()}`,
+      job_id: jobId,
       stage: "FETCHING_NSE_SETTLEMENT",
       progress_pct: 15,
       status: "RUNNING",
-      message: "Fetching live bhavcopy and corporate actions...",
+      message: "Connecting to exchange feeds & bhavcopy...",
     });
+
+    // Progressive simulated animation advancing smoothly while backend executes
+    const progressInterval = setInterval(() => {
+      setActiveJob((prev) => {
+        if (!prev || prev.status !== "RUNNING") return prev;
+        const currentPct = prev.progress_pct;
+        if (currentPct < 35) {
+          return {
+            ...prev,
+            stage: "PARALLEL_INGESTION",
+            progress_pct: currentPct + 5,
+            message: "Ingesting live multi-ticker bars across 16 worker threads...",
+          };
+        } else if (currentPct < 65) {
+          return {
+            ...prev,
+            stage: "FACTOR_COMPUTATION",
+            progress_pct: currentPct + 6,
+            message: "Computing vectorized multi-horizon factors on multi-core pool...",
+          };
+        } else if (currentPct < 85) {
+          return {
+            ...prev,
+            stage: "SECTOR_SENTIMENT",
+            progress_pct: currentPct + 4,
+            message: "Imputing hierarchical sector sentiment across universe...",
+          };
+        } else if (currentPct < 96) {
+          return {
+            ...prev,
+            stage: "SYNCHRONIZING_CACHE",
+            progress_pct: currentPct + 2,
+            message: "Materializing screener snapshot view and cache...",
+          };
+        }
+        return prev;
+      });
+    }, 450);
 
     try {
       const res = await triggerSystemIngest();
+      clearInterval(progressInterval);
+      const nowIso = new Date().toISOString();
+      setLastIngestTimestamp(nowIso);
+
       setActiveJob({
-        job_id: `sys-ingest-${Date.now()}`,
+        job_id: jobId,
         stage: "COMPLETED",
         progress_pct: 100,
         status: "SUCCEEDED",
-        message: `Settled ${res.symbols_updated || "universe"} equities for session ${res.settled_date || "today"}.`,
+        message: `Settled ${res.symbols_updated || "universe"} equities (${res.records_ingested || 0} bars) for session ${res.settled_date || "today"}.`,
       });
+
+      // Auto-dismiss banner after 6 seconds on successful completion
+      setTimeout(() => {
+        setActiveJob((prev) => (prev?.status === "SUCCEEDED" ? null : prev));
+      }, 6000);
+
       clearMemoryCache();
       await loadPageData();
     } catch (err: unknown) {
+      clearInterval(progressInterval);
       setActiveJob({
         job_id: `sys-ingest-err-${Date.now()}`,
         stage: "FAILED",
@@ -265,6 +315,7 @@ export default function CockpitPage() {
           supervisorStatus={supervisorStatus}
           isConnected={isConnected}
           lastTickAt={lastTickAt}
+          lastIngestTimestamp={lastIngestTimestamp}
         />
       </div>
 

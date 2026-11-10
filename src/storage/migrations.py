@@ -868,6 +868,112 @@ def _migration_0011(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_0012(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0012: Dynamic Capital Architecture, ML Training Runs, Financial News Ledger, and Universe Backfill Status.
+    """
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(portfolio_accounts)")
+    acct_cols = {r[1] for r in cur.fetchall()}
+    if "initial_capital" not in acct_cols:
+        conn.execute("ALTER TABLE portfolio_accounts ADD COLUMN initial_capital REAL DEFAULT 1600.0;")
+    if "net_capital_deployed" not in acct_cols:
+        conn.execute("ALTER TABLE portfolio_accounts ADD COLUMN net_capital_deployed REAL DEFAULT 1600.0;")
+    if "account_type" not in acct_cols:
+        conn.execute("ALTER TABLE portfolio_accounts ADD COLUMN account_type TEXT DEFAULT 'SYSTEMATIC';")
+    if "engine_version" not in acct_cols:
+        conn.execute("ALTER TABLE portfolio_accounts ADD COLUMN engine_version TEXT DEFAULT 'alpha_v2';")
+    if "fee_tier" not in acct_cols:
+        conn.execute("ALTER TABLE portfolio_accounts ADD COLUMN fee_tier TEXT DEFAULT 'RETAIL_MICRO';")
+
+    cur.execute("PRAGMA table_info(portfolio_orders)")
+    ord_cols = {r[1] for r in cur.fetchall()}
+    if "thesis_note" not in ord_cols:
+        conn.execute("ALTER TABLE portfolio_orders ADD COLUMN thesis_note TEXT DEFAULT NULL;")
+    if "realized_pnl" not in ord_cols:
+        conn.execute("ALTER TABLE portfolio_orders ADD COLUMN realized_pnl REAL DEFAULT 0.0;")
+    if "analysis_json" not in ord_cols:
+        conn.execute("ALTER TABLE portfolio_orders ADD COLUMN analysis_json TEXT DEFAULT NULL;")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ml_training_runs (
+            run_id TEXT PRIMARY KEY,
+            trained_at TEXT NOT NULL,
+            model_family TEXT NOT NULL,
+            horizon_days INTEGER NOT NULL,
+            train_start_date TEXT NOT NULL,
+            train_end_date TEXT NOT NULL,
+            total_samples INTEGER NOT NULL,
+            unique_symbols INTEGER NOT NULL,
+            oos_ic_mean REAL NOT NULL,
+            oos_rank_ic_mean REAL NOT NULL,
+            oos_ic_ir REAL NOT NULL,
+            oos_hit_rate_pct REAL NOT NULL,
+            top_decile_spread_bps REAL NOT NULL,
+            feature_weights_json TEXT NOT NULL,
+            hyperparameters_json TEXT NOT NULL,
+            is_champion INTEGER DEFAULT 0
+        );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ml_training_horizon ON ml_training_runs(horizon_days, is_champion);")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS stock_news_articles (
+            article_id TEXT PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            published_at TEXT NOT NULL,
+            title TEXT NOT NULL,
+            source TEXT NOT NULL,
+            url TEXT,
+            sentiment_score REAL NOT NULL,
+            sentiment_label TEXT NOT NULL,
+            matched_keywords_json TEXT,
+            created_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_news_symbol_date ON stock_news_articles(symbol, published_at DESC);")
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS universe_backfill_status (
+            symbol TEXT PRIMARY KEY,
+            company_name TEXT,
+            sector TEXT,
+            market_cap_tier TEXT,
+            earliest_date TEXT,
+            latest_date TEXT,
+            total_bars INTEGER DEFAULT 0,
+            target_years INTEGER DEFAULT 15,
+            backfill_status TEXT DEFAULT 'PENDING',
+            last_attempt_at TEXT,
+            error_msg TEXT
+        );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_universe_backfill_status ON universe_backfill_status(backfill_status);")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute("""
+        UPDATE portfolio_accounts
+        SET initial_capital = COALESCE(initial_capital, 1000000.0),
+            net_capital_deployed = COALESCE(net_capital_deployed, 1000000.0),
+            account_type = COALESCE(account_type, 'SYSTEMATIC'),
+            engine_version = COALESCE(engine_version, 'alpha_v1'),
+            fee_tier = COALESCE(fee_tier, 'INSTITUTIONAL')
+        WHERE account_id = 'paper_alpha_1';
+    """)
+    conn.execute("""
+        INSERT OR IGNORE INTO portfolio_accounts (
+            account_id, cash_balance, total_nav, updated_at,
+            initial_capital, net_capital_deployed, account_type, engine_version, fee_tier
+        ) VALUES ('paper_alpha_2', 1600.0, 1600.0, ?, 1600.0, 1600.0, 'SYSTEMATIC', 'alpha_v2', 'RETAIL_MICRO');
+    """, (now_iso,))
+    conn.execute("""
+        INSERT OR IGNORE INTO portfolio_accounts (
+            account_id, cash_balance, total_nav, updated_at,
+            initial_capital, net_capital_deployed, account_type, engine_version, fee_tier
+        ) VALUES ('paper_manual_1', 1600.0, 1600.0, ?, 1600.0, 1600.0, 'MANUAL', 'manual_v1', 'RETAIL_MICRO');
+    """, (now_iso,))
+
+
 ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0001_baseline_schema", _migration_0001),
     ("0002_truth_layer_invariants", _migration_0002),
@@ -880,6 +986,7 @@ ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0009_allow_nullable_horizon_model", _migration_0009),
     ("0010_portfolio_execution_ledger", _migration_0010),
     ("0011_corporate_actions_and_backfill_checkpoints", _migration_0011),
+    ("0012_v8_dynamic_capital_and_telemetry", _migration_0012),
 ]
 
 

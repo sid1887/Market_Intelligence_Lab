@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Search,
   Table as TableIcon,
@@ -152,6 +153,14 @@ export default function ScreenerWorkspace({
     return list;
   }, [candidates, search, sectorFilter, sortField, sortAsc, minRoe, onlyAbove200Sma, onlyRebalanceTargets]);
 
+  // Virtualizer for 60 FPS scrolling across large universes (1,000+ equities)
+  const rowVirtualizer = useVirtualizer({
+    count: filteredCandidates.length,
+    getScrollElement: () => tableBodyRef.current,
+    estimateSize: () => 48,
+    overscan: 10,
+  });
+
   // 2. Stable Selection Check
   const isSelectedVisible = useMemo(() => {
     if (!selectedSymbol) return true;
@@ -193,15 +202,15 @@ export default function ScreenerWorkspace({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [filteredCandidates, selectedSymbol, onSelectSymbol]);
 
-  // 4. Scroll Active Row into View
+  // 4. Scroll Active Row into View using Virtualizer
   useEffect(() => {
     if (viewMode === "table" && selectedSymbol) {
-      const el = tableBodyRef.current?.querySelector(
-        `[data-symbol="${selectedSymbol}"]`
-      );
-      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      const idx = filteredCandidates.findIndex((c) => c.symbol === selectedSymbol);
+      if (idx !== -1) {
+        rowVirtualizer.scrollToIndex(idx, { align: "auto" });
+      }
     }
-  }, [selectedSymbol, viewMode]);
+  }, [selectedSymbol, viewMode, filteredCandidates, rowVirtualizer]);
 
   // Column Sort Handler
   const handleSort = (field: keyof ScreenerCandidate) => {
@@ -456,10 +465,10 @@ export default function ScreenerWorkspace({
             </div>
           </div>
 
-          {/* Table Body */}
+          {/* Table Body (Virtual Windowed Chunk Rendering for 60 FPS) */}
           <div
             ref={tableBodyRef}
-            className="flex-1 overflow-y-auto divide-y divide-white/[0.03]"
+            className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent"
           >
             {loading && candidates.length === 0 ? (
               <div className="p-8 text-center text-slate-500 font-mono text-xs">
@@ -470,149 +479,165 @@ export default function ScreenerWorkspace({
                 No equities match the selected criteria.
               </div>
             ) : (
-              filteredCandidates.map((cand, idx) => {
-                const isSelected = cand.symbol === selectedSymbol;
-                const excessRet = cand.excess_ret_20d;
-                const isPositiveRet = typeof excessRet === "number" && excessRet > 0;
-                const isNegativeRet = typeof excessRet === "number" && excessRet < 0;
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const cand = filteredCandidates[virtualRow.index];
+                  const idx = virtualRow.index;
+                  const isSelected = cand.symbol === selectedSymbol;
+                  const excessRet = cand.excess_ret_20d;
+                  const isPositiveRet = typeof excessRet === "number" && excessRet > 0;
+                  const isNegativeRet = typeof excessRet === "number" && excessRet < 0;
 
-                return (
-                  <motion.div
-                    key={cand.symbol}
-                    data-symbol={cand.symbol}
-                    onClick={() => {
-                      onSelectSymbol(cand.symbol);
-                      prefetchStockBundle(cand.symbol);
-                    }}
-                    whileHover={{ backgroundColor: "rgba(30, 41, 59, 0.45)" }}
-                    className={`relative grid grid-cols-12 gap-2 px-3 py-2 cursor-pointer items-center text-xs font-mono transition-colors ${
-                      isSelected
-                        ? "bg-cyan-950/40 text-white font-medium"
-                        : "text-slate-300"
-                    }`}
-                  >
-                    {/* Kinetic glowing edge indicator with spring physics */}
-                    {isSelected && (
-                      <motion.div
-                        layoutId="active-screener-indicator"
-                        className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-cyan-400 via-emerald-400 to-teal-400 shadow-[0_0_10px_rgba(6,182,212,0.8)]"
-                        transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                      />
-                    )}
+                  return (
+                    <div
+                      key={cand.symbol}
+                      data-symbol={cand.symbol}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      onClick={() => {
+                        onSelectSymbol(cand.symbol);
+                        prefetchStockBundle(cand.symbol);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className={`relative grid grid-cols-12 gap-2 px-3 py-2 cursor-pointer items-center text-xs font-mono transition-colors duration-150 hover:bg-slate-800/50 active:bg-slate-800/80 border-b border-white/[0.03] ${
+                        isSelected
+                          ? "bg-cyan-950/40 text-white font-medium"
+                          : "text-slate-300"
+                      }`}
+                    >
+                      {/* Kinetic glowing edge indicator */}
+                      {isSelected && (
+                        <div
+                          className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-cyan-400 via-emerald-400 to-teal-400 shadow-[0_0_10px_rgba(6,182,212,0.8)]"
+                        />
+                      )}
 
-                    {/* Rank */}
-                    <div className="col-span-1 text-slate-500 text-[11px] tabular-nums pl-1">
-                      {cand.rank || idx + 1}
-                    </div>
+                      {/* Rank */}
+                      <div className="col-span-1 text-slate-500 text-[11px] tabular-nums pl-1">
+                        {cand.rank || idx + 1}
+                      </div>
 
-                    {/* Ticker & Name */}
-                    <div className="col-span-3 min-w-0">
-                      <div className="flex items-center flex-wrap gap-1.5">
-                        <span className="font-bold tracking-tight text-slate-100">
-                          {cand.symbol}
-                        </span>
-                        {Boolean(cand.is_watchlist) && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" title="Watchlist" />
-                        )}
-                        {/* Target Rebalance Allocation Pill */}
-                        {Boolean(cand.target_allocation_pct && cand.target_allocation_pct > 0) && (
-                          <span
-                            className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.35)] animate-pulse"
-                            title={`Recommended Target Allocation: ${cand.target_allocation_pct!.toFixed(2)}%`}
-                          >
-                            Alloc: {cand.target_allocation_pct!.toFixed(2)}%
+                      {/* Ticker & Name */}
+                      <div className="col-span-3 min-w-0">
+                        <div className="flex items-center flex-wrap gap-1.5">
+                          <span className="font-bold tracking-tight text-slate-100">
+                            {cand.symbol}
                           </span>
-                        )}
-                        {/* Horizon Drivers Badges */}
-                        {Boolean(cand.horizon_drivers && cand.horizon_drivers.length > 0) && (
-                          <div className="flex items-center gap-1">
-                            {cand.horizon_drivers!.includes("20D") && (
-                              <span
-                                className="px-1 py-0.2 rounded text-[8px] font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold"
-                                title="20-Day Tactical Horizon Contributor (62.5% weight)"
-                              >
-                                20D
-                              </span>
-                            )}
-                            {cand.horizon_drivers!.includes("60D") && (
-                              <span
-                                className="px-1 py-0.2 rounded text-[8px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-semibold"
-                                title="60-Day Trend Drift Horizon Contributor (37.5% weight)"
-                              >
-                                60D
-                              </span>
-                            )}
+                          {Boolean(cand.is_watchlist) && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" title="Watchlist" />
+                          )}
+                          {/* Target Rebalance Allocation Pill */}
+                          {Boolean(cand.target_allocation_pct && cand.target_allocation_pct > 0) && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.35)] animate-pulse"
+                              title={`Recommended Target Allocation: ${cand.target_allocation_pct!.toFixed(2)}%`}
+                            >
+                              Alloc: {cand.target_allocation_pct!.toFixed(2)}%
+                            </span>
+                          )}
+                          {/* Horizon Drivers Badges */}
+                          {Boolean(cand.horizon_drivers && cand.horizon_drivers.length > 0) && (
+                            <div className="flex items-center gap-1">
+                              {cand.horizon_drivers!.includes("20D") && (
+                                <span
+                                  className="px-1 py-0.2 rounded text-[8px] font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold"
+                                  title="20-Day Tactical Horizon Contributor (62.5% weight)"
+                                >
+                                  20D
+                                </span>
+                              )}
+                              {cand.horizon_drivers!.includes("60D") && (
+                                <span
+                                  className="px-1 py-0.2 rounded text-[8px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-semibold"
+                                  title="60-Day Trend Drift Horizon Contributor (37.5% weight)"
+                                >
+                                  60D
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {Boolean(cand.price_above_sma200) && (
+                            <span
+                              className="text-[9px] px-1 rounded bg-slate-900 text-slate-400 border border-white/[0.08]"
+                              title="Price above 200-day SMA"
+                            >
+                              SMA
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                          {cand.company_name}
+                        </div>
+                      </div>
+
+                      {/* Close Price */}
+                      <div className="col-span-2 text-right tabular-nums">
+                        <div className={`font-semibold text-slate-200 transition-colors ${isPositiveRet ? "animate-tick-up" : isNegativeRet ? "animate-tick-down" : ""}`}>
+                          {cand.close !== null ? `₹${cand.close.toFixed(2)}` : "—"}
+                        </div>
+                        {cand.sma_200 !== null && (
+                          <div className="text-[10px] text-slate-500">
+                            SMA: ₹{cand.sma_200.toFixed(0)}
                           </div>
                         )}
-                        {Boolean(cand.price_above_sma200) && (
+                      </div>
+
+                      {/* Blended / Composite Score */}
+                      <div className="col-span-2 flex justify-end">
+                        {(() => {
+                          const score = (cand.blended_score !== null && cand.blended_score !== undefined && cand.blended_score > 0)
+                            ? cand.blended_score
+                            : ((cand.composite_score !== null && cand.composite_score !== undefined && cand.composite_score > 0)
+                                ? cand.composite_score
+                                : null);
+                          return score !== null ? (
+                            <ScreenerScoreCell score={score} />
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          );
+                        })()}
+                      </div>
+
+                      {/* ROE */}
+                      <div className="col-span-2 text-right tabular-nums text-slate-300">
+                        {cand.roe_pct !== null ? `${cand.roe_pct.toFixed(1)}%` : "—"}
+                      </div>
+
+                      {/* 20D Excess Return */}
+                      <div className="col-span-2 text-right tabular-nums font-semibold">
+                        {excessRet !== null && excessRet !== undefined ? (
                           <span
-                            className="text-[9px] px-1 rounded bg-slate-900 text-slate-400 border border-white/[0.08]"
-                            title="Price above 200-day SMA"
+                            className={`inline-flex items-center justify-end px-1 py-0.5 rounded ${
+                              isPositiveRet
+                                ? "text-emerald-400 animate-tick-up"
+                                : isNegativeRet
+                                ? "text-rose-400 animate-tick-down"
+                                : "text-slate-400"
+                            }`}
                           >
-                            SMA
+                            {isPositiveRet ? "+" : ""}
+                            {(excessRet * 100).toFixed(1)}%
                           </span>
-                        )}
-                      </div>
-                      <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                        {cand.company_name}
-                      </div>
-                    </div>
-
-                    {/* Close Price */}
-                    <div className="col-span-2 text-right tabular-nums">
-                      <div className={`font-semibold text-slate-200 transition-colors ${isPositiveRet ? "animate-tick-up" : isNegativeRet ? "animate-tick-down" : ""}`}>
-                        {cand.close !== null ? `₹${cand.close.toFixed(2)}` : "—"}
-                      </div>
-                      {cand.sma_200 !== null && (
-                        <div className="text-[10px] text-slate-500">
-                          SMA: ₹{cand.sma_200.toFixed(0)}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Blended / Composite Score */}
-                    <div className="col-span-2 flex justify-end">
-                      {(() => {
-                        const score = (cand.blended_score !== null && cand.blended_score !== undefined && cand.blended_score > 0)
-                          ? cand.blended_score
-                          : ((cand.composite_score !== null && cand.composite_score !== undefined && cand.composite_score > 0)
-                              ? cand.composite_score
-                              : null);
-                        return score !== null ? (
-                          <ScreenerScoreCell score={score} />
                         ) : (
                           <span className="text-slate-600">—</span>
-                        );
-                      })()}
+                        )}
+                      </div>
                     </div>
-
-                    {/* ROE */}
-                    <div className="col-span-2 text-right tabular-nums text-slate-300">
-                      {cand.roe_pct !== null ? `${cand.roe_pct.toFixed(1)}%` : "—"}
-                    </div>
-
-                    {/* 20D Excess Return */}
-                    <div className="col-span-2 text-right tabular-nums font-semibold">
-                      {excessRet !== null && excessRet !== undefined ? (
-                        <span
-                          className={`inline-flex items-center justify-end px-1 py-0.5 rounded ${
-                            isPositiveRet
-                              ? "text-emerald-400 animate-tick-up"
-                              : isNegativeRet
-                              ? "text-rose-400 animate-tick-down"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          {isPositiveRet ? "+" : ""}
-                          {(excessRet * 100).toFixed(1)}%
-                        </span>
-                      ) : (
-                        <span className="text-slate-600">—</span>
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

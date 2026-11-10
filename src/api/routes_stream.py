@@ -93,10 +93,22 @@ def fetch_macro_telemetry_snapshot(db: DatabaseManager) -> Dict[str, Any]:
 
         macro = MacroClient.get_macro_telemetry(force_refresh=False)
         supervisor = SupervisorStateMachine(db).get_current_state()
+
+        last_ingestion = None
+        try:
+            with db.get_readonly_connection() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT MAX(retrieval_timestamp) FROM ohlcv_daily WHERE series = 'EQ' AND is_synthetic = 0")
+                r = cur.fetchone()
+                last_ingestion = r[0] if r and r[0] else None
+        except Exception:
+            pass
+
         return sanitize_for_json({
             "macro": macro,
             "supervisor": supervisor.get("status", "NORMAL"),
             "supervisor_full": supervisor,
+            "last_ingestion_timestamp": last_ingestion
         })
     except Exception as e:
         logger.error(f"Error fetching telemetry snapshot: {e}")

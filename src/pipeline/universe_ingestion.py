@@ -25,6 +25,7 @@ from src.storage.database import DatabaseManager
 from src.quant.factor_pipeline import FactorPipeline
 from src.client.macro_client import MacroClient
 from src.supervisor.state_machine import SupervisorStateMachine
+from src.data.universe_expander import ingest_symbols_parallel, TICKER_ALIASES, BLACKLIST_SYMBOLS
 
 logger = logging.getLogger("universe_ingestion")
 
@@ -237,23 +238,25 @@ class UniverseIngestionManager:
                     """, b)
                 conn.commit()
 
-        # 3. Concurrent live equity candle fetching
-        all_candles: List[Dict[str, Any]] = []
-        updated_symbols = set()
-        failed_symbols = []
+        # 3. Concurrent live equity candle fetching with chunked yfinance downloads
+        parallel_res = ingest_symbols_parallel(
+            db=self.db,
+            symbols=symbols,
+            max_workers=16,
+            chunk_size=30,
+            period="5d"
+        )
+        total_upserted = parallel_res.get("bars_inserted", 0)
+        updated_count = parallel_res.get("symbols_processed", 0)
+        failed_count = max(0, len(symbols) - updated_count)
 
-        with ThreadPoolExecutor(max_workers=20) as executor:
-            future_to_sym = {executor.submit(self._fetch_symbol_candles, sym): sym for sym in symbols}
-            for future in as_completed(future_to_sym):
-                sym, c_list = future.result()
-                if c_list:
-                    all_candles.extend(c_list)
-                    updated_symbols.add(sym)
-                else:
-                    failed_symbols.append(sym)
+        with self.db.get_connection() as conn:
+            cur = conn.execute("SELECT MAX(trading_date) FROM ohlcv_daily WHERE series = 'EQ' AND is_synthetic = 0")
+            row = cur.fetchone()
+            latest_date = row[0] if row else None
 
         # STRICT INVARIANT: Zero records fetched MUST NEVER return SUCCESS
-        if not all_candles:
+        if total_upserted == 0:
             elapsed = round(time.time() - t0, 2)
             logger.critical(f"EOD ingestion aborted: 0 valid bars retrieved for {eff_target_date}. Providers unavailable or non-trading session.")
             return {
@@ -264,50 +267,11 @@ class UniverseIngestionManager:
                 "symbols_updated": 0,
                 "records_ingested": 0,
                 "factors_computed": 0,
-                "failed_symbols_count": len(failed_symbols),
+                "failed_symbols_count": failed_count,
                 "target_date": eff_target_date,
                 "duration_seconds": elapsed,
                 "message": f"Zero valid bars retrieved for {eff_target_date}. Providers unavailable or non-trading session."
             }
-
-        # 4. Upsert into ohlcv_daily under thread lock
-        total_upserted = 0
-        latest_date = None
-
-        with self.db.get_connection() as conn:
-            for c in all_candles:
-                cur = conn.execute("""
-                    INSERT INTO ohlcv_daily (
-                        symbol, trading_date, series, open, high, low, close, ltp, prev_close,
-                        volume, source, retrieval_timestamp, data_status,
-                        provenance_class, is_synthetic,
-                        is_eligible_for_live_analytics, is_eligible_for_backtest, is_eligible_for_training
-                    ) VALUES (
-                        :symbol, :trading_date, :series, :open, :high, :low, :close, :ltp, :prev_close,
-                        :volume, :source, :retrieval_timestamp, :data_status,
-                        :provenance_class, :is_synthetic,
-                        :is_eligible_for_live_analytics, :is_eligible_for_backtest, :is_eligible_for_training
-                    )
-                    ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
-                        open = excluded.open,
-                        high = excluded.high,
-                        low = excluded.low,
-                        close = excluded.close,
-                        ltp = excluded.ltp,
-                        volume = excluded.volume,
-                        source = excluded.source,
-                        retrieval_timestamp = excluded.retrieval_timestamp,
-                        data_status = excluded.data_status,
-                        provenance_class = excluded.provenance_class,
-                        is_synthetic = excluded.is_synthetic,
-                        is_eligible_for_live_analytics = excluded.is_eligible_for_live_analytics,
-                        is_eligible_for_backtest = excluded.is_eligible_for_backtest,
-                        is_eligible_for_training = excluded.is_eligible_for_training;
-                """, c)
-                total_upserted += cur.rowcount
-                if latest_date is None or c["trading_date"] > latest_date:
-                    latest_date = c["trading_date"]
-            conn.commit()
 
         # Fail closed if no bars were persisted
         if not latest_date or total_upserted == 0:
@@ -321,7 +285,7 @@ class UniverseIngestionManager:
                 "symbols_updated": 0,
                 "records_ingested": 0,
                 "factors_computed": 0,
-                "failed_symbols_count": len(failed_symbols),
+                "failed_symbols_count": failed_count,
                 "target_date": eff_target_date,
                 "duration_seconds": elapsed,
                 "message": "Zero bars persisted from provider feeds; cannot advance settlement."
@@ -340,39 +304,46 @@ class UniverseIngestionManager:
                 "error_code": "INSUFFICIENT_COVERAGE",
                 "reason": "PARTIAL_UNIVERSE_COVERAGE",
                 "settled_date": None,
-                "symbols_updated": len(updated_symbols),
+                "symbols_updated": updated_count,
                 "records_ingested": total_upserted,
                 "factors_computed": 0,
-                "failed_symbols_count": len(failed_symbols),
+                "failed_symbols_count": failed_count,
                 "target_date": eff_target_date,
                 "duration_seconds": elapsed,
                 "message": f"Coverage {total_upserted}/{len(symbols)} is below 85% threshold."
             }
 
-        # 5. Compute factors for the latest session
-        logger.info(f"Computing factors across universe for session {latest_date}...")
-        factor_res = self.pipeline.run_universe_pipeline(
-            symbols=list(updated_symbols) if updated_symbols else symbols,
-            start_date=latest_date,
-            end_date=latest_date
-        )
+        # 5. Compute factors for the latest session via multi-core parallel engine (Tier 2)
+        logger.info(f"Computing factors across universe for session {latest_date} via multi-core parallel engine...")
+        try:
+            from src.quant.factor_calculator import VectorizedFactorCalculator
+            calc = VectorizedFactorCalculator(self.db)
+            calc_summary = calc.compute_for_all_parallel(symbols=symbols, recent_bars=300)
+            factors_count = calc_summary.get("total_bars_factored", 0)
+        except Exception as e:
+            logger.warning(f"Vectorized factor compute fallback: {e}")
+            factor_res = self.pipeline.run_universe_pipeline(
+                symbols=symbols,
+                start_date=latest_date,
+                end_date=latest_date
+            )
+            factors_count = factor_res.get("total_factors_upserted", 0)
 
         # 6. Refresh macro telemetry
         MacroClient.get_macro_telemetry(force_refresh=True)
 
         # 7. Log Supervisor Telemetry
         elapsed = round(time.time() - t0, 2)
-        factors_count = factor_res.get("total_factors_upserted", 0)
 
         self.supervisor.log_telemetry(
             metric_name="UNIVERSAL_DYNAMIC_INGESTION",
-            metric_value=float(len(updated_symbols)),
+            metric_value=float(updated_count),
             threshold_breached=False,
             severity="INFO",
-            message=f"Ingested {len(updated_symbols)} equities ({total_upserted} bars) for session {latest_date} in {elapsed}s.",
+            message=f"Ingested {updated_count} equities ({total_upserted} bars) for session {latest_date} in {elapsed}s.",
             context={
                 "settled_session": latest_date,
-                "symbols_updated": len(updated_symbols),
+                "symbols_updated": updated_count,
                 "factors_computed": factors_count,
                 "duration_seconds": elapsed
             }
@@ -381,9 +352,9 @@ class UniverseIngestionManager:
         return {
             "status": "SUCCESS",
             "settled_date": latest_date,
-            "symbols_updated": len(updated_symbols),
+            "symbols_updated": updated_count,
             "records_ingested": total_upserted,
             "factors_computed": factors_count,
             "duration_seconds": elapsed,
-            "message": f"Successfully ingested live session data for {latest_date} across {len(updated_symbols)} equities."
+            "message": f"Successfully ingested live session data for {latest_date} across {updated_count} equities."
         }

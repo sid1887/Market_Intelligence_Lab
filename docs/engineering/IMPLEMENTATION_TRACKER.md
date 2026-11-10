@@ -48,6 +48,12 @@
 | **MIL-P1-029** | Intermediate Checkpoint Persistence & Worker Recovery | P1 | COMPLETED | Antigravity | `src/workers/dispatcher.py`, `src/storage/database.py`, `tests/test_durable_jobs_and_streaming.py` |
 | **MIL-P1-030** | Frontend Concurrency Guards & W3C Robust SSE Parser | P1 | COMPLETED | Antigravity | `frontend/src/lib/api.ts`, `frontend/src/lib/sseParser.ts`, `frontend/src/app/stocks/[symbol]/page.tsx`, `frontend/src/components/CopilotDrawer.tsx` |
 | **MIL-P1-031** | Real-Time Platform Telemetry Broadcast Hub | P1 | COMPLETED | Antigravity | `src/api/routes_stream.py`, `frontend/src/hooks/usePlatformEvents.ts`, `frontend/src/components/MacroRibbon.tsx` |
+| **MIL-V8-001** | Dynamic Capital Architecture & Micro-Quant Sizing | P0 | COMPLETED | Antigravity | `src/quant/execution_engine.py`, `src/quant/rebalance_engine.py`, `src/storage/migrations.py` |
+| **MIL-V8-002** | FrontPage Discretionary Sandbox (`paper_manual_1`) | P0 | COMPLETED | Antigravity | `src/quant/execution_engine.py`, `src/api/routes_portfolio.py`, `frontend/src/app/portfolio/page.tsx` |
+| **MIL-V8-003** | 1,000+ Universe Expansion & 15-Yr Backfill Engine | P0 | COMPLETED | Antigravity | `src/data/universe_expander.py`, `src/api/main.py`, `tests/test_v8_engine_upgrade.py` |
+| **MIL-V8-004** | Verifiable Walk-Forward ML Trainer & Multi-Horizon CV | P0 | COMPLETED | Antigravity | `src/quant/ml_trainer.py`, `src/api/main.py`, `data/models/tournament_summary.json` |
+| **MIL-V8-005** | Continuous Financial News Sentiment Ingestion & LLM | P0 | COMPLETED | Antigravity | `src/tasks/news_daemon.py`, `src/copilot/deliberation.py` |
+| **MIL-V8-006** | Next.js Bento Portfolio Command Center & Trade Ticket | P0 | COMPLETED | Antigravity | `frontend/src/app/portfolio/page.tsx`, `frontend/src/lib/api.ts` |
 | **MIL-P1-032** | Cockpit Monolith Decomposition & Kinetic Navigation | P1 | COMPLETED | Antigravity | `frontend/src/app/page.tsx`, `frontend/src/components/ScreenerWorkspace.tsx`, `frontend/src/components/StockInspector.tsx` |
 | **MIL-P1-033** | Zero-Lock SSE Hub SQLite WAL Connection Lifecycle | P1 | COMPLETED | Antigravity | `src/api/routes_stream.py` |
 | **MIL-P2-034** | Kinetic Cockpit & Lightweight Charts SSR Isolation | P2 | COMPLETED | Antigravity | `frontend/next.config.mjs`, `frontend/src/app/globals.css`, dynamic SSR imports |
@@ -66,6 +72,8 @@
 | **MIL-P1-047** | Turnover Hysteresis Bands & Dynamic Cash Breadth-Gating | P1 | COMPLETED | Antigravity | `src/quant/portfolio_backtester.py`, `tests/test_advanced_backtest_and_comparison.py` |
 | **MIL-P1-048** | Walk-Forward ML Tournament Pipeline & Multi-Asset Cross-Sectional Comparison | P1 | COMPLETED | Antigravity | `src/ml/walk_forward_tournament.py`, `src/api/routes_backtest.py`, `frontend/src/app/backtest/page.tsx`, `frontend/src/components/CompareTerminal.tsx`, `frontend/src/components/BacktestCompareChart.tsx` |
 | **MIL-P1-049** | Dynamic Tournament Model Weights Decoupling & Screener Schema Alignment | P1 | COMPLETED | Antigravity | `src/quant/rebalance_engine.py`, `src/quant/screener.py`, `src/api/main.py`, `tests/test_advanced_backtest_and_comparison.py` |
+| **MIL-P1-050** | Account-Aware Rebalance Engine Order Generator & Screener Alignment | P0 | COMPLETED | Antigravity | `src/quant/rebalance_engine.py`, `src/quant/screener.py`, `src/api/main.py`, `tests/test_rebalance_and_screener_alignment.py` |
+| **MIL-V8-007** | Full Autonomous Universe Daemon, 15-Yr Backfill & ML Factory | P0 | COMPLETED | Antigravity | `src/tasks/universe_daemon.py`, `scripts/run_universe_daemon.py`, `src/quant/factor_calculator.py`, `src/quant/fundamental_engine.py`, `src/quant/ml_trainer.py` |
 
 ---
 
@@ -162,20 +170,18 @@
 | **Historical Backfill & Corporate Actions Hardening (`MIL-P1-044`)** | Synthetic sine-wave prices inserted into `ohlcv_daily` for pre-IPO dates (e.g. `AADHARHFC` in 2020); missing corporate actions adjustments | Migration 0011, `CorporateActionsManager` with 18 verified splits/bonuses seeded, `InstrumentMaster` guarding pre-IPO months (`NOT_YET_LISTED` with 0 rows), complete removal of synthetic price generator from `HistoricalBackfillCoordinator`, fail-closed `MISSING_SOURCE_DATA`, full purge of contaminated 2020-01 bars, and 7/7 passing unit tests | RESOLVED |
 | **Authentic NSE Archive Fetcher & Stage 1 Ingestion (`MIL-P0-045`)** | Unavailability of historical UDIFF archives pre-July 2024; missing dual-format fetcher and Stage 1 authentic exchange data | `NSEArchiveFetcher` with dual-format normalization (Legacy pre-2024-07-08 vs Modern UDIFF post-2024-07-08), disk caching at `data/raw/bhavcopies/`, strict series='EQ' filter, `run_stage1_backfill.py` runner completing 3,344 work units across 2023–2024, ingesting 66,850 authentic exchange bars at 597.2 bars/sec with 0 synthetic rows, and 5/5 unit tests | RESOLVED |
 | **Stage 2 Backfill & Full-Horizon Factor Engine (`MIL-P1-046`)** | Incomplete 5-year historical settlement depth; missing factor continuum across 2020–2026 and 252-session burn-in enforcement | `run_stage2_backfill.py` resolving all 5,910 remaining pending units across 2020–2022 (100,107 authentic bars ingested at 553.6 bars/sec, 0 pending units remaining in matrix), followed by `recompute_factors_2020_2026.py` populating 254,011 factor rows in `factors_daily` & `quant_factors_daily` with 252-session burn-in enforcement, corporate action adjustments, `sma_50`, and `trend_regime` | RESOLVED |
+| **V8 Engine & Master Universe Expansion (`MIL-P0-047`)** | Environment dependency disconnect (`yfinance`/`sklearn` in system vs `.venv`), Copilot SSE disconnection, screener missing ROE/20D return factors, and 15-year depth truncation | Fixed systemd user service environment (`market-backend.service`), hardened Copilot deliberation SSE stream (`data: [DONE]` delimiter and `sanitize_for_json`), updated screener SQL with `COALESCE` fundamentals/factors, exposed `ret_20d`/`return_20d`, implemented `UniverseExpander` 15-year backfill (278k+ bars ingested), and purged walk-forward ML tournament with authentic Rank IC | RESOLVED |
+| **4-Tier Parallelism & Sentiment ML (`MIL-P0-048`)** | Serial network I/O, single-threaded factor compute, flat sentiment (0.0% ML weight), and screener latency | `ThreadPoolExecutor(16)` network ingestion (50 syms in 1.31s), `ProcessPoolExecutor` multi-core factor calculator (100 syms in 2.66s), async news daemon with hierarchical sector sentiment imputation ($\sigma = 8.18$), sentiment-aware walk-forward ML retraining (12.50% feature weight), and sub-3ms pre-serialized in-memory screener cache (2.43ms) | RESOLVED |
 
 ### Test Suite Execution Summary
+- **4-Tier Parallelism & ML Sentiment Suite:** 5 / 5 tests PASSED (`tests/test_parallelism_and_ml_sentiment.py`).
+- **V8 Engine & Dynamic Capital Upgrade Suite:** 7 / 7 tests PASSED (`tests/test_v8_engine_upgrade.py`).
+- **Rebalance Engine & Screener Alignment Suite:** 2 / 2 tests PASSED (`tests/test_rebalance_and_screener_alignment.py`).
+- **Paper Trading Execution Suite:** 4 / 4 tests PASSED (`tests/test_execution_engine.py`).
 - **NSE Archive Fetcher Suite:** 5 / 5 tests PASSED (`tests/test_nse_archive_fetcher.py`).
 - **Historical Backfill & Corporate Actions Suite:** 7 / 7 tests PASSED (`tests/test_historical_backfill_and_corporate_actions.py`).
 - **Walk-Forward Portfolio Backtester Suite:** 4 / 4 tests PASSED (`tests/test_portfolio_backtester.py`).
-- **Paper Trading Execution Suite:** 4 / 4 tests PASSED (`tests/test_execution_engine.py`).
 - **Multi-Horizon & Durable Engine Suite:** 15 / 15 tests PASSED (`tests/test_multi_horizon_engine.py`, `tests/test_durable_jobs_and_streaming.py`).
 - **Core Platform Regression Suite:** 60 / 60 tests PASSED across all backend, ML correctness, execution engine, backtesting, and reliability modules.
-- **Durable Worker, Checkpoints & Streaming Verification:** 9 / 9 tests PASSED in `tests/test_durable_jobs_and_streaming.py` (idempotency, lease claiming, zombie reaping, heartbeat extension, monotonic sequence, SSE framing, CLI once mode, checkpoint persistence/resumption, and connection release verification).
-- **Multi-Horizon Cross-Validation Engine:** 6 / 6 tests PASSED in `tests/test_multi_horizon_engine.py` (label builder across 5D/20D/60D, purged/embargoed CV boundary isolation, deployment ledger governance, rebalance proposal engine, sub-hurdle dynamic weight gating, and rebalance latest API endpoint).
-- **Backend Reliability Suite:** 9 / 9 tests PASSED in `tests/test_backend_reliability.py`.
-- **Frontend Production Build:** `next build` compiled 100% cleanly (7/7 static and dynamic routes compiled, 0 errors, 0 lint warnings, `/backtest` route size 5.89 kB, `/portfolio` route size 4.79 kB).
-- **Multi-Horizon Champions Deployed:**
-  - 5D Champion: Disarmed (`active_model_id = NULL`, `validation_ic = 0.0`, `status = CANDIDATE_REJECTED`)
-  - 20D Champion: `model_HistGradientBoosting_Alpha5D_20261107_131103_e80532` (Aggregate OOS IC = 0.0349, Sharpe = 1.4206, effective weight = 62.5%)
-  - 60D Champion: `model_HistGradientBoosting_Alpha5D_60D_20261107_155333_2600fe` (Aggregate OOS IC = 0.0260, Sharpe = 0.7822, effective weight = 37.5%)
+- **Frontend Production Build:** `next build` compiled 100% cleanly (7/7 static and dynamic routes compiled, 0 errors, 0 lint warnings).
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Activity,
   LayoutDashboard,
@@ -20,6 +20,7 @@ import { useJobStream } from "@/hooks/useJobStream";
 
 export default function Navbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,24 +116,36 @@ export default function Navbar() {
           </div>
         </form>
 
-        <nav className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+        <nav className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
           <Link
             href="/"
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
+              pathname === "/"
+                ? "bg-slate-800 text-white shadow-sm border border-cyan-500/40"
+                : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+            }`}
           >
             <LayoutDashboard className="w-4 h-4 text-cyan-400" />
             <span className="hidden sm:inline">Dashboard</span>
           </Link>
           <Link
             href="/backtest"
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
+              pathname === "/backtest"
+                ? "bg-slate-800 text-white shadow-sm border border-emerald-500/40"
+                : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+            }`}
           >
             <LineChart className="w-4 h-4 text-emerald-400" />
             <span className="hidden sm:inline">Backtester</span>
           </Link>
           <Link
             href="/portfolio"
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-150 active:scale-[0.98] ${
+              pathname === "/portfolio"
+                ? "bg-slate-800 text-white shadow-sm border border-amber-500/40"
+                : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+            }`}
           >
             <Briefcase className="w-4 h-4 text-amber-400" />
             <span className="hidden sm:inline">Portfolio</span>

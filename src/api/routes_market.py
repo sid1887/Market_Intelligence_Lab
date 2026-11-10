@@ -404,7 +404,7 @@ def get_stock_tearsheet(
 @router.get("/api/v1/stocks/{symbol}/history")
 def get_stock_history(
     symbol: str,
-    limit: int = 500,
+    limit: int = 5000,
     conn: sqlite3.Connection = Depends(get_db_connection)
 ):
     """
@@ -722,6 +722,11 @@ def trigger_system_ingest(
             })
 
         res = manager.execute_universe_ingestion()
+        try:
+            from src.api.main import invalidate_screener_cache
+            invalidate_screener_cache()
+        except Exception:
+            pass
         return sanitize_for_json(res)
     except Exception as e:
         logger.error(f"Universal dynamic ingestion error: {e}", exc_info=True)

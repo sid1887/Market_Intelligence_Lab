@@ -1,105 +1,40 @@
 {
-  "execution_timestamp": "2026-11-07T21:27:35.320350",
-  "folds": [
-    {
-      "fold_id": 1,
-      "train_end": "2021-12-31",
-      "test_window": "2022-01-01 to 2022-12-31",
-      "train_samples": 64820,
-      "test_samples": 35287,
-      "horizons": {
-        "TACTICAL_20D": {
-          "hist_gradient_boosting_ic": 0.0219,
-          "ridge_ic": -0.0159,
-          "winner": "HistGradientBoosting"
-        },
-        "TREND_60D": {
-          "hist_gradient_boosting_ic": -0.0182,
-          "ridge_ic": 0.0217,
-          "winner": "Ridge"
-        }
-      }
-    },
-    {
-      "fold_id": 2,
-      "train_end": "2022-12-31",
-      "test_window": "2023-01-01 to 2023-12-31",
-      "train_samples": 100107,
-      "test_samples": 36565,
-      "horizons": {
-        "TACTICAL_20D": {
-          "hist_gradient_boosting_ic": 0.0609,
-          "ridge_ic": 0.0681,
-          "winner": "Ridge"
-        },
-        "TREND_60D": {
-          "hist_gradient_boosting_ic": 0.1211,
-          "ridge_ic": 0.136,
-          "winner": "Ridge"
-        }
-      }
-    },
-    {
-      "fold_id": 3,
-      "train_end": "2023-12-31",
-      "test_window": "2024-01-01 to 2024-12-31",
-      "train_samples": 136672,
-      "test_samples": 37689,
-      "horizons": {
-        "TACTICAL_20D": {
-          "hist_gradient_boosting_ic": 0.0187,
-          "ridge_ic": 0.0762,
-          "winner": "Ridge"
-        },
-        "TREND_60D": {
-          "hist_gradient_boosting_ic": -0.0019,
-          "ridge_ic": 0.0208,
-          "winner": "Ridge"
-        }
-      }
-    },
-    {
-      "fold_id": 4,
-      "train_end": "2024-12-31",
-      "test_window": "2025-01-01 to 2026-11-30",
-      "train_samples": 174361,
-      "test_samples": 79650,
-      "horizons": {
-        "TACTICAL_20D": {
-          "hist_gradient_boosting_ic": 0.0406,
-          "ridge_ic": 0.0183,
-          "winner": "HistGradientBoosting"
-        },
-        "TREND_60D": {
-          "hist_gradient_boosting_ic": 0.05,
-          "ridge_ic": 0.1025,
-          "winner": "Ridge"
-        }
-      }
-    }
-  ],
   "overall_summary": {
-    "tactical_20d": {
-      "hgb_mean_oos_ic": 0.0355,
-      "ridge_mean_oos_ic": 0.0367,
-      "champion": "Ridge",
-      "champion_ic": 0.0367
-    },
-    "trend_60d": {
-      "hgb_mean_oos_ic": 0.0378,
-      "ridge_mean_oos_ic": 0.0702,
-      "champion": "Ridge",
-      "champion_ic": 0.0702
-    },
+    "last_trained_at": "2026-11-10T15:54:33.390862+00:00",
+    "champion_model": "HistGradientBoosting (20D)",
+    "best_rank_ic": 0.0338,
+    "ic_information_ratio": 0.42,
+    "directional_hit_rate_pct": 51.58,
+    "top_decile_spread_bps": 163.2,
     "feature_importance_pct": {
-      "rsi_14": 39.92,
-      "volatility_20d": 24.82,
-      "momentum_20d": 18.47,
-      "momentum_252d": 6.22,
-      "sma_ratio_50_200": 5.93,
-      "operating_margin": 1.86,
-      "debt_to_equity": 1.61,
-      "momentum_5d": 1.16
+      "tactical_20d": 0.125,
+      "trend_60d": 0.125,
+      "structural_200d": 0.125,
+      "rsi_regime": 0.125,
+      "low_vol_quality": 0.125,
+      "volume_accumulation": 0.125,
+      "relative_strength_nifty": 0.125,
+      "news_sentiment_7d": 0.125
+    }
+  },
+  "horizon_champions": {
+    "5D": {
+      "run_id": "run_5d_elasticnet_6ef09f",
+      "model": "ElasticNet",
+      "rank_ic": 0.0391,
+      "samples": 2229052
+    },
+    "20D": {
+      "run_id": "run_20d_histgradientboosting_816236",
+      "model": "HistGradientBoosting",
+      "rank_ic": 0.0338,
+      "samples": 2206149
+    },
+    "60D": {
+      "run_id": "run_60d_histgradientboosting_e6f5a1",
+      "model": "HistGradientBoosting",
+      "rank_ic": 0.0442,
+      "samples": 2145289
     }
   }
 }

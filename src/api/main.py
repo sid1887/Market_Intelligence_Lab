@@ -14,12 +14,13 @@ concurrency-safe read-only WAL connection endpoints:
 import os
 import re
 import gc
+import json
 import sqlite3
 import datetime
 import logging
 from typing import List, Dict, Any, Optional
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -57,9 +58,31 @@ from src.api.routes_backtest import router as backtest_router
 
 from contextlib import asynccontextmanager
 import asyncio
+import threading
 from src.tasks.daemon import platform_daemon, run_autonomous_platform_daemon
 
 logger = logging.getLogger(__name__)
+
+# Thread-safe In-Memory Screener Materialized Snapshot View (Milestone B6 / P0)
+_screener_cache_lock = threading.Lock()
+_screener_snapshot_cache: Optional[Dict[str, Any]] = None
+_screener_cached_bytes: Optional[bytes] = None
+_screener_cached_1000_bytes: Optional[bytes] = None
+_screener_cache_date: Optional[str] = None
+_screener_cache_time: float = 0.0
+SCREENER_CACHE_TTL_SECONDS: float = 300.0
+
+
+def invalidate_screener_cache() -> None:
+    """Explicitly invalidates the in-memory screener snapshot cache."""
+    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_1000_bytes, _screener_cache_date, _screener_cache_time
+    with _screener_cache_lock:
+        _screener_snapshot_cache = None
+        _screener_cached_bytes = None
+        _screener_cached_1000_bytes = None
+        _screener_cache_date = None
+        _screener_cache_time = 0.0
+    logger.info("In-memory screener cache invalidated.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -151,14 +174,54 @@ def get_screener(
     price_above_sma200: Optional[bool] = Query(None, description="Filter for Price > 200-day SMA"),
     exclude_financials: bool = Query(False, description="Exclude Financial Services sector"),
     include_watchlists: bool = Query(True, description="Include onboarded user watchlists"),
-    limit: int = Query(200, ge=1, le=500, description="Max results to return")
+    limit: int = Query(1000, ge=1, le=2000, description="Max results to return"),
+    offset: int = Query(0, ge=0, description="Pagination offset")
 ):
     """
     Returns top-ranked stocks from the latest trading session in quant_factors_daily
     sorted descending by composite Quality-Momentum score.
     Safely sanitizes all NaN / Infinity values to prevent serialization crashes.
     """
+    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_1000_bytes, _screener_cache_date, _screener_cache_time
     try:
+        is_default_query = (
+            min_roe is None and
+            max_de is None and
+            price_above_sma200 is None and
+            not exclude_financials and
+            include_watchlists
+        )
+
+        # Fast In-Memory Materialized View Serve (< 5ms)
+        now_time = datetime.datetime.now().timestamp()
+        if is_default_query:
+            with _screener_cache_lock:
+                if (
+                    _screener_snapshot_cache is not None and
+                    (now_time - _screener_cache_time < SCREENER_CACHE_TTL_SECONDS)
+                ):
+                    cached_items = _screener_snapshot_cache["items"]
+                    cached_date = _screener_cache_date
+                    if offset == 0 and limit == 1000 and _screener_cached_1000_bytes is not None:
+                        return Response(content=_screener_cached_1000_bytes, media_type="application/json")
+                    if offset == 0 and limit >= len(cached_items) and _screener_cached_bytes is not None:
+                        return Response(content=_screener_cached_bytes, media_type="application/json")
+
+                    sliced_items = cached_items[offset: offset + limit]
+                    payload = {
+                        "trading_date": cached_date,
+                        "as_of_date": cached_date,
+                        "total_candidates": len(cached_items),
+                        "returned_count": len(sliced_items),
+                        "offset": offset,
+                        "limit": limit,
+                        "candidates": sliced_items,
+                        "results": sliced_items,
+                        "items": sliced_items,
+                        "cached": True
+                    }
+                    return Response(content=json.dumps(payload).encode("utf-8"), media_type="application/json")
+
         db = DatabaseManager(DATABASE_PATH)
         screener = FactorScreener(db)
 
@@ -182,65 +245,132 @@ def get_screener(
             criteria["exclude_sectors"] = ["Financial Services"]
 
         # 3. Execute deterministic screen
+        # If default query, fetch all candidates to populate the in-memory cache
+        fetch_limit = 2500 if is_default_query else limit
+        fetch_offset = 0 if is_default_query else offset
+
         df = screener.screen(
-            as_of_date=latest_date,
+            trading_date=latest_date,
             criteria=criteria if criteria else None,
-            include_watchlists=include_watchlists
+            include_watchlists=include_watchlists,
+            limit=fetch_limit,
+            offset=fetch_offset
         )
 
         # Sanitize DataFrame replacing NaNs with None as specified in directive
         df_clean = df.where(pd.notnull(df), None)
 
-        # Compute point-in-time multi-horizon blended scores and target rebalance allocations
-        try:
-            rebalance_engine = RebalanceEngine(db)
-            blended_map = rebalance_engine.compute_universe_blended_scores(latest_date)
-        except Exception as b_err:
-            logger.warning(f"Failed to compute blended scores in screener: {b_err}")
-            blended_map = {}
-
         results = []
-        for rank, (_, row) in enumerate(df_clean.head(limit).iterrows(), start=1):
+        for rank, (_, row) in enumerate(df_clean.iterrows(), start=fetch_offset + 1):
             sym = str(row["symbol"])
-            b_info = blended_map.get(sym, {})
-            raw_b_score = b_info.get("blended_score") if b_info else None
-            b_score = raw_b_score if (raw_b_score is not None and raw_b_score > 0) else safe_float(row.get("composite_score"), 2)
-            target_alloc = b_info.get("target_allocation_pct", 0.0) if b_info else 0.0
-            drivers = b_info.get("horizon_drivers", []) if b_info else []
-            is_target = bool(b_info.get("is_rebalance_target", False)) if b_info else False
+            b_score = safe_float(row.get("blended_score"), 2)
+            if b_score is None:
+                b_score = safe_float(row.get("composite_score"), 2)
+
+            target_alloc = safe_float(row.get("target_allocation_pct"), 2) or 0.0
+            drivers = row.get("horizon_drivers")
+            if not isinstance(drivers, list):
+                drivers = []
+            is_target = bool(row.get("is_rebalance_target", False))
 
             results.append({
                 "rank": rank,
                 "symbol": sym,
-                "company_name": str(row["company_name"]),
-                "sector": str(row["sector"]),
+                "company_name": str(row.get("company_name", sym)),
+                "sector": str(row.get("sector", "Unclassified")),
                 "close": safe_float(row.get("close"), 2),
                 "sma_200": safe_float(row.get("sma_200"), 2),
                 "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
                 "roe_pct": safe_float(row.get("roe_pct"), 2),
                 "opm_pct": safe_float(row.get("opm_pct"), 2),
                 "excess_ret_20d": safe_float(row.get("excess_ret_20d"), 4),
+                "ret_20d": safe_float(row.get("ret_20d"), 4),
+                "return_20d": safe_float(row.get("ret_20d"), 4),
                 "composite_score": safe_float(row.get("composite_score"), 2),
-                "blended_score": safe_float(b_score, 2),
-                "target_allocation_pct": safe_float(target_alloc, 2),
+                "blended_score": b_score,
+                "target_allocation_pct": target_alloc,
                 "horizon_drivers": drivers,
                 "is_rebalance_target": is_target,
-                "score_20d": safe_float(b_info.get("score_20d"), 1) if b_info else None,
-                "score_60d": safe_float(b_info.get("score_60d"), 1) if b_info else None,
+                "score_20d": safe_float(row.get("score_20d"), 1),
+                "score_60d": safe_float(row.get("score_60d"), 1),
                 "price_above_sma200": bool(row.get("price_above_sma200", False)),
                 "is_watchlist": bool(row.get("is_watchlist", 0)),
                 "rsi_14": safe_float(row.get("rsi_14"), 2),
                 "volatility_20d": safe_float(row.get("volatility_20d"), 4)
             })
 
+        # Populate cache on default queries
+        if is_default_query:
+            payload = {
+                "trading_date": latest_date,
+                "as_of_date": latest_date,
+                "total_candidates": len(results),
+                "returned_count": len(results),
+                "offset": 0,
+                "limit": len(results),
+                "candidates": results,
+                "results": results,
+                "items": results,
+                "cached": True
+            }
+            raw_bytes = json.dumps(payload).encode("utf-8")
+            sliced_1000 = results[:1000]
+            raw_1000_bytes = json.dumps({
+                "trading_date": latest_date,
+                "as_of_date": latest_date,
+                "total_candidates": len(results),
+                "returned_count": len(sliced_1000),
+                "offset": 0,
+                "limit": 1000,
+                "candidates": sliced_1000,
+                "results": sliced_1000,
+                "items": sliced_1000,
+                "cached": True
+            }).encode("utf-8")
+            with _screener_cache_lock:
+                _screener_snapshot_cache = {
+                    "trading_date": latest_date,
+                    "as_of_date": latest_date,
+                    "total_candidates": len(results),
+                    "items": results
+                }
+                _screener_cached_bytes = raw_bytes
+                _screener_cached_1000_bytes = raw_1000_bytes
+                _screener_cache_date = latest_date
+                _screener_cache_time = now_time
+
+            if offset == 0 and limit == 1000:
+                return Response(content=raw_1000_bytes, media_type="application/json")
+            if offset == 0 and limit >= len(results):
+                return Response(content=raw_bytes, media_type="application/json")
+
+            sliced_results = results[offset: offset + limit]
+            sliced_payload = {
+                "trading_date": latest_date,
+                "as_of_date": latest_date,
+                "total_candidates": len(results),
+                "returned_count": len(sliced_results),
+                "offset": offset,
+                "limit": limit,
+                "candidates": sliced_results,
+                "results": sliced_results,
+                "items": sliced_results,
+                "cached": False
+            }
+            return Response(content=json.dumps(sliced_payload).encode("utf-8"), media_type="application/json")
+        else:
+            sliced_results = results
+
         return sanitize_for_json({
             "trading_date": latest_date,
             "as_of_date": latest_date,
-            "total_candidates": len(df),
-            "returned_count": len(results),
-            "candidates": results,
-            "results": results,
-            "items": results
+            "total_candidates": len(results) if is_default_query else len(df),
+            "returned_count": len(sliced_results),
+            "offset": offset,
+            "limit": limit,
+            "candidates": sliced_results,
+            "results": sliced_results,
+            "items": sliced_results
         })
     except Exception as e:
         logger.error(f"Screener execution error: {e}", exc_info=True)
@@ -357,6 +487,144 @@ def get_macro_telemetry():
     return sanitize_for_json(data)
 
 
+# =====================================================================
+# V8 Engine / Phase 10: Universe Expansion & Walk-Forward ML Endpoints
+# =====================================================================
+
+class UniverseExpandRequest(BaseModel):
+    batch_size: Optional[int] = 15
+    target_start_date: Optional[str] = "2011-01-01"
+    run_seed_only: Optional[bool] = False
+
+
+class MLTrainRequest(BaseModel):
+    horizons: Optional[List[int]] = [5, 20, 60]
+
+
+@app.post("/system/universe/expand")
+@app.post("/api/v1/system/universe/expand")
+def expand_universe_endpoint(req: Optional[UniverseExpandRequest] = None):
+    """Seeds the 1,000+ master universe and optionally triggers a 15-year backfill batch."""
+    try:
+        from src.data.universe_expander import UniverseExpander
+        db = DatabaseManager(DATABASE_PATH)
+        expander = UniverseExpander(db=db)
+        status = expander.seed_master_universe()
+        if req and not req.run_seed_only:
+            batch_res = expander.run_backfill_batch(
+                batch_size=req.batch_size or 15,
+                target_start_date=req.target_start_date or "2011-01-01"
+            )
+            return sanitize_for_json(batch_res)
+        return sanitize_for_json(status)
+    except Exception as e:
+        logger.error(f"Error expanding universe: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Universe expansion failed: {str(e)}")
+
+
+@app.get("/system/universe/status")
+@app.get("/api/v1/system/universe/status")
+def get_universe_status_endpoint():
+    """Returns tracking status of the 1,000+ universe and 15-year historical backfill."""
+    try:
+        from src.data.universe_expander import UniverseExpander
+        db = DatabaseManager(DATABASE_PATH)
+        expander = UniverseExpander(db=db)
+        return sanitize_for_json(expander.get_universe_status())
+    except Exception as e:
+        logger.error(f"Error getting universe status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get universe status: {str(e)}")
+
+
+@app.post("/ml/train")
+@app.post("/api/v1/ml/train")
+def train_ml_tournament_endpoint(req: Optional[MLTrainRequest] = None):
+    """Executes purged walk-forward ML training tournament across 5D, 20D, and 60D horizons."""
+    try:
+        from src.quant.ml_trainer import WalkForwardMLTrainer
+        db = DatabaseManager(DATABASE_PATH)
+        trainer = WalkForwardMLTrainer(db=db)
+        horizons = req.horizons if req and req.horizons else [5, 20, 60]
+        results = trainer.run_training_tournament(horizons=horizons)
+        return sanitize_for_json({
+            "message": "ML walk-forward tournament completed successfully.",
+            "results": results,
+            "telemetry": trainer.get_ml_telemetry(limit=10)
+        })
+    except Exception as e:
+        logger.error(f"Error training ML models: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"ML training failed: {str(e)}")
+
+
+@app.get("/ml/telemetry")
+@app.get("/api/v1/ml/telemetry")
+def get_ml_telemetry_endpoint(limit: int = Query(25, ge=1, le=100)):
+    """Returns chronological ledger of ML training runs and current out-of-sample champions."""
+    try:
+        from src.quant.ml_trainer import WalkForwardMLTrainer
+        db = DatabaseManager(DATABASE_PATH)
+        trainer = WalkForwardMLTrainer(db=db)
+        return sanitize_for_json(trainer.get_ml_telemetry(limit=limit))
+    except Exception as e:
+        logger.error(f"Error fetching ML telemetry: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch ML telemetry: {str(e)}")
+
+
+@app.post("/news/ingest")
+@app.post("/api/v1/news/ingest")
+def trigger_news_ingestion(symbols: Optional[List[str]] = Query(None)):
+    """Triggers live financial news ingestion and sentiment scoring for active portfolio and top stocks."""
+    try:
+        from src.tasks.news_daemon import NewsSentimentDaemon
+        db = DatabaseManager(DATABASE_PATH)
+        daemon = NewsSentimentDaemon(db=db)
+        result = daemon.ingest_portfolio_and_top_candidates(top_symbols=symbols)
+        return sanitize_for_json(result)
+    except Exception as e:
+        logger.error(f"Error ingesting news: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"News ingestion failed: {str(e)}")
+
+
+@app.get("/api/v1/ml/forecast/{symbol}")
+def get_ml_forecast_endpoint(symbol: str):
+    """
+    Sub-millisecond multi-horizon walk-forward ML alpha inference.
+    Returns 5D, 20D, and 60D forward return expectations with feature attributions.
+    """
+    sym = symbol.strip().upper()
+    try:
+        from src.quant.ml_trainer import WalkForwardMLTrainer
+        db = DatabaseManager(DATABASE_PATH)
+        trainer = WalkForwardMLTrainer(db=db)
+        fc = trainer.predict_for_symbol(sym)
+        return sanitize_for_json(fc)
+    except Exception as e:
+        logger.error(f"Error predicting ML for {sym}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/ml/train")
+def trigger_ml_training_endpoint(background_tasks: BackgroundTasks):
+    """
+    Triggers walk-forward ML tournament training across 5D, 20D, and 60D horizons
+    in the background.
+    """
+    def _train():
+        try:
+            from src.quant.ml_trainer import WalkForwardMLTrainer
+            db = DatabaseManager(DATABASE_PATH)
+            trainer = WalkForwardMLTrainer(db=db)
+            trainer.run_training_tournament()
+        except Exception as err:
+            logger.error(f"Background ML training error: {err}", exc_info=True)
+
+    background_tasks.add_task(_train)
+    return {
+        "status": "accepted",
+        "message": "Walk-forward ML tournament training scheduled asynchronously across 5D, 20D, and 60D horizons."
+    }
+
+
 class CopilotStreamRequest(BaseModel):
     symbol: str
     prompt: Optional[str] = "Debate Bull vs Bear Thesis"
@@ -377,12 +645,19 @@ async def stream_copilot_deliberation(request: CopilotStreamRequest):
     user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
 
     async def event_generator():
-        async for chunk in copilot_engine.run_deliberation_stream(
-            symbol=sym,
-            user_prompt=user_prompt,
-            context_override=request.context_override
-        ):
-            yield chunk
+        try:
+            async for chunk in copilot_engine.run_deliberation_stream(
+                symbol=sym,
+                user_prompt=user_prompt,
+                context_override=request.context_override
+            ):
+                yield chunk
+        except Exception as stream_err:
+            logger.error(f"Copilot streaming exception: {stream_err}", exc_info=True)
+            err_payload = {"stage": "error", "message": f"Deliberation recovered: {str(stream_err)}", "progress": 100}
+            yield f"data: {json.dumps(err_payload)}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),

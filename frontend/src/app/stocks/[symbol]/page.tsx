@@ -18,7 +18,7 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
 import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
 import Navbar from "@/components/Navbar";
-import { requestLifecycle, API_BASE, DEFAULT_HEADERS } from "@/lib/api";
+import { requestLifecycle, API_BASE, DEFAULT_HEADERS, apiFetch } from "@/lib/api";
 import {
   ArrowLeft,
   TrendingUp,
@@ -212,30 +212,30 @@ export default function StockTearsheetPage() {
       if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
       setData(json);
 
-      // Fetch Forecast, News, and Memo concurrently in parallel with monotonic signal guard
+      // Fetch Forecast, News, and Memo concurrently with SWR caching & monotonic signal guard
       setNewsLoading(true);
       const [fRes, nRes, mRes] = await Promise.allSettled([
-        fetch(`${API_BASE}/stocks/${symbol}/forecast?horizon_days=20`, { headers: DEFAULT_HEADERS, signal, cache: "no-store" }),
-        fetch(`${API_BASE}/stocks/${symbol}/news?limit=5`, { headers: DEFAULT_HEADERS, signal, cache: "no-store" }),
-        fetch(`${API_BASE}/stocks/${symbol}/memo`, { headers: DEFAULT_HEADERS, signal, cache: "no-store" })
+        apiFetch<ForecastData>(`/stocks/${symbol}/forecast?horizon_days=20`, { signal }),
+        apiFetch<{ articles: NewsArticle[] }>(`/stocks/${symbol}/news?limit=5`, { signal }),
+        apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal })
       ]);
 
       if (!requestLifecycle.isLatest('stock_detail_active', generation)) {
         return; // Dropped: superseded while secondary fetches were in-flight
       }
 
-      if (fRes.status === "fulfilled" && fRes.value.ok) {
+      if (fRes.status === "fulfilled" && fRes.value) {
         try {
-          const fJson = await fRes.value.json();
+          const fJson = fRes.value;
           if (requestLifecycle.isLatest('stock_detail_active', generation)) {
             setForecast(fJson);
           }
         } catch {}
       }
 
-      if (nRes.status === "fulfilled" && nRes.value.ok) {
+      if (nRes.status === "fulfilled" && nRes.value) {
         try {
-          const nJson = await nRes.value.json();
+          const nJson = nRes.value;
           if (requestLifecycle.isLatest('stock_detail_active', generation)) {
             setNewsArticles(nJson.articles || []);
           }
@@ -243,9 +243,9 @@ export default function StockTearsheetPage() {
       }
       setNewsLoading(false);
 
-      if (mRes.status === "fulfilled" && mRes.value.ok) {
+      if (mRes.status === "fulfilled" && mRes.value) {
         try {
-          const mJson = await mRes.value.json();
+          const mJson = mRes.value;
           if (requestLifecycle.isLatest('stock_detail_active', generation)) {
             setMemo(mJson);
           }

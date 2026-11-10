@@ -119,6 +119,17 @@ class QuantMCPBridge:
             logger.warning(f"Error computing forecast for {sym}: {e}")
             return {"symbol": sym, "error": str(e)}
 
+    def get_ml_champion_forecast(self, symbol: str) -> Dict[str, Any]:
+        """Queries the champion multi-horizon machine learning model (5D, 20D, 60D)."""
+        sym = symbol.strip().upper()
+        try:
+            from src.quant.ml_trainer import WalkForwardMLTrainer
+            trainer = WalkForwardMLTrainer(self.db)
+            return trainer.predict_for_symbol(sym)
+        except Exception as e:
+            logger.warning(f"Error computing ML prediction for {sym}: {e}")
+            return {"symbol": sym, "error": str(e)}
+
     def get_nse_corporate_actions(self, symbol: str) -> List[Dict[str, Any]]:
         """Inspects board meetings, dividend declarations, filings, and corporate disclosures."""
         sym = symbol.strip().upper()

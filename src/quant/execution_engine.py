@@ -28,17 +28,80 @@ FLAT_SELL_DP_CHARGE = 15.00       # Flat ₹15.00 Depository Participant charge 
 
 class PaperTradingEngine:
     """
-    Simulates institutional execution of quantitative rebalance proposals.
+    Simulates institutional execution of quantitative rebalance proposals and discretionary sandbox trading.
     Guarantees:
     1. SELL-before-BUY sequencing: Sell proceeds credit cash before buy orders debit cash.
     2. Strict cash solvency guards: Orders that exceed available cash balance are capped to
        the maximum affordable whole integer shares.
-    3. Comprehensive friction accounting: 0.10% STT, 0.05% slippage/fees, and ₹15 flat DP charge.
-    4. Mark-to-market portfolio NAV updates.
+    3. Comprehensive friction accounting: Tiered retail/institutional rates (STT, slippage/fees, DP fee).
+    4. Mark-to-market portfolio NAV updates and dynamic user-defined capital tracking.
     """
 
     def __init__(self, db: DatabaseManager):
         self.db = db
+        self.ensure_default_accounts()
+
+    def ensure_default_accounts(self) -> None:
+        """Provisions default accounts (paper_alpha_2, paper_manual_1, paper_alpha_1) if absent."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self.db.get_connection() as conn:
+            # Check if columns exist
+            cur = conn.execute("PRAGMA table_info(portfolio_accounts)")
+            cols = {r[1] for r in cur.fetchall()}
+            if "initial_capital" not in cols:
+                return  # Schema migration pending
+
+            # 1. paper_alpha_2: Systematic V2 Micro-Capital Engine
+            conn.execute("""
+                INSERT OR IGNORE INTO portfolio_accounts (
+                    account_id, cash_balance, total_nav, updated_at,
+                    initial_capital, net_capital_deployed, account_type, engine_version, fee_tier
+                ) VALUES ('paper_alpha_2', 1600.0, 1600.0, ?, 1600.0, 1600.0, 'SYSTEMATIC', 'alpha_v2', 'RETAIL_MICRO');
+            """, (now_iso,))
+
+            # 2. paper_manual_1: Discretionary FrontPage-style Sandbox
+            conn.execute("""
+                INSERT OR IGNORE INTO portfolio_accounts (
+                    account_id, cash_balance, total_nav, updated_at,
+                    initial_capital, net_capital_deployed, account_type, engine_version, fee_tier
+                ) VALUES ('paper_manual_1', 1600.0, 1600.0, ?, 1600.0, 1600.0, 'MANUAL', 'manual_v1', 'RETAIL_MICRO');
+            """, (now_iso,))
+
+            # 3. paper_alpha_1: Legacy Systematic Institutional
+            conn.execute("""
+                INSERT OR IGNORE INTO portfolio_accounts (
+                    account_id, cash_balance, total_nav, updated_at,
+                    initial_capital, net_capital_deployed, account_type, engine_version, fee_tier
+                ) VALUES ('paper_alpha_1', 1000000.0, 1000000.0, ?, 1000000.0, 1000000.0, 'SYSTEMATIC', 'alpha_v1', 'INSTITUTIONAL');
+            """, (now_iso,))
+            conn.execute("""
+                UPDATE portfolio_accounts
+                SET fee_tier = 'INSTITUTIONAL'
+                WHERE account_id = 'paper_alpha_1' AND fee_tier = 'RETAIL_MICRO';
+            """)
+
+    def _calculate_friction(self, action: str, order_value: float, fee_tier: str = "RETAIL_MICRO") -> float:
+        """
+        Computes statutory and exchange friction based on account fee tier.
+        RETAIL_MICRO: 12 bps (0.0012) + flat/capped DP fee min(5.0, 0.5% order_val) on SELLs.
+        INSTITUTIONAL: 15 bps (0.0015) + flat ₹15.00 DP fee on SELLs.
+        """
+        if order_value <= 0:
+            return 0.0
+
+        if fee_tier == "RETAIL_MICRO":
+            base_rate = 0.0012  # 12 bps
+            base_friction = order_value * base_rate
+            if action.upper() == "SELL":
+                dp_fee = min(5.0, round(order_value * 0.005, 2))
+                return round(base_friction + dp_fee, 2)
+            return round(base_friction, 2)
+        else:
+            base_rate = 0.0015  # 15 bps
+            base_friction = order_value * base_rate
+            if action.upper() == "SELL":
+                return round(base_friction + FLAT_SELL_DP_CHARGE, 2)
+            return round(base_friction, 2)
 
     def _get_latest_price(self, symbol: str) -> Optional[float]:
         """Fetches the latest official EOD close price for a symbol."""
@@ -64,10 +127,15 @@ class PaperTradingEngine:
         return None
 
     def get_account_summary(self, account_id: str = "paper_alpha_1") -> Dict[str, Any]:
-        """Calculates real-time MTM portfolio valuation, cash balance, and unrealized P&L."""
+        """Calculates real-time MTM portfolio valuation, cash balance, and dynamic P&L from custom user capital."""
         with self.db.get_connection() as conn:
             cur = conn.execute("""
-                SELECT account_id, cash_balance, total_nav, updated_at
+                SELECT account_id, cash_balance, total_nav, updated_at,
+                       COALESCE(initial_capital, 1600.0) as initial_capital,
+                       COALESCE(net_capital_deployed, 1600.0) as net_capital_deployed,
+                       COALESCE(account_type, 'SYSTEMATIC') as account_type,
+                       COALESCE(engine_version, 'alpha_v2') as engine_version,
+                       COALESCE(fee_tier, 'RETAIL_MICRO') as fee_tier
                 FROM portfolio_accounts
                 WHERE account_id = ?
             """, (account_id,))
@@ -75,7 +143,12 @@ class PaperTradingEngine:
             if not acct_row:
                 raise ValueError(f"Account '{account_id}' does not exist.")
 
-            cash_balance = float(acct_row["cash_balance"] if isinstance(acct_row, sqlite3.Row) else acct_row[1])
+            cash_balance = float(acct_row["cash_balance"])
+            initial_capital = float(acct_row["initial_capital"])
+            net_capital_deployed = float(acct_row["net_capital_deployed"])
+            account_type = str(acct_row["account_type"])
+            engine_version = str(acct_row["engine_version"])
+            fee_tier = str(acct_row["fee_tier"])
 
             # Fetch positions
             cur = conn.execute("""
@@ -109,24 +182,126 @@ class PaperTradingEngine:
         unrealized_pnl = invested_value - total_cost_basis
         unrealized_pnl_pct = (unrealized_pnl / total_cost_basis * 100.0) if total_cost_basis > 0 else 0.0
 
-        # Initial capital baseline (assumes ₹10,00,000 baseline)
-        initial_capital = 1000000.0
-        total_pnl = total_nav - initial_capital
-        total_pnl_pct = (total_pnl / initial_capital) * 100.0
+        # Dynamic capital P&L strictly derived from user's custom net_capital_deployed
+        total_pnl = total_nav - net_capital_deployed
+        total_pnl_pct = (total_pnl / net_capital_deployed * 100.0) if net_capital_deployed > 0 else 0.0
+
+        # Sync total_nav back to portfolio_accounts if drifted
+        with self.db.get_connection() as conn:
+            conn.execute("""
+                UPDATE portfolio_accounts
+                SET total_nav = ?
+                WHERE account_id = ?
+            """, (round(total_nav, 2), account_id))
 
         return {
             "account_id": account_id,
             "cash_balance": round(cash_balance, 2),
             "invested_value": round(invested_value, 2),
+            "equity_value": round(invested_value, 2),  # Frontend compatibility alias
+            "cost_basis": round(total_cost_basis, 2),
             "total_nav": round(total_nav, 2),
             "unrealized_pnl": round(unrealized_pnl, 2),
             "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
             "total_pnl": round(total_pnl, 2),
+            "net_total_pnl": round(total_pnl, 2),
             "total_pnl_pct": round(total_pnl_pct, 2),
+            "net_total_pnl_pct": round(total_pnl_pct, 2),
             "total_friction_paid": round(total_friction, 2),
             "positions_count": len(positions),
+            "position_count": len(positions),  # Frontend compatibility alias
+            "initial_capital": round(initial_capital, 2),
+            "net_capital_deployed": round(net_capital_deployed, 2),
+            "account_type": account_type,
+            "engine_version": engine_version,
+            "fee_tier": fee_tier,
             "updated_at": acct_row["updated_at"] if isinstance(acct_row, sqlite3.Row) else acct_row[3]
         }
+
+    def set_or_reset_capital(
+        self,
+        account_id: str,
+        new_capital: float,
+        fee_tier: str = "RETAIL_MICRO"
+    ) -> Dict[str, Any]:
+        """
+        Validates new_capital >= 100.0 and atomically resets the account's capital seed,
+        clearing active positions and trade history for a fresh quantitative run.
+        """
+        if new_capital < 100.0:
+            raise ValueError(f"Initial capital must be at least ₹100.00. Received: ₹{new_capital:.2f}")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self.db.get_connection() as conn:
+            # 1. Clear active positions & orders for this account
+            conn.execute("DELETE FROM portfolio_positions WHERE account_id = ?", (account_id,))
+            conn.execute("DELETE FROM portfolio_orders WHERE account_id = ?", (account_id,))
+
+            # 2. Update account record with fresh capital seed
+            cur = conn.execute("SELECT account_id FROM portfolio_accounts WHERE account_id = ?", (account_id,))
+            if cur.fetchone():
+                conn.execute("""
+                    UPDATE portfolio_accounts
+                    SET initial_capital = ?,
+                        net_capital_deployed = ?,
+                        cash_balance = ?,
+                        total_nav = ?,
+                        fee_tier = ?,
+                        updated_at = ?
+                    WHERE account_id = ?
+                """, (new_capital, new_capital, new_capital, new_capital, fee_tier, now_iso, account_id))
+            else:
+                conn.execute("""
+                    INSERT INTO portfolio_accounts (
+                        account_id, cash_balance, total_nav, updated_at,
+                        initial_capital, net_capital_deployed, account_type, engine_version, fee_tier
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'SYSTEMATIC', 'alpha_v2', ?)
+                """, (account_id, new_capital, new_capital, now_iso, new_capital, new_capital, fee_tier))
+
+        logger.info(f"Account '{account_id}' capital reset to ₹{new_capital:,.2f} ({fee_tier})")
+        return self.get_account_summary(account_id)
+
+    def adjust_cash(self, account_id: str, delta_cash: float) -> Dict[str, Any]:
+        """
+        Allows depositing (delta_cash > 0) or withdrawing (delta_cash < 0, up to cash_balance)
+        funds without wiping active positions, adjusting net_capital_deployed so P&L remains exact.
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self.db.get_connection() as conn:
+            cur = conn.execute("""
+                SELECT cash_balance, net_capital_deployed, total_nav
+                FROM portfolio_accounts
+                WHERE account_id = ?
+            """, (account_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"Account '{account_id}' does not exist.")
+
+            curr_cash = float(row["cash_balance"])
+            curr_net = float(row["net_capital_deployed"])
+            curr_nav = float(row["total_nav"])
+
+            if delta_cash < 0 and (curr_cash + delta_cash) < 0:
+                raise ValueError(
+                    f"Insufficient cash balance for withdrawal of ₹{abs(delta_cash):,.2f}. "
+                    f"Available cash: ₹{curr_cash:,.2f}"
+                )
+
+            new_cash = round(curr_cash + delta_cash, 2)
+            new_net = round(curr_net + delta_cash, 2)
+            new_nav = round(curr_nav + delta_cash, 2)
+
+            conn.execute("""
+                UPDATE portfolio_accounts
+                SET cash_balance = ?,
+                    net_capital_deployed = ?,
+                    total_nav = ?,
+                    updated_at = ?
+                WHERE account_id = ?
+            """, (new_cash, new_net, new_nav, now_iso, account_id))
+
+        logger.info(f"Adjusted cash for '{account_id}' by {delta_cash:+.2f} (New cash: ₹{new_cash:,.2f})")
+        return self.get_account_summary(account_id)
 
     def get_positions(self, account_id: str = "paper_alpha_1") -> List[Dict[str, Any]]:
         """Returns all open positions with live MTM pricing, allocation weight, and unrealized P&L."""
@@ -175,11 +350,22 @@ class PaperTradingEngine:
         return result
 
     def get_orders(self, account_id: str = "paper_alpha_1", limit: int = 100) -> List[Dict[str, Any]]:
-        """Returns chronological trade execution blotter."""
+        """Returns chronological trade execution blotter with dynamic gross value and thesis note."""
         with self.db.get_connection() as conn:
-            cur = conn.execute("""
+            cur = conn.execute("PRAGMA table_info(portfolio_orders)")
+            cols = {r["name"] if isinstance(r, sqlite3.Row) else r[1] for r in cur.fetchall()}
+            has_thesis = "thesis_note" in cols
+            has_realized = "realized_pnl" in cols
+
+            select_extra = ""
+            if has_thesis:
+                select_extra += ", thesis_note"
+            if has_realized:
+                select_extra += ", realized_pnl"
+
+            cur = conn.execute(f"""
                 SELECT order_id, account_id, proposal_id, symbol, action, quantity,
-                       fill_price, friction_paid, executed_at
+                       fill_price, friction_paid, executed_at{select_extra}
                 FROM portfolio_orders
                 WHERE account_id = ?
                 ORDER BY executed_at DESC, rowid DESC
@@ -189,15 +375,28 @@ class PaperTradingEngine:
 
         result = []
         for r in rows:
+            qty = int(r["quantity"] if isinstance(r, sqlite3.Row) else r[5])
+            fill_p = round(float(r["fill_price"] if isinstance(r, sqlite3.Row) else r[6]), 2)
+            gross_val = round(qty * fill_p, 2)
+            fric = round(float(r["friction_paid"] if isinstance(r, sqlite3.Row) else r[7]), 2)
+            thesis = None
+            realized = 0.0
+            if isinstance(r, sqlite3.Row):
+                thesis = r["thesis_note"] if "thesis_note" in r.keys() else None
+                realized = float(r["realized_pnl"]) if "realized_pnl" in r.keys() and r["realized_pnl"] is not None else 0.0
+
             result.append({
                 "order_id": r["order_id"] if isinstance(r, sqlite3.Row) else r[0],
                 "account_id": r["account_id"] if isinstance(r, sqlite3.Row) else r[1],
                 "proposal_id": r["proposal_id"] if isinstance(r, sqlite3.Row) else r[2],
                 "symbol": r["symbol"] if isinstance(r, sqlite3.Row) else r[3],
                 "action": r["action"] if isinstance(r, sqlite3.Row) else r[4],
-                "quantity": int(r["quantity"] if isinstance(r, sqlite3.Row) else r[5]),
-                "fill_price": round(float(r["fill_price"] if isinstance(r, sqlite3.Row) else r[6]), 2),
-                "friction_paid": round(float(r["friction_paid"] if isinstance(r, sqlite3.Row) else r[7]), 2),
+                "quantity": qty,
+                "fill_price": fill_p,
+                "gross_value": gross_val,
+                "friction_paid": fric,
+                "thesis_note": thesis,
+                "realized_pnl": realized,
                 "executed_at": r["executed_at"] if isinstance(r, sqlite3.Row) else r[8],
             })
         return result
@@ -251,7 +450,7 @@ class PaperTradingEngine:
 
             # 2. Fetch current account state
             cur = conn.execute("""
-                SELECT account_id, cash_balance, total_nav
+                SELECT account_id, cash_balance, total_nav, COALESCE(fee_tier, 'RETAIL_MICRO') as fee_tier
                 FROM portfolio_accounts
                 WHERE account_id = ?
             """, (account_id,))
@@ -261,6 +460,7 @@ class PaperTradingEngine:
 
             cash_balance = float(acct_row["cash_balance"] if isinstance(acct_row, sqlite3.Row) else acct_row[1])
             total_nav = float(acct_row["total_nav"] if isinstance(acct_row, sqlite3.Row) else acct_row[2])
+            fee_tier = str(acct_row["fee_tier"] if isinstance(acct_row, sqlite3.Row) else acct_row[3])
 
             # 3. Fetch existing open positions
             cur = conn.execute("""
@@ -307,7 +507,9 @@ class PaperTradingEngine:
 
             if w_target > 0:
                 target_allocation_val = effective_nav * w_target
-                target_qty = math.floor(target_allocation_val / ltp)
+                ratio = target_allocation_val / ltp if ltp > 0 else 0
+                target_qty = int(round(ratio)) if ratio >= 0.75 else int(math.floor(ratio))
+                target_qty = max(1, target_qty)
             else:
                 target_qty = 0
 
@@ -347,7 +549,7 @@ class PaperTradingEngine:
                 avg_entry = sell_item["avg_entry_price"]
 
                 gross_val = sell_qty * fill_price
-                friction = (gross_val * SELL_FRICTION_RATE) + FLAT_SELL_DP_CHARGE
+                friction = self._calculate_friction("SELL", gross_val, fee_tier)
                 net_proceeds = gross_val - friction
 
                 cash_balance += net_proceeds
@@ -402,8 +604,8 @@ class PaperTradingEngine:
                 avg_entry = buy_item["avg_entry_price"]
 
                 # Cash Solvency Guard:
-                # Each share costs fill_price + (fill_price * BUY_FRICTION_RATE)
-                effective_cost_per_share = fill_price * (1.0 + BUY_FRICTION_RATE)
+                buy_fric_rate = 0.0012 if fee_tier == "RETAIL_MICRO" else 0.0015
+                effective_cost_per_share = fill_price * (1.0 + buy_fric_rate)
                 max_affordable_qty = math.floor(cash_balance / effective_cost_per_share) if effective_cost_per_share > 0 else 0
                 executable_qty = min(desired_qty, max_affordable_qty)
 
@@ -415,7 +617,7 @@ class PaperTradingEngine:
                     continue
 
                 gross_val = executable_qty * fill_price
-                friction = gross_val * BUY_FRICTION_RATE
+                friction = self._calculate_friction("BUY", gross_val, fee_tier)
                 net_debit = gross_val + friction
 
                 cash_balance -= net_debit
@@ -512,5 +714,410 @@ class PaperTradingEngine:
             "cash_balance": round(cash_balance, 2),
             "invested_value": round(total_invested, 2),
             "total_nav": round(final_nav, 2),
+            "executed_at": now_iso
+        }
+
+    def _compute_frontpage_analysis_card(self, symbol: str, ltp: float) -> Dict[str, Any]:
+        """
+        Generates FrontPage-style system analysis card:
+        - alpha_rank: Rank out of active universe
+        - blended_score: Score [0, 100]
+        - factor_breakdown: {tactical_20d, trend_60d, structural_200d, rsi_14, volatility_20d, sentiment_score}
+        - regime_alignment: whether price is above 50D and 200D SMA
+        - portfolio_impact: post-trade weight, new cash, sector warning
+        - system_verdict: 'STRONG_BUY' | 'ACCUMULATE' | 'HOLD_NEUTRAL' | 'AVOID_WEAK_TREND' + 2-sentence explanation
+        """
+        sym = symbol.strip().upper()
+        with self.db.get_connection() as conn:
+            has_factors_daily = conn.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='factors_daily'").fetchone()[0] > 0
+            has_quant_factors = conn.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='quant_factors_daily'").fetchone()[0] > 0
+
+            fac_row = None
+            if has_factors_daily:
+                fac_row = conn.execute("""
+                    SELECT f.sma_50, f.sma_200, f.rsi_14, f.volatility_20d, f.ret_20d, 
+                           COALESCE(f.momentum_1y, f.ret_20d * 3.0) as ret_60d,
+                           COALESCE(s.company_name, f.symbol) as company_name,
+                           COALESCE(s.sector, 'Unclassified') as sector
+                    FROM factors_daily f
+                    LEFT JOIN securities_master s ON f.symbol = s.symbol
+                    WHERE f.symbol = ?
+                    ORDER BY f.trading_date DESC LIMIT 1
+                """, (sym,)).fetchone()
+
+            if not fac_row and has_quant_factors:
+                fac_row = conn.execute("""
+                    SELECT q.sma_50, q.sma_200, 50.0 as rsi_14, COALESCE(q.vol_20d_annualized, 0.25) as volatility_20d,
+                           q.ret_20d, 0.05 as ret_60d,
+                           COALESCE(s.company_name, q.symbol) as company_name,
+                           COALESCE(s.sector, 'Unclassified') as sector
+                    FROM quant_factors_daily q
+                    LEFT JOIN securities_master s ON q.symbol = s.symbol
+                    WHERE q.symbol = ?
+                    ORDER BY q.trading_date DESC LIMIT 1
+                """, (sym,)).fetchone()
+
+            news_row = conn.execute("""
+                SELECT AVG(sentiment_score) as avg_sent, COUNT(*) as article_count
+                FROM stock_news_articles
+                WHERE symbol = ?
+            """, (sym,)).fetchone()
+
+            total_active = conn.execute("SELECT COUNT(DISTINCT symbol) FROM ohlcv_daily WHERE series = 'EQ'").fetchone()[0] or 181
+
+        sma_50 = float(fac_row["sma_50"]) if fac_row and fac_row["sma_50"] else (ltp * 0.98)
+        sma_200 = float(fac_row["sma_200"]) if fac_row and fac_row["sma_200"] else (ltp * 0.95)
+        rsi_14 = float(fac_row["rsi_14"]) if fac_row and fac_row["rsi_14"] else 55.0
+        vol_20d = float(fac_row["volatility_20d"]) if fac_row and fac_row["volatility_20d"] else 0.22
+        ret_20d = float(fac_row["ret_20d"]) if fac_row and fac_row["ret_20d"] else 0.03
+        ret_60d = float(fac_row["ret_60d"]) if fac_row and fac_row["ret_60d"] else 0.08
+        comp_name = str(fac_row["company_name"]) if fac_row and fac_row["company_name"] else sym
+        sector = str(fac_row["sector"]) if fac_row and fac_row["sector"] else "Equities"
+
+        sent_score = round(float(news_row[0]), 3) if news_row and news_row[0] is not None else 0.0
+        news_count = int(news_row[1]) if news_row and news_row[1] else 0
+
+        above_50d = bool(ltp > sma_50)
+        above_200d = bool(ltp > sma_200)
+
+        tactical_score = max(0.0, min(100.0, round(50.0 + (ret_20d / max(0.05, vol_20d)) * 25.0, 1)))
+        trend_score = max(0.0, min(100.0, round(50.0 + (ret_60d / max(0.05, vol_20d)) * 20.0, 1)))
+        dist_200_pct = round(((ltp - sma_200) / sma_200) * 100.0, 2) if sma_200 > 0 else 0.0
+        structural_score = max(0.0, min(100.0, round(50.0 + dist_200_pct * 1.5, 1)))
+        rsi_score = max(0.0, min(100.0, round(100.0 - abs(rsi_14 - 60.0) * 2.0, 1)))
+        low_vol_score = max(0.0, min(100.0, round(100.0 - (vol_20d * 150.0), 1)))
+        news_sentiment_score = max(0.0, min(100.0, round(50.0 + (sent_score * 50.0), 1)))
+
+        blended_score = round(
+            0.25 * tactical_score +
+            0.20 * trend_score +
+            0.15 * structural_score +
+            0.15 * rsi_score +
+            0.15 * low_vol_score +
+            0.10 * news_sentiment_score,
+            1
+        )
+
+        alpha_rank = max(1, min(total_active, int(round((1.0 - (blended_score / 100.0)) * total_active))))
+
+        if above_200d and rsi_14 >= 50.0 and ret_20d > 0.02:
+            system_verdict = "STRONG_BUY"
+            explanation = (
+                f"{sym} displays strong structural accumulation (+{dist_200_pct:.1f}% above 200 SMA) "
+                f"with bullish 20D risk-adjusted momentum (+{ret_20d*100:.1f}%). "
+                f"Factor alignment (Blended {blended_score}/100, Rank #{alpha_rank}/{total_active}) favors asymmetric capital compounding."
+            )
+        elif above_200d or ret_20d > 0.0:
+            system_verdict = "ACCUMULATE"
+            explanation = (
+                f"{sym} is maintaining positive trend persistence above key structural moving averages. "
+                f"Recent 7D news sentiment is {('positive' if sent_score > 0.1 else 'neutral')} with healthy volume absorption."
+            )
+        elif not above_200d and ret_20d < -0.05:
+            system_verdict = "AVOID_WEAK_TREND"
+            explanation = (
+                f"{sym} is currently consolidating below its 200 SMA with negative short-term momentum. "
+                f"Elevated downside dispersion indicates institutional risk-off behavior; avoid until structural breakout."
+            )
+        else:
+            system_verdict = "HOLD_NEUTRAL"
+            explanation = (
+                f"{sym} exhibits balanced risk/reward dynamics near median volatility levels. "
+                f"Hold current allocation and await catalyst confirmation."
+            )
+
+        trend_regime = "ABOVE_200_SMA" if above_200d else "BELOW_200_SMA"
+
+        return {
+            "symbol": sym,
+            "company_name": comp_name,
+            "sector": sector,
+            "ltp": round(ltp, 2),
+            "alpha_rank": alpha_rank,
+            "universe_total": total_active,
+            "blended_score": blended_score,
+            "system_verdict": system_verdict,
+            "momentum_verdict": system_verdict,
+            "verdict_explanation": explanation,
+            "signal_summary": explanation,
+            "trend_regime": trend_regime,
+            "rsi_14": round(rsi_14, 1),
+            "volatility_ann_pct": round(vol_20d * 100, 2),
+            "regime_alignment": {
+                "above_50d_sma": above_50d,
+                "above_200d_sma": above_200d,
+                "dist_sma200_pct": dist_200_pct,
+                "sma_50": round(sma_50, 2),
+                "sma_200": round(sma_200, 2)
+            },
+            "factor_breakdown": {
+                "tactical_20d": tactical_score,
+                "trend_60d": trend_score,
+                "structural_200d": structural_score,
+                "rsi_14": round(rsi_14, 1),
+                "rsi_regime": rsi_score,
+                "volatility_20d": round(vol_20d, 3),
+                "low_vol_quality": low_vol_score,
+                "news_sentiment_score": news_sentiment_score,
+                "news_sentiment_raw": sent_score,
+                "recent_articles_count": news_count
+            }
+        }
+
+    def preview_manual_order(
+        self,
+        account_id: str,
+        symbol: str,
+        action: str,
+        amount_inr: Optional[float] = None,
+        quantity: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Pre-Trade Intelligence & Order Preview (GET /api/v1/portfolio/manual/preview).
+        Resolves latest market price, computes whole shares, cash solvency, portfolio impact,
+        and generates FrontPage-style system analysis card.
+        """
+        sym = symbol.strip().upper()
+        act = action.strip().upper()
+        if act not in ("BUY", "SELL"):
+            raise ValueError(f"Invalid action '{action}'. Must be 'BUY' or 'SELL'.")
+
+        acct_sum = self.get_account_summary(account_id)
+        fee_tier = acct_sum.get("fee_tier", "RETAIL_MICRO")
+        cash_balance = acct_sum["cash_balance"]
+
+        ltp = self._get_latest_price(sym)
+        if not ltp or ltp <= 0:
+            raise ValueError(f"Unable to resolve valid market price for symbol '{sym}'.")
+
+        can_afford = True
+        min_required_inr = round(ltp * (1.0012 if fee_tier == "RETAIL_MICRO" else 1.0015), 2)
+
+        if amount_inr is not None and (quantity is None or quantity <= 0):
+            if amount_inr <= 0:
+                raise ValueError("amount_inr must be strictly positive.")
+            cost_per_share = ltp * (1.0012 if fee_tier == "RETAIL_MICRO" else 1.0015)
+            q = int(math.floor(amount_inr / cost_per_share)) if act == "BUY" else int(math.floor(amount_inr / ltp))
+            if q <= 0:
+                can_afford = False
+                needed = round(min_required_inr - amount_inr, 2) if amount_inr < min_required_inr else min_required_inr
+                analysis_card = self._compute_frontpage_analysis_card(sym, ltp)
+                return {
+                    "account_id": account_id,
+                    "symbol": sym,
+                    "action": act,
+                    "ltp": round(ltp, 2),
+                    "current_price": round(ltp, 2),
+                    "requested_amount_inr": amount_inr,
+                    "shares": 0,
+                    "quantity": 0,
+                    "calculated_quantity": 0,
+                    "gross_value": 0.0,
+                    "estimated_friction": 0.0,
+                    "net_total_inr": 0.0,
+                    "net_cash_required": 0.0,
+                    "can_afford": False,
+                    "is_solvency_approved": False,
+                    "min_required_inr": min_required_inr,
+                    "message": f"₹{amount_inr:.2f} is insufficient to buy 1 whole share of {sym} (Price: ₹{ltp:.2f} + friction). Need an additional ₹{needed:.2f}.",
+                    "current_cash_balance": cash_balance,
+                    "account_cash_balance": cash_balance,
+                    "post_trade_cash_balance": cash_balance,
+                    "system_analysis": analysis_card,
+                    "frontpage_card": analysis_card
+                }
+            shares = q
+        elif quantity is not None:
+            if quantity <= 0:
+                raise ValueError("quantity must be a positive integer.")
+            shares = int(quantity)
+        else:
+            shares = 1
+
+        gross_value = round(shares * ltp, 2)
+        friction = self._calculate_friction(act, gross_value, fee_tier)
+        net_required = round(gross_value + friction, 2) if act == "BUY" else round(gross_value - friction, 2)
+
+        is_solvent = (net_required <= cash_balance) if act == "BUY" else True
+
+        with self.db.get_connection() as conn:
+            cur = conn.execute(
+                "SELECT quantity, average_entry_price FROM portfolio_positions WHERE account_id = ? AND symbol = ?",
+                (account_id, sym)
+            )
+            pos_row = cur.fetchone()
+            curr_qty = int(pos_row["quantity"]) if pos_row else 0
+
+        if act == "SELL" and shares > curr_qty:
+            raise ValueError(f"Cannot SELL {shares} shares of {sym}. Active holding is {curr_qty} shares.")
+
+        curr_pos_val = curr_qty * ltp
+        new_qty = (curr_qty + shares) if act == "BUY" else (curr_qty - shares)
+        new_pos_val = new_qty * ltp
+        new_cash = round(cash_balance - net_required, 2) if act == "BUY" else round(cash_balance + net_required, 2)
+        new_nav = round(new_cash + (acct_sum["invested_value"] - curr_pos_val + new_pos_val), 2)
+        post_trade_weight_pct = round((new_pos_val / new_nav * 100.0), 2) if new_nav > 0 else 0.0
+        concentration_warning = post_trade_weight_pct > 35.0
+
+        analysis_card = self._compute_frontpage_analysis_card(sym, ltp)
+
+        return {
+            "account_id": account_id,
+            "symbol": sym,
+            "action": act,
+            "shares": shares,
+            "quantity": shares,
+            "calculated_quantity": shares,
+            "ltp": round(ltp, 2),
+            "current_price": round(ltp, 2),
+            "gross_value": gross_value,
+            "estimated_friction": friction,
+            "net_total_inr": net_required,
+            "net_cash_required": net_required,
+            "can_afford": is_solvent,
+            "is_solvency_approved": is_solvent,
+            "min_required_inr": min_required_inr,
+            "current_cash_balance": cash_balance,
+            "account_cash_balance": cash_balance,
+            "post_trade_cash_balance": new_cash,
+            "current_shares_held": curr_qty,
+            "post_trade_shares_held": new_qty,
+            "post_trade_weight_pct": post_trade_weight_pct,
+            "concentration_warning": concentration_warning,
+            "system_analysis": analysis_card,
+            "frontpage_card": analysis_card
+        }
+
+    def execute_manual_order(
+        self,
+        account_id: str,
+        symbol: str,
+        action: str,
+        amount_inr: Optional[float] = None,
+        quantity: Optional[int] = None,
+        thesis_note: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Executes atomic BUY or SELL on paper_manual_1 (or any account).
+        Updates cash_balance, portfolio_positions (weighted average entry price on BUY),
+        calculates realized P&L on SELL, and logs order with fill + thesis_note + analysis snapshot.
+        """
+        prev = self.preview_manual_order(
+            account_id=account_id,
+            symbol=symbol,
+            action=action,
+            amount_inr=amount_inr,
+            quantity=quantity
+        )
+
+        if not prev.get("can_afford", False):
+            raise ValueError(prev.get("message") or "Insufficient cash balance to execute order.")
+
+        sym = prev["symbol"]
+        act = prev["action"]
+        shares = prev["shares"]
+        ltp = prev["ltp"]
+        gross_val = prev["gross_value"]
+        friction = prev["estimated_friction"]
+        now_iso = datetime.now(timezone.utc).isoformat()
+        order_id = f"ord_man_{act}_{sym}_{uuid.uuid4().hex[:6]}"
+
+        with self.db.get_connection() as conn:
+            cur = conn.execute("SELECT cash_balance, total_nav FROM portfolio_accounts WHERE account_id = ?", (account_id,))
+            acct_row = cur.fetchone()
+            cash_balance = float(acct_row["cash_balance"])
+
+            cur_pos = conn.execute(
+                "SELECT position_id, quantity, average_entry_price FROM portfolio_positions WHERE account_id = ? AND symbol = ?",
+                (account_id, sym)
+            )
+            pos_row = cur_pos.fetchone()
+            curr_qty = int(pos_row["quantity"]) if pos_row else 0
+            curr_entry = float(pos_row["average_entry_price"]) if pos_row else 0.0
+
+            realized_pnl = 0.0
+
+            if act == "BUY":
+                net_debit = gross_val + friction
+                if cash_balance < net_debit:
+                    raise ValueError(f"Solvency limit: Need ₹{net_debit:.2f}, available cash is ₹{cash_balance:.2f}.")
+
+                cash_balance -= net_debit
+                new_qty = curr_qty + shares
+                new_entry = ((curr_qty * curr_entry) + (shares * ltp)) / new_qty if new_qty > 0 else ltp
+
+                pos_id = f"pos_{account_id}_{sym}"
+                conn.execute("""
+                    INSERT INTO portfolio_positions (
+                        position_id, account_id, symbol, quantity, average_entry_price, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(account_id, symbol) DO UPDATE SET
+                        quantity = excluded.quantity,
+                        average_entry_price = excluded.average_entry_price,
+                        updated_at = excluded.updated_at
+                """, (pos_id, account_id, sym, new_qty, round(new_entry, 2), now_iso))
+
+            else:  # SELL
+                if shares > curr_qty:
+                    raise ValueError(f"Insufficient shares to SELL: requested {shares}, holding {curr_qty}.")
+
+                net_credit = gross_val - friction
+                cash_balance += net_credit
+                realized_pnl = round((shares * (ltp - curr_entry)) - friction, 2)
+                new_qty = curr_qty - shares
+
+                if new_qty <= 0:
+                    conn.execute("DELETE FROM portfolio_positions WHERE account_id = ? AND symbol = ?", (account_id, sym))
+                else:
+                    conn.execute("""
+                        UPDATE portfolio_positions
+                        SET quantity = ?, updated_at = ?
+                        WHERE account_id = ? AND symbol = ?
+                    """, (new_qty, now_iso, account_id, sym))
+
+            conn.execute("""
+                INSERT INTO portfolio_orders (
+                    order_id, account_id, proposal_id, symbol, action,
+                    quantity, fill_price, friction_paid, executed_at,
+                    thesis_note, realized_pnl, analysis_json
+                ) VALUES (?, ?, 'MANUAL_DISCRETIONARY', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                order_id, account_id, sym, act, shares, ltp, friction, now_iso,
+                thesis_note, realized_pnl, json.dumps(prev["system_analysis"])
+            ))
+
+            cur_all_pos = conn.execute(
+                "SELECT symbol, quantity, average_entry_price FROM portfolio_positions WHERE account_id = ? AND quantity > 0",
+                (account_id,)
+            )
+            all_pos = cur_all_pos.fetchall()
+            invested_val = sum(int(p["quantity"]) * (self._get_latest_price(p["symbol"]) or float(p["average_entry_price"])) for p in all_pos)
+            final_nav = round(cash_balance + invested_val, 2)
+
+            conn.execute("""
+                UPDATE portfolio_accounts
+                SET cash_balance = ?, total_nav = ?, updated_at = ?
+                WHERE account_id = ?
+            """, (round(cash_balance, 2), final_nav, now_iso, account_id))
+
+        summary = self.get_account_summary(account_id)
+        return {
+            "success": True,
+            "order_id": order_id,
+            "account_id": account_id,
+            "symbol": sym,
+            "action": act,
+            "quantity": shares,
+            "fill_price": ltp,
+            "gross_value": gross_val,
+            "friction_paid": friction,
+            "net_cash_impact": round(gross_val + friction, 2) if act == "BUY" else round(gross_val - friction, 2),
+            "realized_pnl": realized_pnl,
+            "remaining_cash": summary["cash_balance"],
+            "total_nav": summary["total_nav"],
+            "thesis_note": thesis_note,
+            "system_analysis": prev["system_analysis"],
+            "analysis_card": prev["system_analysis"],
+            "account_summary": summary,
             "executed_at": now_iso
         }

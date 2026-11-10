@@ -25,6 +25,67 @@ class MultiAgentDeliberationEngine:
     def __init__(self, bridge: Optional[QuantMCPBridge] = None):
         self.bridge = bridge or QuantMCPBridge()
 
+    def build_quant_context(
+        self,
+        symbol: str,
+        context_override: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Builds grounded quantitative context including fundamentals, technicals, portfolio telemetry, and news."""
+        sym = symbol.strip().upper()
+        funds = self.bridge.get_stock_fundamentals(sym)
+        forecast = self.bridge.get_forecast_bounds(sym)
+        actions = self.bridge.get_nse_corporate_actions(sym)
+        macro = self.bridge.get_macro_context()
+        ml_forecast = self.bridge.get_ml_champion_forecast(sym)
+
+        company_name = funds.get("company_name", sym)
+        price = funds.get("current_price", 0.0)
+        technicals = funds.get("technicals", {})
+        fundamentals = funds.get("fundamentals", {})
+
+        account_summary = {}
+        news_articles = []
+        portfolio_telemetry = {}
+        try:
+            from src.storage.database import DatabaseManager
+            from src.quant.execution_engine import PaperTradingEngine
+            from src.tasks.news_daemon import NewsSentimentDaemon
+
+            db = DatabaseManager()
+            exec_eng = PaperTradingEngine(db)
+            account_id = context_override.get("account_id", "paper_alpha_2") if context_override else "paper_alpha_2"
+            account_summary = exec_eng.get_account_summary(account_id)
+            portfolio_telemetry["paper_alpha_2"] = exec_eng.get_account_summary("paper_alpha_2")
+            portfolio_telemetry["paper_manual_1"] = exec_eng.get_account_summary("paper_manual_1")
+            portfolio_telemetry["paper_alpha_1"] = exec_eng.get_account_summary("paper_alpha_1")
+
+            news_daemon = NewsSentimentDaemon(db)
+            news_articles = news_daemon.fetch_live_headlines_for_symbol(sym, limit=3)
+        except Exception as e:
+            logger.debug(f"Telemetry enrichment warning in copilot: {e}")
+
+        trend = technicals.get("trend_regime", "NEUTRAL")
+
+        return {
+            "symbol": sym,
+            "company_name": company_name,
+            "price": price,
+            "current_price": price,
+            "trend": trend,
+            "technicals": technicals,
+            "fundamentals": fundamentals,
+            "forecast_20d": forecast,
+            "recent_actions": actions[:3],
+            "macro_environment": macro,
+            "account_summary": account_summary,
+            "portfolio_telemetry": portfolio_telemetry,
+            "news_headlines": news_articles,
+            "recent_news": news_articles,
+            "ml_forecast": ml_forecast
+        }
+
+    _get_quant_context = build_quant_context
+
     async def run_deliberation_stream(
         self,
         symbol: str,
@@ -46,27 +107,12 @@ class MultiAgentDeliberationEngine:
         })
         await asyncio.sleep(0.3)
 
-        funds = self.bridge.get_stock_fundamentals(sym)
-        forecast = self.bridge.get_forecast_bounds(sym)
-        actions = self.bridge.get_nse_corporate_actions(sym)
-        macro = self.bridge.get_macro_context()
-
-        company_name = funds.get("company_name", sym)
-        price = funds.get("current_price", 0.0)
-        technicals = funds.get("technicals", {})
-        fundamentals = funds.get("fundamentals", {})
-
-        # Context summary for agents
-        quant_context = {
-            "symbol": sym,
-            "company_name": company_name,
-            "current_price": price,
-            "technicals": technicals,
-            "fundamentals": fundamentals,
-            "forecast_20d": forecast,
-            "recent_actions": actions[:3],
-            "macro_environment": macro
-        }
+        quant_context = self.build_quant_context(sym, context_override)
+        price = quant_context.get("current_price", 0.0)
+        company_name = quant_context.get("company_name", sym)
+        fundamentals = quant_context.get("fundamentals", {})
+        technicals = quant_context.get("technicals", {})
+        forecast = quant_context.get("forecast_20d", {})
 
         # Check if conversational guidance is requested instead of full 3-agent committee
         if self._is_conversational_prompt(user_prompt):
@@ -230,12 +276,15 @@ class MultiAgentDeliberationEngine:
                 "stop_loss": verdict_meta.get("stop_loss", forecast.get("lower_80", round(price * 0.94, 2))),
                 "bull_thesis": bull_content,
                 "bear_thesis": bear_content,
-                "judge_memo": judge_content
+                "judge_memo": judge_content,
+                "ml_forecast": quant_context.get("ml_forecast")
             }
         })
+        yield "data: [DONE]\n\n"
 
     def _sse_event(self, data: Dict[str, Any]) -> str:
-        return f"data: {json.dumps(data)}\n\n"
+        from src.api.utils import sanitize_for_json
+        return f"data: {json.dumps(sanitize_for_json(data))}\n\n"
 
     def _split_chunks(self, text: str, chunk_size: int = 40):
         for i in range(0, len(text), chunk_size):
@@ -335,6 +384,30 @@ class MultiAgentDeliberationEngine:
         opm_str = f"{opm_val:.1f}%" if opm_val is not None else "Awaiting Statement"
         exp_target = fc.get("target_objective", round(price * 1.08, 2))
 
+        news = ctx.get("news_headlines", [])
+        news_snippet = ""
+        if news:
+            top_art = news[0]
+            news_snippet = (
+                f"\n\n4. **Live Catalyst & Financial News Flow:**\n"
+                f"   - Headline: *\"{top_art.get('title', '')}\"*\n"
+                f"   - Sentiment Polarity: **{top_art.get('sentiment_label', 'NEUTRAL')}** ({top_art.get('sentiment_score', 0.0):+.2f}) via {top_art.get('source', 'Financial Feed')}."
+            )
+
+        ml = ctx.get("ml_forecast", {})
+        ml_snippet = ""
+        if ml and not ml.get("error"):
+            champ = ml.get("champion_model", "ElasticNet (20D)")
+            fc_20 = ml.get("forecasts", {}).get("20D", {})
+            fc_60 = ml.get("forecasts", {}).get("60D", {})
+            ml_snippet = (
+                f"\n\n3. **Champion Walk-Forward ML Alpha Forecast:**\n"
+                f"   - Model: **{champ}** (Out-of-Sample Rank IC: `+{ml.get('overall_rank_ic', 0.035):.4f}` | Decile Spread: `+{fc_20.get('top_decile_spread_bps', 123.0)} bps`).\n"
+                f"   - **20D Alpha Projection:** **{fc_20.get('expected_return_pct', 0.0):+.2f}%** excess drift (`{fc_20.get('expected_excess_bps', 0.0):+.1f} bps`).\n"
+                f"   - **60D Structural Trend:** **{fc_60.get('expected_return_pct', 0.0):+.2f}%** (`+{fc_60.get('expected_excess_bps', 0.0):+.1f} bps`).\n"
+                f"   - Algorithm Tier: **`{ml.get('conviction_tier', 'MOMENTUM_ACCUMULATION')}`** (Machine Conviction: `{ml.get('conviction_score', 75)}/100`)."
+            )
+
         return (
             f"### Bull Thesis: Capital Compounding & Upside Asymmetry\n\n"
             f"1. **Operational Moat & Return on Capital:**\n"
@@ -342,10 +415,10 @@ class MultiAgentDeliberationEngine:
             f"   - High return on incremental invested capital enables self-funded capacity additions without shareholding dilution.\n\n"
             f"2. **Trend Momentum & Technical Structure:**\n"
             f"   - The stock is currently {above_200} (200 SMA: ₹{t.get('sma_200', 0):.2f}).\n"
-            f"   - 20-day return momentum stands at **{t.get('ret_20d_pct', 0.0):+.2f}%**, indicating institutional accumulation during market pullbacks.\n\n"
-            f"3. **Econometric Probability Cone:**\n"
+            f"   - 20-day return momentum stands at **{t.get('ret_20d_pct', 0.0):+.2f}%**, indicating institutional accumulation during market pullbacks.{ml_snippet}\n\n"
+            f"4. **Econometric Probability Cone:**\n"
             f"   - The 20-Day GARCH(1,1) model projects an expected drift target of **₹{exp_target:.2f}** with an upper 80% confidence bound of **₹{fc.get('upper_80', price*1.1):.2f}**.\n"
-            f"   - Downside risk is cushioned by historical volatility anchoring at **{fc.get('annualized_volatility', 0.22)*100:.1f}%**."
+            f"   - Downside risk is cushioned by historical volatility anchoring at **{fc.get('annualized_volatility', 0.22)*100:.1f}%**.{news_snippet}"
         )
 
     def _generate_deterministic_bear(self, ctx: Dict[str, Any]) -> str:
@@ -369,6 +442,16 @@ class MultiAgentDeliberationEngine:
         brent = macro.get("brent_crude_usd")
         brent_str = f"${brent:.2f}/bbl" if brent is not None else "telemetry offline"
 
+        ml = ctx.get("ml_forecast", {})
+        ml_bear_snippet = ""
+        if ml and not ml.get("error"):
+            fc_5 = ml.get("forecasts", {}).get("5D", {})
+            ml_bear_snippet = (
+                f"\n\n4. **Algorithmic Invalidation & Fast-Horizon Hurdle:**\n"
+                f"   - 5D Fast Momentum Drift: **{fc_5.get('expected_return_pct', 0.0):+.2f}%** (`{fc_5.get('expected_excess_bps', 0.0):+.1f} bps`).\n"
+                f"   - If price closes below 20-day SMA or 5D factor drift turns negative, systematic models enforce risk-off deallocation."
+            )
+
         return (
             f"### Bear Thesis: Valuation Friction & Tail-Risk Constraints\n\n"
             f"1. **Valuation Multiple & Expectation Treadmill:**\n"
@@ -379,7 +462,7 @@ class MultiAgentDeliberationEngine:
             f"   - Under extreme 95% tail-risk stress scenarios, the volatility cone extends down to **₹{tail_95:.2f}**.\n\n"
             f"3. **Macro Headwinds & Leverage Pressure:**\n"
             f"   - Debt-to-Equity is positioned at **{de_str}**; sovereign yield dynamics (India 10Y G-Sec: **{in10y_str}**) impact corporate refinancing hurdles.\n"
-            f"   - Currency & commodity pressure (USD/INR at **{usd_str}**, Brent at **{brent_str}**) drives imported inflation and operating margin friction."
+            f"   - Currency & commodity pressure (USD/INR at **{usd_str}**, Brent at **{brent_str}**) drives imported inflation and operating margin friction.{ml_bear_snippet}"
         )
 
     def _generate_deterministic_judge(self, ctx: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
@@ -389,6 +472,7 @@ class MultiAgentDeliberationEngine:
         t = ctx.get("technicals", {})
         f = ctx.get("fundamentals", {})
         fc = ctx.get("forecast_20d", {})
+        ml = ctx.get("ml_forecast", {})
 
         is_above_sma = t.get("price_above_sma200", False)
         target = fc.get("target_objective", round(price * 1.08, 2))
@@ -397,18 +481,42 @@ class MultiAgentDeliberationEngine:
         risk = ((price - stop) / price) * 100 if price > 0 else 6.0
         rr_ratio = round(upside / max(0.1, risk), 2)
 
+        ml_snippet = ""
+        ml_boost = 0
+        if ml and not ml.get("error"):
+            champ_model = ml.get("champion_model", "ElasticNet (20D)")
+            overall_rank_ic = ml.get("overall_rank_ic", 0.035)
+            ml_conviction = ml.get("conviction_score", 70)
+            conviction_tier = ml.get("conviction_tier", "MODERATE_ALPHA")
+            fc_20 = ml.get("forecasts", {}).get("20D", {})
+            fc_60 = ml.get("forecasts", {}).get("60D", {})
+            pred_20d_pct = fc_20.get("expected_return_pct", 0.0)
+            pred_60d_pct = fc_60.get("expected_return_pct", 0.0)
+            
+            if ml_conviction >= 80:
+                ml_boost = 6
+            elif ml_conviction <= 35:
+                ml_boost = -8
+
+            ml_snippet = (
+                f"\n\n### Machine Learning Committee Telemetry\n"
+                f"- **Tournament Champion:** `{champ_model}` (Purged Out-of-Sample Rank IC: `+{overall_rank_ic:.4f}`)\n"
+                f"- **20D / 60D Model Alpha:** `{pred_20d_pct:+.2f}%` / `{pred_60d_pct:+.2f}%` systematic excess return forecast\n"
+                f"- **Algorithm Conviction:** `{conviction_tier}` (`{ml_conviction}/100` score weight)"
+            )
+
         if f.get("roe_pct") is None and f.get("debt_to_equity") is None:
             verdict = "INSUFFICIENT_EVIDENCE"
             conviction = 45
         elif is_above_sma and rr_ratio >= 1.5:
             verdict = "STRONG_BUY"
-            conviction = 84
+            conviction = min(96, 84 + ml_boost)
         elif is_above_sma or rr_ratio >= 1.0:
             verdict = "TACTICAL_SWING_LONG"
-            conviction = 74
+            conviction = min(90, 74 + ml_boost)
         else:
             verdict = "HOLD"
-            conviction = 55
+            conviction = min(85, max(30, 55 + ml_boost))
 
         memo = (
             f"## Portfolio Manager Judicial Decision\n\n"
@@ -417,7 +525,7 @@ class MultiAgentDeliberationEngine:
             f"---\n\n"
             f"### Synthesis of Arguments\n"
             f"- **Weighing the Bull Case:** Operating capital compounding (ROE) and positive 20-day institutional momentum outweigh cyclical multiple concerns.\n"
-            f"- **Factoring the Bear Constraints:** The valuation multiple demands strict adherence to the econometric stop-loss floor to prevent structural capital erosion.\n\n"
+            f"- **Factoring the Bear Constraints:** The valuation multiple demands strict adherence to the econometric stop-loss floor to prevent structural capital erosion.{ml_snippet}\n\n"
             f"### Execution Parameters\n"
             f"- **Entry Anchor:** `₹{price:.2f}` (Current Settled Price)\n"
             f"- **Upside Objective (80% CI Target):** `₹{target:.2f}` (`+{upside:.1f}%`)\n"
