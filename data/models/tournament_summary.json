@@ -1,11 +1,11 @@
 {
   "overall_summary": {
-    "last_trained_at": "2026-11-11T16:00:14.923448+00:00",
+    "last_trained_at": "2026-11-11T17:03:19.374748+00:00",
     "champion_model": "HistGradientBoosting (20D)",
-    "best_rank_ic": 0.0318,
-    "ic_information_ratio": 0.39,
-    "directional_hit_rate_pct": 51.6,
-    "top_decile_spread_bps": 152.3,
+    "best_rank_ic": 0.0342,
+    "ic_information_ratio": 0.42,
+    "directional_hit_rate_pct": 51.56,
+    "top_decile_spread_bps": 159.8,
     "feature_importance_pct": {
       "tactical_20d": 0.125,
       "trend_60d": 0.125,
@@ -19,21 +19,21 @@
   },
   "horizon_champions": {
     "5D": {
-      "run_id": "run_5d_ridge_9e8e5a",
+      "run_id": "run_5d_ridge_7be352",
       "model": "Ridge",
       "rank_ic": 0.0378,
       "samples": 2230190
     },
     "20D": {
-      "run_id": "run_20d_histgradientboosting_9e3f65",
+      "run_id": "run_20d_histgradientboosting_9bba45",
       "model": "HistGradientBoosting",
-      "rank_ic": 0.0318,
+      "rank_ic": 0.0342,
       "samples": 2206751
     },
     "60D": {
-      "run_id": "run_60d_histgradientboosting_8a5e13",
+      "run_id": "run_60d_histgradientboosting_25d287",
       "model": "HistGradientBoosting",
-      "rank_ic": 0.0413,
+      "rank_ic": 0.0444,
       "samples": 2145802
     }
   }
