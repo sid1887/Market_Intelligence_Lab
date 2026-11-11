@@ -55,14 +55,29 @@ def get_or_create_vapid_keys() -> Dict[str, str]:
     Retrieves persistent VAPID keys from environment or data/vapid.json.
     Generates and persists a fresh EC P-256 keypair if none exist.
     """
-    # 1. Check environment variables
+    # 1. Check environment variables first (deterministic cloud deployments)
     env_pub = os.getenv("VAPID_PUBLIC_KEY")
     env_priv = os.getenv("VAPID_PRIVATE_KEY")
     if env_pub and env_priv:
+        cleaned_pub = env_pub.strip().strip('"').strip("'")
+        cleaned_priv = env_priv.strip().strip('"').strip("'").replace("\\n", "\n")
+        # Ensure newline at end of PEM
+        if not cleaned_priv.endswith("\n"):
+            cleaned_priv += "\n"
+        claims_email = os.getenv("VAPID_CLAIMS_EMAIL", DEFAULT_CLAIMS_EMAIL).strip()
+
+        # Cache to VAPID_PEM_PATH for pywebpush / py_vapid file deserialization
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(VAPID_PEM_PATH, "w", encoding="utf-8") as pf:
+                pf.write(cleaned_priv)
+        except Exception as e:
+            logger.warning(f"Could not write VAPID_PEM_PATH from environment: {e}")
+
         return {
-            "public_key": env_pub.strip(),
-            "private_pem": env_priv.strip(),
-            "claims_email": os.getenv("VAPID_CLAIMS_EMAIL", DEFAULT_CLAIMS_EMAIL).strip(),
+            "public_key": cleaned_pub,
+            "private_pem": cleaned_priv,
+            "claims_email": claims_email,
         }
 
     # 2. Check local data/vapid.json

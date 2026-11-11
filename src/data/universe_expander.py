@@ -319,6 +319,8 @@ def ingest_symbols_parallel(
     """
     t0 = time.time()
     now_iso = datetime.now(timezone.utc).isoformat()
+    if os.getenv("RENDER", "").lower() in ("true", "1") or os.getenv("CLOUD_LIGHTWEIGHT_MODE", "").lower() in ("true", "1"):
+        max_workers = min(max_workers, 2)
 
     # Filter blacklisted and map aliases
     clean_symbols: List[Tuple[str, str]] = []  # (original_sym, mapped_ticker)

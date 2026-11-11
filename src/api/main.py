@@ -18,6 +18,7 @@ import json
 import sqlite3
 import datetime
 import logging
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, Response
@@ -28,6 +29,7 @@ from pydantic import BaseModel
 from src.copilot.deliberation import MultiAgentDeliberationEngine
 
 from src.storage.database import DatabaseManager
+from src.storage.hydration import is_cloud_lightweight_mode, hydrate_initial_cloud_database
 from src.quant.screener import FactorScreener
 from src.quant.rebalance_engine import RebalanceEngine
 from src.api.utils import (
@@ -85,13 +87,68 @@ def invalidate_screener_cache() -> None:
         _screener_cache_time = 0.0
     logger.info("In-memory screener cache invalidated.")
 
+def is_nse_trading_hours() -> bool:
+    """Returns True if current time is within NSE trading hours (09:15–15:35 IST, Mon–Fri)."""
+    ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+    now = datetime.datetime.now(ist)
+    if now.weekday() > 4:  # Saturday or Sunday
+        return False
+    market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_close = now.replace(hour=15, minute=35, second=0, microsecond=0)
+    return market_open <= now <= market_close
+
+
+async def embedded_intraday_catalyst_loop():
+    """Background loop executing intraday anomaly scan & push delivery every 10 minutes during NSE hours."""
+    from src.tasks.catalyst_engine import catalyst_engine
+    logger.info("Embedded Intraday Catalyst & Push Loop initialized.")
+    while True:
+        try:
+            # Check market hours
+            if is_nse_trading_hours():
+                logger.info("NSE session active: running 10-minute intraday catalyst scan...")
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, catalyst_engine.run_intraday_scan)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in embedded catalyst loop: {e}", exc_info=True)
+
+        try:
+            await asyncio.sleep(600)  # 10 minutes
+        except asyncio.CancelledError:
+            break
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start autonomous platform daemon
+    # 1. Automatic database hydration (fresh cloud container deploy)
+    try:
+        hydrate_initial_cloud_database(DATABASE_PATH)
+    except Exception as e:
+        logger.error(f"Cloud database hydration error: {e}", exc_info=True)
+
+    # 2. Start autonomous platform daemon
     daemon_task = asyncio.create_task(run_autonomous_platform_daemon())
+
+    # 3. Start embedded intraday catalyst & push loop if enabled (default True on Render)
+    embedded_task = None
+    enable_embedded = (
+        os.getenv("ENABLE_EMBEDDED_SCHEDULER", "").lower() in ("true", "1") or
+        os.getenv("RENDER", "").lower() in ("true", "1")
+    )
+    if enable_embedded:
+        embedded_task = asyncio.create_task(embedded_intraday_catalyst_loop())
+
     try:
         yield
     finally:
+        if embedded_task:
+            embedded_task.cancel()
+            try:
+                await embedded_task
+            except asyncio.CancelledError:
+                pass
         platform_daemon.stop()
         daemon_task.cancel()
         try:
@@ -106,21 +163,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration (ADR-0001: Explicit trusted local origins)
-cors_origins_env = os.getenv("MIL_CORS_ORIGINS", "")
+# CORS Configuration (ADR-0001: Explicit trusted local origins + Vercel & Cloud Regex)
+extra_origins = []
+for env_var in ("ALLOWED_ORIGINS", "MIL_CORS_ORIGINS"):
+    val = os.getenv(env_var, "")
+    if val:
+        extra_origins.extend([o.strip() for o in val.split(",") if o.strip()])
+
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://market-intelligence-lab-vert.vercel.app",
 ]
-if cors_origins_env:
-    allowed_origins.extend([o.strip() for o in cors_origins_env.split(",") if o.strip()])
+for o in extra_origins:
+    if o not in allowed_origins:
+        allowed_origins.append(o)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.(vercel\.app|ngrok-free\.app|onrender\.com)",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
@@ -542,6 +606,19 @@ def get_universe_status_endpoint():
 @app.post("/api/v1/ml/train")
 def train_ml_tournament_endpoint(req: Optional[MLTrainRequest] = None):
     """Executes purged walk-forward ML training tournament across 5D, 20D, and 60D horizons."""
+    if is_cloud_lightweight_mode():
+        logger.info("CLOUD_LIGHTWEIGHT_MODE active: Serving cached tournament summary and models without retraining.")
+        summary_path = Path("data/models/tournament_summary.json")
+        summary_data = {}
+        if summary_path.exists():
+            with open(summary_path, "r", encoding="utf-8") as f:
+                summary_data = json.load(f)
+        return sanitize_for_json({
+            "message": "Cloud Lightweight Mode active: Serving pre-trained champion models from registry.",
+            "mode": "CLOUD_LIGHTWEIGHT_MODE",
+            "results": [summary_data.get("overall_summary", {})],
+            "telemetry": summary_data
+        })
     try:
         from src.quant.ml_trainer import WalkForwardMLTrainer
         db = DatabaseManager(DATABASE_PATH)
@@ -605,12 +682,18 @@ def get_ml_forecast_endpoint(symbol: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/v1/ml/train")
+@app.post("/api/v1/ml/train_async")
 def trigger_ml_training_endpoint(background_tasks: BackgroundTasks):
     """
     Triggers walk-forward ML tournament training across 5D, 20D, and 60D horizons
     in the background.
     """
+    if is_cloud_lightweight_mode():
+        return {
+            "status": "skipped",
+            "mode": "CLOUD_LIGHTWEIGHT_MODE",
+            "message": "Cloud Lightweight Mode active: Serving pre-trained champion models without container retraining."
+        }
     def _train():
         try:
             from src.quant.ml_trainer import WalkForwardMLTrainer

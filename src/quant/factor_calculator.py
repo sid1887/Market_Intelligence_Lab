@@ -322,6 +322,8 @@ class VectorizedFactorCalculator:
             return {"processed_symbols": 0, "total_bars_factored": 0, "duration_seconds": 0.0}
 
         n_workers = max_workers or min(os.cpu_count() or 4, 6)
+        if os.getenv("RENDER", "").lower() in ("true", "1") or os.getenv("CLOUD_LIGHTWEIGHT_MODE", "").lower() in ("true", "1"):
+            n_workers = min(n_workers, 2)
         n_workers = max(1, min(n_workers, len(target_symbols)))
         chunk_size = math.ceil(len(target_symbols) / n_workers)
         chunks = [target_symbols[i:i + chunk_size] for i in range(0, len(target_symbols), chunk_size)]

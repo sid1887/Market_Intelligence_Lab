@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: mil-quant-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.0
+      - key: RENDER
+        value: "true"
+      - key: CLOUD_LIGHTWEIGHT_MODE
+        value: "true"
+      - key: ENABLE_EMBEDDED_SCHEDULER
+        value: "true"
+      - key: VAPID_CLAIMS_EMAIL
+        value: mailto:quant@marketintelligencelab.local
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

@@ -10,11 +10,21 @@ venv/
 env/
 .venv/
 
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# VAPID Keys & Push Secrets
+data/vapid.json
+data/vapid_private.pem
+
 # Database files & local scratch files
 *.db
 *.sqlite
 *.sqlite3
-data/*.db
+data/*.db*
+data/market_lab.db*
 *.db-shm
 *.db-wal
 backups/

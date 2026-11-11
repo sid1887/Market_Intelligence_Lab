@@ -1,7 +1,7 @@
 {
   "status": "live_observed",
   "as_of_session": "2026-11-11",
-  "retrieval_timestamp": "2026-11-11T14:43:16.088394+00:00",
+  "retrieval_timestamp": "2026-11-11T16:23:56.414723+00:00",
   "indicators": [
     {
       "symbol": "USD/INR",
@@ -10,18 +10,18 @@
       "unit": "\u20b9",
       "change_pct": -0.28,
       "source": "yfinance",
-      "retrieval_timestamp": "2026-11-11T14:43:16.088394+00:00",
+      "retrieval_timestamp": "2026-11-11T16:23:56.414723+00:00",
       "observed_at": "2026-11-11T00:00:00+00:00",
       "freshness_status": "LIVE_FEED"
     },
     {
       "symbol": "BRENT",
       "label": "Brent Crude",
-      "value": 92.87,
+      "value": 93.91,
       "unit": "$/bbl",
-      "change_pct": 1.51,
+      "change_pct": 2.65,
       "source": "yfinance",
-      "retrieval_timestamp": "2026-11-11T14:43:16.088394+00:00",
+      "retrieval_timestamp": "2026-11-11T16:23:56.414723+00:00",
       "observed_at": "2026-11-11T00:00:00-05:00",
       "freshness_status": "LIVE_FEED"
     },
@@ -32,7 +32,7 @@
       "unit": "%",
       "change_pct": 0.34,
       "source": "yfinance",
-      "retrieval_timestamp": "2026-11-11T14:43:16.088394+00:00",
+      "retrieval_timestamp": "2026-11-11T16:23:56.414723+00:00",
       "observed_at": "2026-11-11T00:00:00-06:00",
       "freshness_status": "LIVE_FEED"
     },

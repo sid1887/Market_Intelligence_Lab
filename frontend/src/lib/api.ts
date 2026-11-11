@@ -4,7 +4,7 @@
  */
 
 export function getApiBase(): string {
-  const raw = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  const raw = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
   return raw.endsWith("/api/v1") ? raw : `${raw.replace(/\/$/, "")}/api/v1`;
 }
 
