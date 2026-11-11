@@ -96,7 +96,7 @@ export function usePlatformEvents() {
       abortControllerRef.current = controller;
 
       const base = getApiBase();
-      const url = new URL(`${base}/events/stream`);
+      const url = new URL(`${base}/events/stream`, typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
       if (lastEventIdRef.current) {
         url.searchParams.set("Last-Event-ID", lastEventIdRef.current);
       }
