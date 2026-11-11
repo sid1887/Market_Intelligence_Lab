@@ -297,12 +297,12 @@ export default function StockTearsheetPage() {
     const isStep4Active = ingestion.progressPct >= 90 && ingestion.progressPct < 100;
 
     return (
-      <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
+      <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300 relative">
         <Navbar />
         <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
-          <div className="max-w-2xl w-full p-8 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-2xl space-y-8 backdrop-blur-xl">
+          <div className="max-w-2xl w-full p-8 rounded-3xl bg-[#080c14]/95 border border-white/[0.12] shadow-[0_25px_70px_rgba(0,0,0,0.9)] space-y-8 backdrop-blur-3xl">
             <div className="text-center space-y-2">
-              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-700/60 text-cyan-400 text-xs font-mono">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-400 text-xs font-mono shadow-[0_0_12px_rgba(6,182,212,0.2)]">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
                 <span>On-Demand Dynamic Ingestion</span>
               </div>
@@ -318,18 +318,18 @@ export default function StockTearsheetPage() {
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-mono text-slate-400">
                 <span>Pipeline Progress</span>
-                <span className="text-cyan-400 font-bold">{ingestion.progressPct}%</span>
+                <span className="text-cyan-400 font-bold tabular-nums">{ingestion.progressPct}%</span>
               </div>
-              <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden p-0.5 border border-slate-800">
+              <div className="w-full h-2.5 bg-[#050810] rounded-full overflow-hidden p-0.5 border border-white/[0.08]">
                 <div
-                  className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out shadow-lg shadow-cyan-500/50"
+                  className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 rounded-full transition-all duration-500 ease-out shadow-[0_0_15px_rgba(6,182,212,0.5)]"
                   style={{ width: `${Math.max(5, ingestion.progressPct)}%` }}
                 />
               </div>
             </div>
 
             {/* Checklist */}
-            <div className="space-y-3.5 bg-slate-950/60 p-5 rounded-xl border border-slate-800/80 font-mono text-xs">
+            <div className="space-y-3.5 bg-[#050810]/70 p-5 rounded-2xl border border-white/[0.06] font-mono text-xs">
               {/* Step 1 */}
               <div className="flex items-center space-x-3">
                 {isStep1Done ? (
@@ -471,54 +471,60 @@ export default function StockTearsheetPage() {
   const isAboveSma200 = data.technicals.price_above_sma200;
 
   return (
-    <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
+    <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300 relative">
+      {/* Ambient background lighting */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-0 right-1/4 w-[600px] h-[400px] bg-cyan-500/[0.03] rounded-full blur-[140px]" />
+        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-emerald-500/[0.025] rounded-full blur-[160px]" />
+      </div>
+
       <Navbar />
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-24">
+      <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-24">
         {/* Back Link & Navigation Bar */}
         <div className="flex items-center justify-between">
           <Link
             href="/"
-            className="inline-flex items-center space-x-1.5 text-xs font-mono text-slate-400 hover:text-white transition-colors group"
+            className="inline-flex items-center space-x-2 text-xs font-mono text-slate-400 hover:text-white transition-colors group px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-cyan-500/40"
           >
             <ArrowLeft className="w-4 h-4 text-cyan-400 group-hover:-translate-x-1 transition-transform" />
-            <span>Back to Terminal Dashboard</span>
+            <span>Back to Screener Workbench</span>
           </Link>
 
-          <span className="text-xs text-slate-400 font-mono">
-            Settled Session: <strong className="text-slate-200">{data.as_of_date}</strong>
+          <span className="text-xs text-slate-400 font-mono px-3 py-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            Settled Session: <strong className="text-white tabular-nums">{data.as_of_date}</strong>
           </span>
         </div>
 
       {/* Hero Header Card */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl backdrop-blur-sm">
+      <div className="bg-[#080c14]/90 border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-3xl font-extrabold text-white font-mono tracking-tight">
+              <h1 className="text-3xl font-extrabold text-white font-mono tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
                 {data.symbol}
               </h1>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono">
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 font-mono">
                 {data.isin}
               </span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950 border border-cyan-800/80 text-cyan-300 font-semibold">
+              <span className="text-xs px-3 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_10px_rgba(6,182,212,0.2)]">
                 {data.sector}
               </span>
               {data.is_watchlist ? (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-950 border border-indigo-700 text-indigo-300 font-semibold flex items-center space-x-1">
-                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                <span className="text-xs px-3 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 font-semibold flex items-center space-x-1.5 shadow-[0_0_10px_rgba(99,102,241,0.2)]">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
                   <span>WATCHLIST HOLDING</span>
                 </span>
               ) : null}
               {data.is_nifty50 ? (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono">
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 font-mono">
                   NIFTY 50 CONSTITUENT
                 </span>
               ) : null}
             </div>
 
-            <p className="text-sm text-slate-300 mt-1 font-medium">{data.company_name}</p>
+            <p className="text-sm text-slate-300 mt-1.5 font-medium">{data.company_name}</p>
             {data.notes && (
-              <p className="text-xs text-slate-400 mt-1 italic font-mono max-w-2xl">
+              <p className="text-xs text-slate-400 mt-1 italic font-mono max-w-2xl bg-white/[0.02] p-2 rounded-lg border border-white/[0.04]">
                 Strategy Notes: &ldquo;{data.notes}&rdquo;
               </p>
             )}
@@ -527,41 +533,41 @@ export default function StockTearsheetPage() {
           {/* Right Price & Return Stack */}
           <div className="flex items-center space-x-6 md:text-right">
             <div>
-              <span className="text-xs text-slate-500 font-mono block">Latest Close</span>
-              <div className="text-3xl font-extrabold text-white font-mono tracking-tight">
+              <span className="text-xs text-slate-400 font-mono block">Latest Close</span>
+              <div className="text-3xl font-extrabold text-white font-mono tracking-tight tabular-nums">
                 ₹{data.latest_ohlcv.close.toFixed(2)}
               </div>
             </div>
 
             <div
-              className={`flex flex-col items-center justify-center px-3 py-1.5 rounded-lg border font-mono ${
+              className={`flex flex-col items-center justify-center px-4 py-2 rounded-xl border font-mono ${
                 isUp
-                  ? "bg-emerald-950/70 border-emerald-800/80 text-emerald-300"
-                  : "bg-red-950/70 border-red-800/80 text-red-300"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                  : "bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.2)]"
               }`}
             >
-              <div className="flex items-center space-x-1 text-sm font-bold">
+              <div className="flex items-center space-x-1 text-sm font-bold tabular-nums">
                 {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                 <span>{data.technicals.ret_1d_pct >= 0 ? "+" : ""}{data.technicals.ret_1d_pct.toFixed(2)}%</span>
               </div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider">1D Change</span>
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">1D Change</span>
             </div>
           </div>
         </div>
 
         {/* Watchlist Target Price / Stop Loss Ribbon */}
         {(data.target_price || data.stop_loss) && (
-          <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-4 text-xs font-mono">
+          <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex flex-wrap items-center gap-4 text-xs font-mono">
             {data.target_price && (
-              <span className="flex items-center space-x-1.5 px-3 py-1 rounded-md bg-emerald-950/40 border border-emerald-900 text-emerald-400">
+              <span className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
                 <Target className="w-3.5 h-3.5" />
-                <span>Target Objective: <strong>₹{data.target_price.toFixed(2)}</strong> ({(((data.target_price / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% upside)</span>
+                <span className="tabular-nums">Target Objective: <strong>₹{data.target_price.toFixed(2)}</strong> ({(((data.target_price / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% upside)</span>
               </span>
             )}
             {data.stop_loss && (
-              <span className="flex items-center space-x-1.5 px-3 py-1 rounded-md bg-red-950/40 border border-red-900 text-red-400">
+              <span className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400">
                 <ShieldAlert className="w-3.5 h-3.5" />
-                <span>Downside Stop: <strong>₹{data.stop_loss.toFixed(2)}</strong> ({(((data.stop_loss / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% risk)</span>
+                <span className="tabular-nums">Downside Stop: <strong>₹{data.stop_loss.toFixed(2)}</strong> ({(((data.stop_loss / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% risk)</span>
               </span>
             )}
           </div>
@@ -572,21 +578,23 @@ export default function StockTearsheetPage() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Candlestick Chart */}
         <section className={forecast && forecast.projections && forecast.projections.length > 0 ? "xl:col-span-8" : "xl:col-span-12"}>
-          <StockChart
-            symbol={data.symbol}
-            data={data.history}
-            sma200={data.technicals.sma_200}
-            forecast={forecast}
-          />
+          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl">
+            <StockChart
+              symbol={data.symbol}
+              data={data.history}
+              sma200={data.technicals.sma_200}
+              forecast={forecast}
+            />
+          </div>
         </section>
 
         {/* Milestone B7.0: 20-Day Econometric Forecast & Tail Risk Card */}
         {forecast && forecast.projections && forecast.projections.length > 0 && (
-          <section className="xl:col-span-4 bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl backdrop-blur-sm flex flex-col justify-between">
+          <section className="xl:col-span-4 bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl flex flex-col justify-between">
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
                 <div className="flex items-center space-x-2.5">
-                  <div className="p-2 rounded-lg bg-cyan-950/70 border border-cyan-800/80 text-cyan-400">
+                  <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
                     <Activity className="w-4 h-4" />
                   </div>
                   <div>
@@ -603,10 +611,10 @@ export default function StockTearsheetPage() {
                   <span
                     className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold border ${
                       forecast.volatility_regime === "LOW"
-                        ? "bg-emerald-950/70 text-emerald-400 border-emerald-800/80"
+                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                         : forecast.volatility_regime === "NORMAL"
-                        ? "bg-cyan-950/70 text-cyan-400 border-cyan-800/80"
-                        : "bg-amber-950/70 text-amber-400 border-amber-800/80"
+                        ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
                     }`}
                   >
                     {forecast.volatility_regime} DISPERSION
@@ -617,12 +625,12 @@ export default function StockTearsheetPage() {
               {/* Forecast Telemetry Grid (2x2) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
                 {/* 1. Expected 20D Price */}
-                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
-                  <span className="text-[11px] text-slate-400 block">Expected 20D Price</span>
-                  <div className="text-xl font-black text-cyan-300 mt-1">
+                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">Expected 20D Price</span>
+                  <div className="text-xl font-black text-cyan-300 mt-1 tabular-nums">
                     ₹{forecast.projections[forecast.projections.length - 1].expected.toFixed(2)}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">
+                  <div className="text-[11px] text-slate-400 mt-1 tabular-nums">
                     {(() => {
                       const expPrice = forecast.projections[forecast.projections.length - 1].expected;
                       const diff = expPrice - data.latest_ohlcv.close;
@@ -637,9 +645,9 @@ export default function StockTearsheetPage() {
                 </div>
 
                 {/* 2. 80% Expected Range */}
-                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
-                  <span className="text-[11px] text-slate-400 block">80% Trajectory Band</span>
-                  <div className="text-sm font-bold text-white mt-1">
+                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">80% Trajectory Band</span>
+                  <div className="text-sm font-bold text-white mt-1.5 tabular-nums">
                     ₹{forecast.projections[forecast.projections.length - 1].lower_80.toFixed(0)} – ₹{forecast.projections[forecast.projections.length - 1].upper_80.toFixed(0)}
                   </div>
                   <div className="text-[10px] text-slate-500 mt-1">
@@ -648,12 +656,12 @@ export default function StockTearsheetPage() {
                 </div>
 
                 {/* 3. 95% Tail Risk Floor */}
-                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
-                  <span className="text-[11px] text-slate-400 block">95% Downside Floor</span>
-                  <div className="text-xl font-black text-rose-400 mt-1">
+                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">95% Downside Floor</span>
+                  <div className="text-xl font-black text-rose-400 mt-1 tabular-nums">
                     ₹{forecast.projections[forecast.projections.length - 1].lower_95.toFixed(2)}
                   </div>
-                  <div className="text-[10px] text-rose-400/90 mt-1">
+                  <div className="text-[10px] text-rose-400/90 mt-1 tabular-nums font-semibold">
                     {(() => {
                       const floorPrice = forecast.projections[forecast.projections.length - 1].lower_95;
                       const maxDrawdownPct = ((floorPrice / data.latest_ohlcv.close) - 1.0) * 100;
@@ -663,12 +671,12 @@ export default function StockTearsheetPage() {
                 </div>
 
                 {/* 4. Model Calibration */}
-                <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80 font-mono">
-                  <span className="text-[11px] text-slate-400 block">Annualized Vol</span>
-                  <div className="text-xl font-black text-white mt-1">
+                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">Annualized Vol</span>
+                  <div className="text-xl font-black text-white mt-1 tabular-nums">
                     {(forecast.annualized_volatility * 100).toFixed(1)}%
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-1">
+                  <div className="text-[10px] text-slate-400 mt-1 tabular-nums">
                     {forecast.garch_parameters ? (
                       <span>α+β: <strong>{forecast.garch_parameters.persistence.toFixed(3)}</strong></span>
                     ) : (
@@ -679,7 +687,7 @@ export default function StockTearsheetPage() {
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs font-mono text-slate-400">
+            <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs font-mono text-slate-400">
               <span>Risk Anchor:</span>
               <span className="text-cyan-300 font-semibold">GARCH(1,1) Volatility Envelope</span>
             </div>
@@ -693,30 +701,30 @@ export default function StockTearsheetPage() {
       </section>
 
       {/* Core 4-Card Grid: Fundamentals & Technicals */}
-      <section className="space-y-3">
+      <section className="space-y-4">
         <div className="flex items-center space-x-2">
           <Activity className="w-4 h-4 text-cyan-400" />
-          <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">
+          <h2 className="text-base font-bold text-white font-mono tracking-tight">
             Fundamentals & Technical Positioning
           </h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Debt-to-Equity */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
-            <span className="text-xs font-mono text-slate-400 block">Debt-to-Equity (D/E)</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1">
+          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Debt-to-Equity (D/E)</span>
+            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.fundamentals.debt_to_equity !== null ? data.fundamentals.debt_to_equity.toFixed(4) : "N/A"}
             </div>
-            <div className="mt-2 flex items-center space-x-1 text-[11px] font-mono">
+            <div className="mt-2.5 flex items-center space-x-1.5 text-[11px] font-mono">
               {data.fundamentals.debt_to_equity !== null && data.fundamentals.debt_to_equity < 0.5 ? (
                 <span className="text-emerald-400 font-semibold flex items-center space-x-1">
-                  <ShieldCheck className="w-3 h-3" />
+                  <ShieldCheck className="w-3.5 h-3.5" />
                   <span>&lt; 0.5 Conservative Threshold Met</span>
                 </span>
               ) : (
                 <span className="text-amber-400 font-semibold flex items-center space-x-1">
-                  <AlertTriangle className="w-3 h-3" />
+                  <AlertTriangle className="w-3.5 h-3.5" />
                   <span>Elevated Leverage Ratio</span>
                 </span>
               )}
@@ -724,15 +732,15 @@ export default function StockTearsheetPage() {
           </div>
 
           {/* Card 2: Return on Equity (ROE %) */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
-            <span className="text-xs font-mono text-slate-400 block">Return on Equity (ROE)</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1">
+          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Return on Equity (ROE)</span>
+            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.fundamentals.roe_pct !== null ? `${data.fundamentals.roe_pct.toFixed(2)}%` : "N/A"}
             </div>
-            <div className="mt-2 flex items-center space-x-1 text-[11px] font-mono">
+            <div className="mt-2.5 flex items-center space-x-1.5 text-[11px] font-mono">
               {data.fundamentals.roe_pct !== null && data.fundamentals.roe_pct > 15.0 ? (
                 <span className="text-emerald-400 font-semibold flex items-center space-x-1">
-                  <ShieldCheck className="w-3 h-3" />
+                  <ShieldCheck className="w-3.5 h-3.5" />
                   <span>&gt; 15% Hurdle Cleared (High Quality)</span>
                 </span>
               ) : (
@@ -742,12 +750,12 @@ export default function StockTearsheetPage() {
           </div>
 
           {/* Card 3: 60-Day Rolling Beta vs Nifty 50 */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
-            <span className="text-xs font-mono text-slate-400 block">60D Rolling Beta (vs Nifty 50)</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1">
+          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">60D Rolling Beta (vs Nifty 50)</span>
+            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.technicals.beta_60d_nifty !== null ? data.technicals.beta_60d_nifty.toFixed(2) : "N/A"}
             </div>
-            <div className="mt-2 text-[11px] font-mono text-slate-400">
+            <div className="mt-2.5 text-[11px] font-mono text-slate-400">
               {data.technicals.beta_60d_nifty !== null && Math.abs(data.technicals.beta_60d_nifty) < 0.5
                 ? "Low systematic benchmark exposure"
                 : "Standard market systematic co-movement"}
@@ -755,12 +763,12 @@ export default function StockTearsheetPage() {
           </div>
 
           {/* Card 4: Distance from 200-day SMA */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
-            <span className="text-xs font-mono text-slate-400 block">Distance from 200 SMA</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1">
+          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Distance from 200 SMA</span>
+            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.technicals.dist_sma200_pct !== null ? `${data.technicals.dist_sma200_pct >= 0 ? "+" : ""}${data.technicals.dist_sma200_pct.toFixed(2)}%` : "N/A"}
             </div>
-            <div className="mt-2 flex items-center space-x-1 text-[11px] font-mono">
+            <div className="mt-2.5 flex items-center space-x-1.5 text-[11px] font-mono">
               <span className={isAboveSma200 ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
                 {isAboveSma200 ? "✓ Price > 200 SMA (Structural Uptrend)" : "⚠️ Price < 200 SMA (Below Trend)"}
               </span>
@@ -770,44 +778,44 @@ export default function StockTearsheetPage() {
 
         {/* Supplementary Metrics Ribbon */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2 text-xs font-mono">
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-            <span className="text-slate-500 block">20-Day SMA</span>
-            <span className="text-slate-200 font-semibold font-mono">
+          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+            <span className="text-slate-400 block text-[11px]">20-Day SMA</span>
+            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
               {data.technicals.sma_20 !== null ? `₹${data.technicals.sma_20.toFixed(2)}` : "—"}
             </span>
           </div>
 
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-            <span className="text-slate-500 block">50-Day SMA</span>
-            <span className="text-slate-200 font-semibold font-mono">
+          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+            <span className="text-slate-400 block text-[11px]">50-Day SMA</span>
+            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
               {data.technicals.sma_50 !== null ? `₹${data.technicals.sma_50.toFixed(2)}` : "—"}
             </span>
           </div>
 
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-            <span className="text-slate-500 block">200-Day SMA</span>
-            <span className="text-slate-200 font-semibold font-mono">
+          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+            <span className="text-slate-400 block text-[11px]">200-Day SMA</span>
+            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
               {data.technicals.sma_200 !== null ? `₹${data.technicals.sma_200.toFixed(2)}` : "—"}
             </span>
           </div>
 
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-            <span className="text-slate-500 block">TTM P/E Ratio</span>
-            <span className="text-slate-200 font-semibold font-mono">
+          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+            <span className="text-slate-400 block text-[11px]">TTM P/E Ratio</span>
+            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
               {data.fundamentals.ttm_pe !== null ? `${data.fundamentals.ttm_pe.toFixed(1)}x` : "—"}
             </span>
           </div>
 
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-            <span className="text-slate-500 block">Operating Margin</span>
-            <span className="text-slate-200 font-semibold font-mono">
+          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+            <span className="text-slate-400 block text-[11px]">Operating Margin</span>
+            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
               {data.fundamentals.opm_pct !== null ? `${data.fundamentals.opm_pct.toFixed(1)}%` : "—"}
             </span>
           </div>
 
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-            <span className="text-slate-500 block">20D Volatility</span>
-            <span className="text-slate-200 font-semibold font-mono">
+          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+            <span className="text-slate-400 block text-[11px]">20D Volatility</span>
+            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
               {data.technicals.volatility_annualized !== null ? `${(data.technicals.volatility_annualized * 100).toFixed(1)}%` : "—"}
             </span>
           </div>
@@ -817,11 +825,13 @@ export default function StockTearsheetPage() {
       {/* 2-Column Responsive Grid: Corporate Disclosures (Left) + Real-Time News (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Section: Recent Corporate Filings & Disclosures Timeline */}
-        <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center space-x-2">
-              <FileText className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">
+        <section className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl space-y-4">
+          <div className="flex items-center justify-between pb-3.5 border-b border-white/[0.06]">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+                <FileText className="w-4 h-4" />
+              </div>
+              <h2 className="text-base font-bold text-white font-mono tracking-tight">
                 Corporate Disclosures &amp; Filings
               </h2>
             </div>
@@ -829,7 +839,7 @@ export default function StockTearsheetPage() {
           </div>
 
           {data.recent_disclosures.length === 0 ? (
-            <p className="text-xs text-slate-500 font-mono py-4 text-center">
+            <p className="text-xs text-slate-500 font-mono py-6 text-center">
               No official exchange disclosures recorded in local database for {data.symbol}.
             </p>
           ) : (
@@ -842,40 +852,40 @@ export default function StockTearsheetPage() {
                 return (
                   <div
                     key={d.disclosure_id}
-                    className={`border rounded-lg p-3.5 transition-colors flex flex-col justify-between gap-2.5 text-xs font-mono ${
+                    className={`border rounded-xl p-4 transition-all flex flex-col justify-between gap-3 text-xs font-mono ${
                       isQuarantined
                         ? "bg-rose-950/20 border-rose-900/60"
-                        : "bg-slate-950/80 border-slate-800/80 hover:border-slate-700"
+                        : "bg-[#050810]/70 border-white/[0.06] hover:border-white/[0.14]"
                     }`}
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-slate-200 text-sm">{d.category}</span>
+                        <span className="font-bold text-slate-100 text-sm">{d.category}</span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                          className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold ${
                             isQuarantined
                               ? "bg-rose-950 text-rose-300 border border-rose-800"
                               : isVerified
-                              ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
                               : isFlagged
-                              ? "bg-amber-950 text-amber-300 border border-amber-800"
-                              : "bg-slate-800 text-slate-400"
+                              ? "bg-amber-500/10 text-amber-300 border border-amber-500/30"
+                              : "bg-white/[0.05] text-slate-400 border border-white/[0.08]"
                           }`}
                         >
                           {isQuarantined ? "SYNTHETIC_SEED_QUARANTINED" : d.verification_status}
                         </span>
                         {isQuarantined && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 font-mono">
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 font-mono">
                             ⚠ QUARANTINED
                           </span>
                         )}
-                        <span className="text-slate-500 text-[11px] flex items-center space-x-1">
-                          <Clock className="w-3 h-3" />
+                        <span className="text-slate-400 text-[11px] flex items-center space-x-1 tabular-nums">
+                          <Clock className="w-3 h-3 text-slate-500" />
                           <span>{d.effective_session_date}</span>
                         </span>
                       </div>
 
-                      <p className="text-slate-300 font-medium">{d.subject}</p>
+                      <p className="text-slate-200 font-medium">{d.subject}</p>
                       {d.details_summary && (
                         <p className="text-slate-400 text-[11px] leading-relaxed line-clamp-2">{d.details_summary}</p>
                       )}
@@ -884,7 +894,7 @@ export default function StockTearsheetPage() {
                     {/* Direct Document Action Link */}
                     <div>
                       {isQuarantined ? (
-                        <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs font-mono font-medium opacity-80 cursor-not-allowed">
+                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs font-mono font-medium opacity-80 cursor-not-allowed">
                           <span>Quarantined Filing</span>
                         </span>
                       ) : d.source_url ? (
@@ -892,10 +902,10 @@ export default function StockTearsheetPage() {
                           href={d.source_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 hover:text-white transition-colors text-xs font-mono font-medium"
+                          className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-white transition-all text-xs font-mono font-medium shadow-[0_0_10px_rgba(6,182,212,0.15)]"
                         >
                           <span>{d.source_url.toLowerCase().endsWith(".pdf") ? "View Official PDF" : "Open Exchange Filing"}</span>
-                          <ExternalLink className="w-3 h-3" />
+                          <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                       ) : (
                         <span className="text-slate-600 text-xs italic">No Direct URL</span>

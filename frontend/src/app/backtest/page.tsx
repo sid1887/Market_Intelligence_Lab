@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { BentoCard } from "@/components/ui/BentoCard";
+import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
 import {
   fetchBacktestPresets,
   runPortfolioBacktest,
@@ -14,7 +16,6 @@ import {
 import {
   Play,
   TrendingUp,
-  TrendingDown,
   ShieldAlert,
   ShieldCheck,
   Percent,
@@ -112,80 +113,79 @@ export default function BacktestPage() {
   const metrics: BacktestSummaryMetrics | undefined = result?.summary_metrics;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans relative selection:bg-cyan-500/20 selection:text-cyan-200">
+      {/* Ambient background lighting */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-0 right-1/4 w-[600px] h-[400px] bg-cyan-500/[0.03] rounded-full blur-[140px]" />
+        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-emerald-500/[0.025] rounded-full blur-[160px]" />
+      </div>
+
       <Navbar />
 
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-white/[0.08]">
           <div>
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.15)]">
                 <Activity className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
                   Institutional Backtesting & Analytics
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 font-mono text-cyan-400">
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 font-mono shadow-[0_0_10px_rgba(6,182,212,0.2)]">
                     Phase 9.0 + Advanced Regimes
                   </span>
                 </h1>
-                <p className="text-xs text-slate-400 font-mono">
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
                   Point-in-Time Walk-Forward Portfolio Simulation • Turnover Hysteresis • Dynamic Cash Gating • Cross-Sectional Multi-Stock Comparison
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+          <div className="flex items-center gap-2 text-xs font-mono text-slate-400 px-3.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] tabular-nums">
             <Calendar className="w-4 h-4 text-cyan-400" />
-            <span>Multi-Stock Universe: {presets?.date_bounds.start_date || "2020-01-01"} to {presets?.date_bounds.end_date || "2026-11-06"}</span>
+            <span>Universe: {presets?.date_bounds.start_date || "2020-01-01"} to {presets?.date_bounds.end_date || "2026-11-06"}</span>
           </div>
         </div>
 
         {/* Sub-Tab Navigation Switcher with micro-interactions */}
-        <div className="flex items-center space-x-2 border-b border-slate-800/80 pb-2">
-          <button
-            onClick={() => setActiveTab("simulation")}
-            className={`px-4 py-2 text-xs font-mono rounded-xl transition-all duration-150 active:scale-[0.98] flex items-center gap-2 ${
-              activeTab === "simulation"
-                ? "bg-slate-800 text-cyan-300 font-semibold border border-cyan-500/40 shadow-lg shadow-cyan-950/20"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            Portfolio Simulation Engine
-          </button>
-          <button
-            onClick={() => setActiveTab("compare")}
-            className={`px-4 py-2 text-xs font-mono rounded-xl transition-all duration-150 active:scale-[0.98] flex items-center gap-2 ${
-              activeTab === "compare"
-                ? "bg-slate-800 text-cyan-300 font-semibold border border-cyan-500/40 shadow-lg shadow-cyan-950/20"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
-            }`}
-          >
-            <BarChart2 className="w-4 h-4" />
-            Multi-Asset Cross-Sectional Comparison
-          </button>
-        </div>
+        <AnimatedTabs<"simulation" | "compare">
+          tabs={[
+            {
+              id: "simulation",
+              label: "Portfolio Simulation Engine",
+              icon: <Activity className="w-4 h-4 text-cyan-400" />,
+            },
+            {
+              id: "compare",
+              label: "Multi-Asset Cross-Sectional Comparison",
+              icon: <BarChart2 className="w-4 h-4 text-emerald-400" />,
+            },
+          ]}
+          activeTab={activeTab}
+          setActiveTab={(tab) => setActiveTab(tab)}
+          layoutId="active-backtest-tab"
+        />
 
         {activeTab === "compare" ? (
           <CompareTerminal />
         ) : (
           <>
         {/* Control Bar */}
-        <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800/80 shadow-lg space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
+        <div className="p-5 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5 text-xs">
             {/* Strategy Mode */}
             <div className="lg:col-span-2 space-y-1.5">
-              <label className="text-slate-400 font-mono flex items-center gap-1.5">
+              <label className="text-slate-400 font-mono flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Strategy Regime</span>
               </label>
               <select
                 value={strategyMode}
                 onChange={(e) => setStrategyMode(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+                className="w-full bg-[#050810] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
               >
                 <option value="BLENDED_20D_60D">Institutional Blended (62.5% Tactical + 37.5% Trend)</option>
                 <option value="TACTICAL_20D">Tactical Swing (100% 20D Champion)</option>
@@ -195,14 +195,14 @@ export default function BacktestPage() {
 
             {/* Top N Basket Size */}
             <div className="space-y-1.5">
-              <label className="text-slate-400 font-mono flex items-center gap-1.5">
+              <label className="text-slate-400 font-mono flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
                 <Filter className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Basket Size</span>
               </label>
               <select
                 value={topN}
                 onChange={(e) => setTopN(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+                className="w-full bg-[#050810] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
               >
                 <option value={10}>Top 10 Equities</option>
                 <option value={15}>Top 15 Equities</option>
@@ -212,14 +212,14 @@ export default function BacktestPage() {
 
             {/* Rebalance Frequency */}
             <div className="space-y-1.5">
-              <label className="text-slate-400 font-mono flex items-center gap-1.5">
+              <label className="text-slate-400 font-mono flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
                 <span>Rebalance Cadence</span>
               </label>
               <select
                 value={rebalanceDays}
                 onChange={(e) => setRebalanceDays(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+                className="w-full bg-[#050810] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
               >
                 <option value={10}>10 Days (Bi-Weekly)</option>
                 <option value={20}>20 Days (Monthly)</option>
@@ -229,7 +229,7 @@ export default function BacktestPage() {
 
             {/* Initial Capital */}
             <div className="space-y-1.5">
-              <label className="text-slate-400 font-mono flex items-center gap-1.5">
+              <label className="text-slate-400 font-mono flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
                 <DollarSign className="w-3.5 h-3.5 text-blue-400" />
                 <span>Virtual Capital</span>
               </label>
@@ -238,7 +238,7 @@ export default function BacktestPage() {
                 value={initialCapital}
                 onChange={(e) => setInitialCapital(Number(e.target.value))}
                 step={100000}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+                className="w-full bg-[#050810] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] tabular-nums"
               />
             </div>
 
@@ -247,7 +247,7 @@ export default function BacktestPage() {
               <button
                 onClick={handleRunBacktest}
                 disabled={loading}
-                className="w-full h-[38px] px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-mono font-medium shadow-lg shadow-emerald-950/40 border border-emerald-500 flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-[42px] px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-mono text-xs font-semibold shadow-[0_0_20px_rgba(16,185,129,0.3)] border border-emerald-400/40 flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
@@ -267,7 +267,7 @@ export default function BacktestPage() {
 
         {/* Error Alert */}
         {error && (
-          <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-3">
+          <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-3 shadow-[0_4px_20px_rgba(244,63,94,0.15)]">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
@@ -276,212 +276,96 @@ export default function BacktestPage() {
         {/* KPI Tearsheet Grid (Standardized Bento Cards) */}
         {metrics && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-            {/* 1. Final NAV & Total Return */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Final Portfolio NAV</span>
-                  <span className="text-slate-400 group-hover:text-cyan-400 transition-colors duration-200">
-                    <PieChart className="w-4 h-4 text-cyan-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-white my-1.5">
-                  {formatINR(metrics.final_nav)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  {metrics.total_return_pct >= 0 ? (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-emerald-950/80 border border-emerald-800 text-emerald-300">
-                      <TrendingUp className="w-3 h-3 text-emerald-400" />
-                      +{metrics.total_return_pct.toFixed(2)}%
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-rose-950/80 border border-rose-800 text-rose-300">
-                      <TrendingDown className="w-3 h-3 text-rose-400" />
-                      {metrics.total_return_pct.toFixed(2)}%
-                    </span>
-                  )}
-                  <span className="text-slate-500 text-[11px]">Total Return</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Benchmark Return & Alpha */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Benchmark & Alpha</span>
-                  <span className="text-slate-400 group-hover:text-amber-400 transition-colors duration-200">
-                    <Percent className="w-4 h-4 text-amber-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-amber-300 my-1.5">
-                  {metrics.alpha_pct >= 0 ? "+" : ""}{metrics.alpha_pct.toFixed(2)}%
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-amber-950/80 border border-amber-800/80 text-amber-300">
-                    Nifty: {metrics.benchmark_return_pct.toFixed(2)}%
-                  </span>
-                  <span className="text-cyan-400 text-[11px] font-semibold">Alpha Spread</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Sharpe & Sortino */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Risk-Adjusted Return</span>
-                  <span className="text-slate-400 group-hover:text-emerald-400 transition-colors duration-200">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-emerald-400 my-1.5">
-                  Sharpe: {metrics.sharpe_ratio.toFixed(2)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-emerald-950/80 border border-emerald-800/80 text-emerald-300">
-                    Sortino {metrics.sortino_ratio.toFixed(2)}
-                  </span>
-                  <span className="text-slate-400 text-[11px]">Calmar: {metrics.calmar_ratio.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 4. Drawdown & Volatility */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Max Drawdown & Vol</span>
-                  <span className="text-slate-400 group-hover:text-rose-400 transition-colors duration-200">
-                    <ShieldAlert className="w-4 h-4 text-rose-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-rose-400 my-1.5">
-                  -{metrics.max_drawdown_pct.toFixed(2)}%
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-rose-950/80 border border-rose-800/80 text-rose-300">
-                    Vol {metrics.annualized_volatility_pct.toFixed(1)}%
-                  </span>
-                  <span className="text-slate-400 text-[11px]">Win {metrics.win_rate_pct.toFixed(1)}%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 5. Annualized Return (CAGR) */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">CAGR (Ann. Return)</span>
-                  <span className="text-slate-400 group-hover:text-blue-400 transition-colors duration-200">
-                    <TrendingUp className="w-4 h-4 text-blue-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-blue-300 my-1.5">
-                  {metrics.cagr_pct.toFixed(2)}%
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-blue-950/80 border border-blue-800/80 text-blue-300">
-                    Compounded
-                  </span>
-                  <span className="text-slate-500 text-[11px]">Annual Growth Rate</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 6. Total Friction Drag */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Total Friction Paid</span>
-                  <span className="text-slate-400 group-hover:text-indigo-400 transition-colors duration-200">
-                    <DollarSign className="w-4 h-4 text-indigo-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-indigo-300 my-1.5">
-                  {formatINR(metrics.total_friction_paid)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-indigo-950/80 border border-indigo-800/80 text-indigo-300">
-                    Drag {metrics.friction_drag_bps.toFixed(1)} bps
-                  </span>
-                  <span className="text-slate-500 text-[11px]">of initial capital</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 7. Rebalances & Fills */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Simulation Activity</span>
-                  <span className="text-slate-400 group-hover:text-cyan-400 transition-colors duration-200">
-                    <Clock className="w-4 h-4 text-cyan-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-slate-200 my-1.5">
-                  {metrics.total_rebalances} Rebalances
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-slate-800 text-slate-300">
-                    {metrics.total_trades} orders
-                  </span>
-                  <span className="text-slate-500 text-[11px]">{metrics.trading_sessions} sessions</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 8. Active Configuration */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Regime Specification</span>
-                  <span className="text-slate-400 group-hover:text-emerald-400 transition-colors duration-200">
-                    <Layers className="w-4 h-4 text-emerald-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-lg sm:text-xl font-bold tracking-tight text-emerald-300 my-1.5 truncate">
-                  {metrics.strategy_mode}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-emerald-950/80 border border-emerald-800/80 text-emerald-300">
-                    Top {metrics.top_n}
-                  </span>
-                  <span className="text-slate-500 text-[11px]">Cadence {metrics.rebalance_every_n_days}d</span>
-                </div>
-              </div>
-            </div>
+            <BentoCard
+              title="Final Portfolio NAV"
+              value={formatINR(metrics.final_nav)}
+              delta={`${Math.abs(metrics.total_return_pct).toFixed(2)}%`}
+              isPositive={metrics.total_return_pct >= 0}
+              subLabel="Total Return"
+              icon={<PieChart className="w-4 h-4 text-cyan-400" />}
+              delay={0.05}
+            />
+            <BentoCard
+              title="Benchmark & Alpha"
+              value={`${metrics.alpha_pct >= 0 ? "+" : ""}${metrics.alpha_pct.toFixed(2)}%`}
+              delta={`Nifty: ${metrics.benchmark_return_pct.toFixed(2)}%`}
+              isPositive={metrics.alpha_pct >= 0}
+              subLabel="Alpha Spread"
+              icon={<Percent className="w-4 h-4 text-amber-400" />}
+              delay={0.1}
+            />
+            <BentoCard
+              title="Risk-Adjusted Return"
+              value={`Sharpe: ${metrics.sharpe_ratio.toFixed(2)}`}
+              badge={`Sortino ${metrics.sortino_ratio.toFixed(2)}`}
+              subLabel={`Calmar: ${metrics.calmar_ratio.toFixed(2)}`}
+              icon={<ShieldCheck className="w-4 h-4 text-emerald-400" />}
+              delay={0.15}
+            />
+            <BentoCard
+              title="Max Drawdown & Vol"
+              value={`-${metrics.max_drawdown_pct.toFixed(2)}%`}
+              delta={`Vol ${metrics.annualized_volatility_pct.toFixed(1)}%`}
+              isPositive={false}
+              subLabel={`Win ${metrics.win_rate_pct.toFixed(1)}%`}
+              icon={<ShieldAlert className="w-4 h-4 text-rose-400" />}
+              delay={0.2}
+            />
+            <BentoCard
+              title="CAGR (Ann. Return)"
+              value={`${metrics.cagr_pct.toFixed(2)}%`}
+              badge="Compounded"
+              subLabel="Annual Growth Rate"
+              icon={<TrendingUp className="w-4 h-4 text-blue-400" />}
+              delay={0.25}
+            />
+            <BentoCard
+              title="Total Friction Paid"
+              value={formatINR(metrics.total_friction_paid)}
+              badge={`Drag ${metrics.friction_drag_bps.toFixed(1)} bps`}
+              subLabel="of initial capital"
+              icon={<DollarSign className="w-4 h-4 text-indigo-400" />}
+              delay={0.3}
+            />
+            <BentoCard
+              title="Simulation Activity"
+              value={`${metrics.total_rebalances} Rebalances`}
+              badge={`${metrics.total_trades} orders`}
+              subLabel={`${metrics.trading_sessions} sessions`}
+              icon={<Clock className="w-4 h-4 text-cyan-400" />}
+              delay={0.35}
+            />
+            <BentoCard
+              title="Regime Specification"
+              value={metrics.strategy_mode}
+              badge={`Top ${metrics.top_n}`}
+              subLabel={`Cadence ${metrics.rebalance_every_n_days}d`}
+              icon={<Layers className="w-4 h-4 text-emerald-400" />}
+              delay={0.4}
+            />
           </div>
         )}
 
         {/* Dual Lightweight Charts (Equity Curve + Underwater Drawdown) */}
         {result?.equity_curve && result.equity_curve.length > 0 && (
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 shadow-lg space-y-2">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-2">
-              <div className="flex items-center space-x-2">
+          <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-3">
+            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-2">
+              <div className="flex items-center space-x-2.5">
                 <Activity className="w-4 h-4 text-cyan-400" />
                 <h2 className="text-sm font-semibold text-white tracking-wide">
                   Historical Mark-to-Market Equity & Underwater Drawdown Visualizer
                 </h2>
               </div>
               <div className="flex items-center gap-4 text-xs font-mono">
-                <span className="flex items-center gap-1.5 text-emerald-400">
-                  <span className="w-3 h-0.5 bg-emerald-400 rounded-full" />
+                <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <span className="w-3 h-0.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
                   Strategy NAV
                 </span>
                 <span className="flex items-center gap-1.5 text-slate-400">
                   <span className="w-3 h-0.5 bg-slate-400 border-dashed rounded-full" />
                   NIFTY 50 Benchmark
                 </span>
-                <span className="flex items-center gap-1.5 text-rose-400">
+                <span className="flex items-center gap-1.5 text-rose-400 font-medium">
                   <span className="w-2.5 h-2.5 bg-rose-500/40 border border-rose-500 rounded-sm" />
                   Underwater DD %
                 </span>
@@ -494,8 +378,8 @@ export default function BacktestPage() {
 
         {/* Empty State when no run performed yet */}
         {!result && !loading && (
-          <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-12 text-center space-y-4">
-            <div className="w-12 h-12 rounded-full bg-slate-800/80 text-cyan-400 flex items-center justify-center mx-auto">
+          <div className="bg-[#080c14]/70 border border-white/[0.08] rounded-2xl p-12 text-center space-y-4 backdrop-blur-xl">
+            <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-cyan-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(6,182,212,0.15)]">
               <Activity className="w-6 h-6" />
             </div>
             <h2 className="text-base font-semibold text-white">Systematic Walk-Forward Backtester Ready</h2>
@@ -507,9 +391,9 @@ export default function BacktestPage() {
 
         {/* Rebalance Audit Log Table */}
         {result?.rebalance_log && result.rebalance_log.length > 0 && (
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden shadow-lg">
-            <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
+          <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+            <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <h2 className="text-sm font-semibold text-white tracking-wide">
                   Historical Rebalance Audit Log ({result.rebalance_log.length} Rebalance Cycles)
@@ -522,45 +406,45 @@ export default function BacktestPage() {
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950/60 border-b border-slate-800 font-mono text-slate-400">
+                <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
                   <tr>
-                    <th className="py-2.5 px-4">Cycle Date</th>
-                    <th className="py-2.5 px-4 text-right">NAV Before</th>
-                    <th className="py-2.5 px-4 text-right">NAV After</th>
-                    <th className="py-2.5 px-4 text-right">Turnover %</th>
-                    <th className="py-2.5 px-4 text-right">Orders Executed</th>
-                    <th className="py-2.5 px-4 text-right">Friction Paid</th>
-                    <th className="py-2.5 px-4">Top 5 Target Holdings</th>
+                    <th className="py-3 px-5">Cycle Date</th>
+                    <th className="py-3 px-5 text-right">NAV Before</th>
+                    <th className="py-3 px-5 text-right">NAV After</th>
+                    <th className="py-3 px-5 text-right">Turnover %</th>
+                    <th className="py-3 px-5 text-right">Orders Executed</th>
+                    <th className="py-3 px-5 text-right">Friction Paid</th>
+                    <th className="py-3 px-5">Top 5 Target Holdings</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50 font-mono">
+                <tbody className="divide-y divide-white/[0.04] font-mono">
                   {result.rebalance_log.map((reb, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-2.5 px-4 font-semibold text-slate-300">
+                    <tr key={idx} className="hover:bg-white/[0.03] transition-colors">
+                      <td className="py-3 px-5 font-semibold text-slate-300 tabular-nums">
                         {reb.date}
                       </td>
-                      <td className="py-2.5 px-4 text-right text-slate-400">
+                      <td className="py-3 px-5 text-right text-slate-400 tabular-nums">
                         {formatINR(reb.nav_before)}
                       </td>
-                      <td className="py-2.5 px-4 text-right text-slate-200 font-semibold">
+                      <td className="py-3 px-5 text-right text-slate-200 font-semibold tabular-nums">
                         {formatINR(reb.nav_after)}
                       </td>
-                      <td className="py-2.5 px-4 text-right text-cyan-300">
+                      <td className="py-3 px-5 text-right text-cyan-300 tabular-nums font-semibold">
                         {reb.turnover_pct.toFixed(2)}%
                       </td>
-                      <td className="py-2.5 px-4 text-right text-slate-300">
+                      <td className="py-3 px-5 text-right text-slate-300 tabular-nums">
                         {reb.orders_count}
                       </td>
-                      <td className="py-2.5 px-4 text-right text-amber-400 font-medium">
+                      <td className="py-3 px-5 text-right text-amber-400 font-medium tabular-nums">
                         {formatINR(reb.friction_paid)}
                       </td>
-                      <td className="py-2.5 px-4">
-                        <div className="flex flex-wrap items-center gap-1">
+                      <td className="py-3 px-5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {reb.top_holdings.map((sym) => (
                             <Link
                               key={sym}
                               href={`/stocks/${sym}`}
-                              className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 hover:border-cyan-500 transition-colors"
+                              className="px-2 py-0.5 rounded-md text-[10px] bg-white/[0.04] hover:bg-cyan-500/10 text-cyan-300 border border-white/[0.08] hover:border-cyan-500/40 transition-all"
                             >
                               {sym}
                             </Link>

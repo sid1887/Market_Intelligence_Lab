@@ -1160,3 +1160,54 @@ export async function runMultiStockComparison(
   return (await res.json()) as MultiStockCompareResponse;
 }
 
+export interface CausalCatalyst {
+  id: number;
+  symbol: string;
+  company_name: string;
+  sector: string;
+  move_pct: number;
+  rvol: number;
+  classification: "Idiosyncratic Single-Stock Alpha" | "Sector-Wide Basket Momentum" | string;
+  causal_headline: string;
+  causal_bullets: string[];
+  triggered_at: string;
+  pillar1?: {
+    latest_price: number;
+    move_pct: number;
+    volume: number;
+    avg_vol_20d: number;
+    rvol: number;
+    dist_52w_high_pct: number;
+    dist_52w_low_pct: number;
+    dist_sma200_pct: number;
+    round_level_desc: string;
+  };
+  pillar2?: {
+    sector: string;
+    sector_mean_ret: number;
+    advances: number;
+    declines: number;
+    nifty_ret: number;
+    classification: string;
+    alpha_narrative: string;
+  };
+  pillar3?: {
+    events_count: number;
+    events: string[];
+    summary: string;
+  };
+  pillar4?: {
+    headlines_count: number;
+    headlines: string[];
+    top_story: string;
+  };
+}
+
+export async function fetchLiveCatalysts(limit: number = 20): Promise<CausalCatalyst[]> {
+  const data = await apiFetch<{ count: number; catalysts: CausalCatalyst[] }>(
+    `/catalysts/live?limit=${limit}`,
+    { useCache: false }
+  );
+  return data.catalysts || [];
+}
+

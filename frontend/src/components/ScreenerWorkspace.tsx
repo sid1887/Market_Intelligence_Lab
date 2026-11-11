@@ -12,6 +12,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { ScreenerCandidate, prefetchStockBundle } from "@/lib/api";
 import { ScreenerScoreCell } from "./ScreenerScoreCell";
 import { SectorHeatmap } from "./SectorHeatmap";
@@ -157,8 +158,8 @@ export default function ScreenerWorkspace({
   const rowVirtualizer = useVirtualizer({
     count: filteredCandidates.length,
     getScrollElement: () => tableBodyRef.current,
-    estimateSize: () => 48,
-    overscan: 10,
+    estimateSize: () => 64,
+    overscan: 12,
   });
 
   // 2. Stable Selection Check
@@ -231,9 +232,9 @@ export default function ScreenerWorkspace({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#030508] text-slate-100 select-none">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#030508]/65 backdrop-blur-xl text-slate-100 select-none min-h-0">
       {/* Top Filter and Navigation Strip */}
-      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-[#030508]/90">
+      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-[#030508]/75 backdrop-blur-md">
         {/* Left: View Mode Toggle & Search */}
         <div className="flex items-center gap-2.5 flex-1 min-w-[280px]">
           {onViewModeChange && (
@@ -392,7 +393,7 @@ export default function ScreenerWorkspace({
 
       {/* Main Content: Table or Heatmap */}
       {viewMode === "heatmap" ? (
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
           <SectorHeatmap
             candidates={candidates}
             activeSymbol={selectedSymbol || ""}
@@ -400,9 +401,9 @@ export default function ScreenerWorkspace({
           />
         </div>
       ) : (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0 h-full">
           {/* Table Header */}
-          <div className="shrink-0 grid grid-cols-12 gap-2 px-3 py-2 border-b border-white/[0.08] bg-[#050811] text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
+          <div className="shrink-0 grid grid-cols-12 gap-2 px-3 py-2 border-b border-white/[0.08] bg-[#050811]/80 backdrop-blur-md text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
             <div
               className="col-span-1 cursor-pointer flex items-center gap-1 hover:text-slate-200"
               onClick={() => handleSort("rank")}
@@ -468,7 +469,7 @@ export default function ScreenerWorkspace({
           {/* Table Body (Virtual Windowed Chunk Rendering for 60 FPS) */}
           <div
             ref={tableBodyRef}
-            className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent"
+            className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent min-h-0 h-full w-full"
           >
             {loading && candidates.length === 0 ? (
               <div className="p-8 text-center text-slate-500 font-mono text-xs">
@@ -500,29 +501,40 @@ export default function ScreenerWorkspace({
                       data-symbol={cand.symbol}
                       data-index={virtualRow.index}
                       ref={rowVirtualizer.measureElement}
-                      onClick={() => {
-                        onSelectSymbol(cand.symbol);
-                        prefetchStockBundle(cand.symbol);
-                      }}
                       style={{
                         position: "absolute",
                         top: 0,
                         left: 0,
                         width: "100%",
-                        transform: `translateY(${virtualRow.start}px)`,
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px) translateZ(0)`,
                       }}
-                      className={`relative grid grid-cols-12 gap-2 px-3 py-2 cursor-pointer items-center text-xs font-mono transition-colors duration-150 hover:bg-slate-800/50 active:bg-slate-800/80 border-b border-white/[0.03] ${
-                        isSelected
-                          ? "bg-cyan-950/40 text-white font-medium"
-                          : "text-slate-300"
-                      }`}
                     >
-                      {/* Kinetic glowing edge indicator */}
-                      {isSelected && (
-                        <div
-                          className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-cyan-400 via-emerald-400 to-teal-400 shadow-[0_0_10px_rgba(6,182,212,0.8)]"
-                        />
-                      )}
+                      <motion.div
+                        initial={virtualRow.index < 18 ? { opacity: 0, x: -10 } : false}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.15,
+                          delay: virtualRow.index < 18 ? virtualRow.index * 0.015 : 0,
+                          ease: "easeOut",
+                        }}
+                        onClick={() => {
+                          onSelectSymbol(cand.symbol);
+                          prefetchStockBundle(cand.symbol);
+                        }}
+                        className={cn(
+                          "h-[64px] w-full relative group grid grid-cols-12 gap-2 px-3.5 py-2 cursor-pointer items-center text-xs font-mono transition-all duration-150 hover:bg-white/[0.04] active:bg-white/[0.08] border-b border-white/[0.04]",
+                          isSelected
+                            ? "bg-cyan-950/40 text-white font-medium shadow-[inset_0_0_20px_rgba(6,182,212,0.12)]"
+                            : "text-slate-300 hover:text-white"
+                        )}
+                      >
+                        {/* Kinetic glowing left-edge indicator */}
+                        {isSelected && (
+                          <div
+                            className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-cyan-400 via-emerald-400 to-teal-400 shadow-[0_0_12px_rgba(6,182,212,0.9)]"
+                          />
+                        )}
 
                       {/* Rank */}
                       <div className="col-span-1 text-slate-500 text-[11px] tabular-nums pl-1">
@@ -634,8 +646,9 @@ export default function ScreenerWorkspace({
                           <span className="text-slate-600">—</span>
                         )}
                       </div>
-                    </div>
-                  );
+                    </motion.div>
+                  </div>
+                );
                 })}
               </div>
             )}

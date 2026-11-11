@@ -19,6 +19,20 @@ export const metadata: Metadata = {
   title: "Market Intelligence Lab — Quantitative Terminal",
   description:
     "High-performance quantitative market research and equity attribution terminal. Local-first SQLite, multi-factor quality-momentum, GARCH forecasting.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "MIL Quant",
+  },
+};
+
+export const viewport = {
+  themeColor: "#040609",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -28,7 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="bg-[#030508] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 min-h-screen">
+      <body className="bg-[#040609] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 min-h-screen">
         {children}
       </body>
     </html>

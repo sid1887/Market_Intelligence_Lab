@@ -3,6 +3,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { BentoCard } from "@/components/ui/BentoCard";
+import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
+import { cn } from "@/lib/utils";
 import {
   fetchPortfolioSummary,
   fetchPortfolioPositions,
@@ -28,8 +31,6 @@ import {
 } from "@/lib/api";
 import {
   Wallet,
-  TrendingUp,
-  TrendingDown,
   ArrowUpRight,
   RefreshCw,
   Play,
@@ -331,25 +332,31 @@ export default function PortfolioPage() {
   const netPnlPct = initialCapital > 0 ? (netPnl / initialCapital) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans relative selection:bg-cyan-500/20 selection:text-cyan-200">
+      {/* Ambient background lighting */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-0 left-1/4 w-[600px] h-[400px] bg-cyan-500/[0.03] rounded-full blur-[140px]" />
+        <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] bg-emerald-500/[0.025] rounded-full blur-[160px]" />
+      </div>
+
       <Navbar />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Account Selector Tabs & Top Actions */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-white/[0.08]">
           <div>
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
                 <Wallet className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
                   Portfolio Command Center
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800 text-cyan-300 font-mono">
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 font-mono shadow-[0_0_10px_rgba(6,182,212,0.2)]">
                     MIL V8 Engine
                   </span>
                 </h1>
-                <p className="text-xs text-slate-400 font-mono">
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
                   Autonomous Rebalancing • FrontPage Sandbox • Whole-Share Micro Capital • Statutory Friction
                 </p>
               </div>
@@ -359,19 +366,19 @@ export default function PortfolioPage() {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => setShowSystemTelemetry(!showSystemTelemetry)}
-              className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98]"
+              className="px-3.5 py-2 rounded-xl bg-[#080c14]/80 border border-white/[0.08] hover:border-white/[0.16] hover:bg-white/[0.04] text-slate-300 hover:text-white text-xs font-mono flex items-center gap-2 transition-all duration-150 active:scale-[0.98] shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
             >
               <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Universe & ML ({universeStatus?.total_universe_symbols || 1147})</span>
-              {showSystemTelemetry ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+              <span className="tabular-nums">Universe & ML ({universeStatus?.total_universe_symbols || 1147})</span>
+              {showSystemTelemetry ? <ChevronUp className="w-3 h-3 ml-1 text-slate-400" /> : <ChevronDown className="w-3 h-3 ml-1 text-slate-400" />}
             </button>
 
             <button
               onClick={() => setShowCapitalModal(true)}
-              className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98]"
+              className="px-3.5 py-2 rounded-xl bg-[#080c14]/80 border border-white/[0.08] hover:border-amber-500/40 hover:bg-amber-500/5 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-2 transition-all duration-150 active:scale-[0.98] shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
             >
               <Sliders className="w-3.5 h-3.5 text-amber-400" />
-              <span>Capital Seed ({formatINR(initialCapital)})</span>
+              <span className="tabular-nums">Capital Seed ({formatINR(initialCapital)})</span>
             </button>
 
             <button
@@ -380,7 +387,7 @@ export default function PortfolioPage() {
                 loadData(activeAccount, true);
               }}
               disabled={loading}
-              className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-1.5 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl bg-[#080c14]/80 border border-white/[0.08] hover:border-cyan-500/40 hover:bg-cyan-500/5 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-cyan-400" : ""}`} />
               <span>Refresh</span>
@@ -390,7 +397,7 @@ export default function PortfolioPage() {
               <button
                 onClick={handleExecuteRebalance}
                 disabled={executing}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-mono font-medium shadow-lg shadow-emerald-950/40 border border-emerald-500 flex items-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-mono font-semibold shadow-[0_0_20px_rgba(16,185,129,0.3)] border border-emerald-400/40 flex items-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-50"
               >
                 {executing ? (
                   <>
@@ -409,65 +416,44 @@ export default function PortfolioPage() {
         </div>
 
         {/* Account Switcher Bento Bar with Micro-interactions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {ACCOUNTS.map((acc) => {
-            const isActive = activeAccount === acc.id;
-            return (
-              <button
-                key={acc.id}
-                onClick={() => {
-                  setActiveAccount(acc.id);
-                  loadData(acc.id);
-                }}
-                className={`relative group overflow-hidden p-4 sm:p-5 rounded-2xl text-left border transition-all duration-200 active:scale-[0.98] flex flex-col justify-between min-h-[105px] ${
-                  isActive
-                    ? "bg-slate-900/90 border-cyan-500/80 shadow-lg shadow-cyan-950/20 ring-1 ring-cyan-500/40"
-                    : "bg-slate-900/40 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/70 hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]"
-                }`}
-              >
-                {/* Ambient gradient hover backlight */}
-                <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-
-                <div className="relative z-10 flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-white">{acc.name}</span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold ${
-                        isActive
-                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                          : "bg-slate-800 text-slate-400"
-                      }`}
-                    >
-                      {acc.id}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400">{acc.badge}</span>
-                </div>
-                <p className="relative z-10 text-[11px] text-slate-400 mt-2 line-clamp-2">{acc.desc}</p>
-              </button>
-            );
-          })}
-        </div>
+        <AnimatedTabs
+          tabs={ACCOUNTS.map((acc) => ({
+            id: acc.id,
+            label: acc.name,
+            badge: acc.badge,
+            desc: acc.desc,
+            icon: acc.type === "SYSTEMATIC" ? <Sparkles className="w-4 h-4 text-cyan-400" /> : <Wallet className="w-4 h-4 text-amber-400" />,
+          }))}
+          activeTab={activeAccount}
+          setActiveTab={(id) => {
+            setActiveAccount(id);
+            loadData(id);
+          }}
+          variant="card"
+          layoutId="active-account-tab"
+        />
 
         {/* System & ML Telemetry Bento Card (Collapsible) */}
         {showSystemTelemetry && (
-          <div className="p-5 rounded-xl bg-slate-900/90 border border-indigo-800/50 shadow-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <BrainCircuit className="w-5 h-5 text-indigo-400" />
+          <div className="p-6 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-indigo-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.08]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                  <BrainCircuit className="w-5 h-5" />
+                </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">NSE 1,000+ Universe & Walk-Forward ML Telemetry</h3>
-                  <p className="text-xs text-slate-400 font-mono">
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">
                     15-Year historical depth (2011–present) • 8-factor cross-sectional models • Purged walk-forward CV
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <button
                   onClick={handleTriggerBackfill}
                   disabled={sysActionLoading}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-950 border border-indigo-700/60 hover:bg-indigo-900 text-indigo-200 text-xs font-mono flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-950/80 border border-indigo-700/60 hover:bg-indigo-900 text-indigo-200 text-xs font-mono flex items-center gap-1.5 transition-all"
                 >
                   <Database className="w-3.5 h-3.5" />
                   <span>Run Backfill Batch</span>
@@ -475,7 +461,7 @@ export default function PortfolioPage() {
                 <button
                   onClick={handleTriggerMLTrain}
                   disabled={sysActionLoading}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-mono flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-mono font-medium flex items-center gap-1.5 shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Train ML Models</span>
@@ -484,38 +470,38 @@ export default function PortfolioPage() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                <div className="text-slate-400 text-[11px]">Universe Queued</div>
-                <div className="text-base font-bold text-white mt-1">
+              <div className="p-3.5 rounded-xl bg-[#050810]/70 border border-white/[0.06]">
+                <div className="text-slate-400 text-[11px] uppercase tracking-wider">Universe Queued</div>
+                <div className="text-base font-bold text-white mt-1 tabular-nums">
                   {universeStatus?.total_universe_symbols ?? 1147} Equities
                 </div>
-                <div className="text-[10px] text-cyan-400 mt-1">
+                <div className="text-[10px] text-cyan-400 mt-1 tabular-nums">
                   {universeStatus?.active_ohlcv_symbols ?? 181} active in OHLCV
                 </div>
               </div>
 
-              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                <div className="text-slate-400 text-[11px]">OHLCV Daily Bars</div>
-                <div className="text-base font-bold text-white mt-1">
+              <div className="p-3.5 rounded-xl bg-[#050810]/70 border border-white/[0.06]">
+                <div className="text-slate-400 text-[11px] uppercase tracking-wider">OHLCV Daily Bars</div>
+                <div className="text-base font-bold text-white mt-1 tabular-nums">
                   {(universeStatus?.total_bars_ingested ?? 254011).toLocaleString("en-IN")}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">
+                <div className="text-[10px] text-slate-400 mt-1 tabular-nums">
                   {universeStatus?.earliest_historical_date} to {universeStatus?.latest_historical_date}
                 </div>
               </div>
 
-              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                <div className="text-slate-400 text-[11px]">20D Horizon Champion</div>
+              <div className="p-3.5 rounded-xl bg-[#050810]/70 border border-white/[0.06]">
+                <div className="text-slate-400 text-[11px] uppercase tracking-wider">20D Horizon Champion</div>
                 <div className="text-base font-bold text-emerald-400 mt-1">
                   {mlTelemetry?.active_champions?.["20D"]?.model_family || "HistGradientBoosting"}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">
+                <div className="text-[10px] text-slate-400 mt-1 tabular-nums">
                   Rank IC: {(mlTelemetry?.active_champions?.["20D"]?.rank_ic ?? 0.082).toFixed(4)}
                 </div>
               </div>
 
-              <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                <div className="text-slate-400 text-[11px]">5D / 60D Champions</div>
+              <div className="p-3.5 rounded-xl bg-[#050810]/70 border border-white/[0.06]">
+                <div className="text-slate-400 text-[11px] uppercase tracking-wider">5D / 60D Champions</div>
                 <div className="text-base font-bold text-indigo-300 mt-1">
                   {mlTelemetry?.active_champions?.["5D"]?.model_family || "Ridge"} / {mlTelemetry?.active_champions?.["60D"]?.model_family || "ElasticNet"}
                 </div>
@@ -529,14 +515,14 @@ export default function PortfolioPage() {
 
         {/* Notifications / Alerts */}
         {error && (
-          <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-3">
+          <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-3 shadow-[0_4px_20px_rgba(244,63,94,0.15)]">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
         )}
 
         {executionMsg && (
-          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs flex items-center gap-3">
+          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-3 shadow-[0_4px_20px_rgba(16,185,129,0.15)]">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
             <span>{executionMsg}</span>
           </div>
@@ -548,169 +534,86 @@ export default function PortfolioPage() {
             {[...Array(5)].map((_, i) => (
               <div
                 key={i}
-                className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 min-h-[140px] flex flex-col justify-between animate-pulse"
+                className="rounded-2xl border border-white/[0.08] bg-[#080c14]/80 p-5 sm:p-6 min-h-[140px] flex flex-col justify-between animate-pulse"
               >
                 <div className="flex items-center justify-between">
-                  <div className="h-3 w-20 bg-slate-800 rounded" />
-                  <div className="h-4 w-4 bg-slate-800 rounded" />
+                  <div className="h-3 w-20 bg-white/[0.08] rounded" />
+                  <div className="h-4 w-4 bg-white/[0.08] rounded" />
                 </div>
-                <div className="h-8 w-32 bg-slate-800 rounded my-2" />
+                <div className="h-8 w-32 bg-white/[0.08] rounded my-2" />
                 <div className="flex items-center gap-2">
-                  <div className="h-4 w-16 bg-slate-800 rounded-full" />
-                  <div className="h-3 w-24 bg-slate-800 rounded" />
+                  <div className="h-4 w-16 bg-white/[0.08] rounded-full" />
+                  <div className="h-3 w-24 bg-white/[0.08] rounded" />
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
-            {/* Total NAV */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Total NAV</span>
-                  <span className="text-slate-400 group-hover:text-cyan-400 transition-colors duration-200">
-                    <PieChart className="w-4 h-4 text-cyan-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-white my-1.5">
-                  {formatINR(totalNav)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  {netPnl >= 0 ? (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-emerald-950/80 border border-emerald-800 text-emerald-300">
-                      <TrendingUp className="w-3 h-3 text-emerald-400" />
-                      +{netPnlPct.toFixed(2)}%
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-rose-950/80 border border-rose-800 text-rose-300">
-                      <TrendingDown className="w-3 h-3 text-rose-400" />
-                      {netPnlPct.toFixed(2)}%
-                    </span>
-                  )}
-                  <span className="text-slate-500 text-[11px] truncate">vs {formatINR(initialCapital)} seed</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Available Cash */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Available Cash</span>
-                  <span className="text-slate-400 group-hover:text-amber-400 transition-colors duration-200">
-                    <DollarSign className="w-4 h-4 text-amber-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-amber-300 my-1.5">
-                  {formatINR(summary?.cash_balance)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-amber-950/80 border border-amber-800/80 text-amber-300">
-                    Solvency
-                  </span>
-                  <span className="text-slate-400 text-[11px]">
-                    {totalNav > 0 ? (((summary?.cash_balance ?? 0) / totalNav) * 100).toFixed(1) : 0}% of NAV
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Invested Capital */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Invested Capital</span>
-                  <span className="text-slate-400 group-hover:text-blue-400 transition-colors duration-200">
-                    <Wallet className="w-4 h-4 text-blue-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-blue-200 my-1.5">
-                  {formatINR(summary?.invested_value ?? summary?.equity_value ?? 0)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-blue-950/80 border border-blue-800/80 text-blue-300">
-                    {positions.length} Active
-                  </span>
-                  <span className="text-slate-400 text-[11px]">Equities Held</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Unrealized P&L */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">Unrealized P&L</span>
-                  <span className="text-slate-400 group-hover:text-emerald-400 transition-colors duration-200">
-                    <ArrowUpRight className="w-4 h-4 text-emerald-400" />
-                  </span>
-                </div>
-                <div
-                  className={`font-mono text-2xl sm:text-3xl font-bold tracking-tight my-1.5 ${
-                    (summary?.unrealized_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"
-                  }`}
-                >
-                  {(summary?.unrealized_pnl ?? 0) >= 0 ? "+" : ""}
-                  {formatINR(summary?.unrealized_pnl)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit border ${
-                    (summary?.unrealized_pnl ?? 0) >= 0
-                      ? "bg-emerald-950/80 border-emerald-800/80 text-emerald-300"
-                      : "bg-rose-950/80 border-rose-800/80 text-rose-300"
-                  }`}>
-                    MTM {(summary?.unrealized_pnl_pct ?? 0) >= 0 ? "+" : ""}{(summary?.unrealized_pnl_pct ?? 0).toFixed(2)}%
-                  </span>
-                  <span className="text-slate-400 text-[11px]">Mark-to-Market</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Friction Costs */}
-            <div className="relative group overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 sm:p-6 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.12)] hover:-translate-y-0.5 min-h-[140px]">
-              <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-              <div className="relative z-10 flex flex-col justify-between h-full min-h-[110px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold tracking-wider uppercase text-slate-400">
-                    Friction Paid
-                  </span>
-                  <span className="text-slate-400 group-hover:text-indigo-400 transition-colors duration-200">
-                    <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                  </span>
-                </div>
-                <div className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-indigo-300 my-1.5">
-                  {formatINR(summary?.total_friction_paid)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1 w-fit bg-indigo-950/80 border border-indigo-800/80 text-indigo-300">
-                    {summary?.fee_tier || "RETAIL_MICRO"}
-                  </span>
-                  <span className="text-slate-400 text-[11px] truncate">
-                    {summary?.fee_tier === "RETAIL_MICRO" ? "12 bps + ₹15 DP" : "15 bps inst."}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <BentoCard
+              title="Total NAV"
+              value={formatINR(totalNav)}
+              delta={`${Math.abs(netPnlPct).toFixed(2)}%`}
+              isPositive={netPnl >= 0}
+              subLabel={`vs ${formatINR(initialCapital)} seed`}
+              icon={<PieChart className="w-4 h-4 text-cyan-400" />}
+              delay={0.05}
+            />
+            <BentoCard
+              title="Available Cash"
+              value={formatINR(summary?.cash_balance)}
+              badge="Solvency"
+              subLabel={`${totalNav > 0 ? (((summary?.cash_balance ?? 0) / totalNav) * 100).toFixed(1) : 0}% of NAV`}
+              icon={<DollarSign className="w-4 h-4 text-amber-400" />}
+              delay={0.1}
+            />
+            <BentoCard
+              title="Invested Capital"
+              value={formatINR(summary?.invested_value ?? summary?.equity_value ?? 0)}
+              badge={`${positions.length} Active`}
+              subLabel="Equities Held"
+              icon={<Wallet className="w-4 h-4 text-blue-400" />}
+              delay={0.15}
+            />
+            <BentoCard
+              title="Unrealized P&L"
+              value={`${(summary?.unrealized_pnl ?? 0) >= 0 ? "+" : ""}${formatINR(summary?.unrealized_pnl)}`}
+              delta={`${Math.abs(summary?.unrealized_pnl_pct ?? 0).toFixed(2)}%`}
+              isPositive={(summary?.unrealized_pnl ?? 0) >= 0}
+              subLabel="Mark-to-Market"
+              icon={<ArrowUpRight className="w-4 h-4 text-emerald-400" />}
+              delay={0.2}
+            />
+            <BentoCard
+              title="Friction Paid"
+              value={formatINR(summary?.total_friction_paid)}
+              badge={summary?.fee_tier || "RETAIL_MICRO"}
+              subLabel={summary?.fee_tier === "RETAIL_MICRO" ? "12 bps + ₹15 DP" : "15 bps inst."}
+              icon={<ShieldCheck className="w-4 h-4 text-indigo-400" />}
+              delay={0.25}
+            />
           </div>
         )}
 
         {/* FrontPage Discretionary Trade Ticket (Active for paper_manual_1) */}
         {activeAccount === "paper_manual_1" && (
-          <div className="p-5 rounded-xl bg-slate-900/90 border border-cyan-800/50 shadow-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
-              <div className="flex items-center space-x-2">
-                <Target className="w-4 h-4 text-cyan-400" />
-                <h2 className="text-sm font-bold text-white tracking-wide">
-                  FrontPage Discretionary Trade Ticket
-                </h2>
+          <div className="p-6 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.08]">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-white tracking-wide">
+                    FrontPage Discretionary Trade Ticket
+                  </h2>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">
+                    Solvency Verification & Quantitative Pre-Trade Audit
+                  </p>
+                </div>
               </div>
-              <span className="text-xs font-mono text-slate-400">
-                Solvency Verification & Quantitative Pre-Trade Audit
+              <span className="text-xs font-mono text-cyan-400 px-3 py-1 rounded-full bg-cyan-950/60 border border-cyan-500/30">
+                Sandbox Mode
               </span>
             </div>
 
@@ -724,10 +627,10 @@ export default function PortfolioPage() {
                       key={sym}
                       type="button"
                       onClick={() => setTradeSymbol(sym)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-all ${
+                      className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
                         tradeSymbol === sym
-                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500"
-                          : "bg-slate-800/80 text-slate-300 hover:bg-slate-800"
+                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.25)]"
+                          : "bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] border border-white/[0.06]"
                       }`}
                     >
                       {sym}
@@ -742,20 +645,20 @@ export default function PortfolioPage() {
                       type="text"
                       value={tradeSymbol}
                       onChange={(e) => setTradeSymbol(e.target.value.toUpperCase())}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 font-mono text-sm text-white focus:outline-none focus:border-cyan-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#050810]/80 border border-white/[0.1] font-mono text-sm text-white focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
                       placeholder="e.g. NHPC"
                     />
                   </div>
 
                   <div>
                     <label className="text-xs font-mono text-slate-400 block mb-1">Action</label>
-                    <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-700">
+                    <div className="grid grid-cols-2 gap-1 bg-[#050810]/80 p-1 rounded-xl border border-white/[0.1]">
                       <button
                         type="button"
                         onClick={() => setTradeAction("BUY")}
-                        className={`py-1 text-xs font-mono font-bold rounded ${
+                        className={`py-1.5 text-xs font-mono font-bold rounded-lg transition-all ${
                           tradeAction === "BUY"
-                            ? "bg-emerald-600 text-white"
+                            ? "bg-emerald-600 text-white shadow-[0_0_10px_rgba(16,185,129,0.3)]"
                             : "text-slate-400 hover:text-white"
                         }`}
                       >
@@ -764,9 +667,9 @@ export default function PortfolioPage() {
                       <button
                         type="button"
                         onClick={() => setTradeAction("SELL")}
-                        className={`py-1 text-xs font-mono font-bold rounded ${
+                        className={`py-1.5 text-xs font-mono font-bold rounded-lg transition-all ${
                           tradeAction === "SELL"
-                            ? "bg-rose-600 text-white"
+                            ? "bg-rose-600 text-white shadow-[0_0_10px_rgba(244,63,94,0.3)]"
                             : "text-slate-400 hover:text-white"
                         }`}
                       >
@@ -777,13 +680,13 @@ export default function PortfolioPage() {
 
                   <div>
                     <label className="text-xs font-mono text-slate-400 block mb-1">Sizing Mode</label>
-                    <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-700">
+                    <div className="grid grid-cols-2 gap-1 bg-[#050810]/80 p-1 rounded-xl border border-white/[0.1]">
                       <button
                         type="button"
                         onClick={() => setTradeMode("INR")}
-                        className={`py-1 text-xs font-mono font-bold rounded ${
+                        className={`py-1.5 text-xs font-mono font-bold rounded-lg transition-all ${
                           tradeMode === "INR"
-                            ? "bg-cyan-600 text-white"
+                            ? "bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.3)]"
                             : "text-slate-400 hover:text-white"
                         }`}
                       >
@@ -792,9 +695,9 @@ export default function PortfolioPage() {
                       <button
                         type="button"
                         onClick={() => setTradeMode("QTY")}
-                        className={`py-1 text-xs font-mono font-bold rounded ${
+                        className={`py-1.5 text-xs font-mono font-bold rounded-lg transition-all ${
                           tradeMode === "QTY"
-                            ? "bg-cyan-600 text-white"
+                            ? "bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.3)]"
                             : "text-slate-400 hover:text-white"
                         }`}
                       >
@@ -815,7 +718,7 @@ export default function PortfolioPage() {
                       onChange={(e) =>
                         tradeMode === "INR" ? setTradeAmount(e.target.value) : setTradeQty(e.target.value)
                       }
-                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 font-mono text-sm text-white focus:outline-none focus:border-cyan-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#050810]/80 border border-white/[0.1] font-mono text-sm text-white focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] tabular-nums"
                       placeholder={tradeMode === "INR" ? "400" : "5"}
                     />
                   </div>
@@ -826,7 +729,7 @@ export default function PortfolioPage() {
                       type="text"
                       value={tradeThesis}
                       onChange={(e) => setTradeThesis(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:border-cyan-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#050810]/80 border border-white/[0.1] text-xs text-white focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
                       placeholder="e.g. Breakout above 200 SMA with volume accumulation"
                     />
                   </div>
@@ -834,9 +737,9 @@ export default function PortfolioPage() {
               </div>
 
               {/* Live FrontPage Intelligence Card Preview */}
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between">
+              <div className="p-5 rounded-2xl bg-[#050810]/90 border border-white/[0.08] flex flex-col justify-between shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/[0.06]">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
                       <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                       FrontPage Intelligence Card
@@ -844,37 +747,37 @@ export default function PortfolioPage() {
                     {previewLoading ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
                     ) : tradePreview?.is_solvency_approved ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
                         SOLVENCY APPROVED
                       </span>
                     ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-rose-950 text-rose-300 border border-rose-800">
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.2)]">
                         INSUFFICIENT CASH
                       </span>
                     )}
                   </div>
 
                   {tradePreview ? (
-                    <div className="space-y-2 text-xs font-mono">
-                      <div className="flex justify-between py-1 border-b border-slate-900">
+                    <div className="space-y-2.5 text-xs font-mono">
+                      <div className="flex justify-between py-1 border-b border-white/[0.04]">
                         <span className="text-slate-400">Target Shares:</span>
-                        <span className="font-bold text-white">
+                        <span className="font-bold text-white tabular-nums">
                           {tradePreview.calculated_quantity} shares @ ₹{tradePreview.current_price.toFixed(2)}
                         </span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-900">
+                      <div className="flex justify-between py-1 border-b border-white/[0.04]">
                         <span className="text-slate-400">Gross Value:</span>
-                        <span className="text-slate-200">{formatINR(tradePreview.gross_value)}</span>
+                        <span className="text-slate-200 tabular-nums">{formatINR(tradePreview.gross_value)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-900">
+                      <div className="flex justify-between py-1 border-b border-white/[0.04]">
                         <span className="text-slate-400">Est. Friction:</span>
-                        <span className="text-amber-400">{formatINR(tradePreview.estimated_friction)}</span>
+                        <span className="text-amber-400 tabular-nums">{formatINR(tradePreview.estimated_friction)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-900">
+                      <div className="flex justify-between py-1 border-b border-white/[0.04]">
                         <span className="text-slate-400">Net Cash Required:</span>
-                        <span className="font-bold text-cyan-300">{formatINR(tradePreview.net_cash_required)}</span>
+                        <span className="font-bold text-cyan-300 tabular-nums">{formatINR(tradePreview.net_cash_required)}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-900">
+                      <div className="flex justify-between py-1 border-b border-white/[0.04]">
                         <span className="text-slate-400">Momentum Verdict:</span>
                         <span className="font-bold text-emerald-400">
                           {tradePreview.frontpage_card?.momentum_verdict || "NEUTRAL"}
@@ -895,7 +798,7 @@ export default function PortfolioPage() {
                   type="button"
                   onClick={handleExecuteManualTrade}
                   disabled={tradeExecuting || !tradePreview?.is_solvency_approved || (tradePreview?.calculated_quantity ?? 0) <= 0}
-                  className="w-full mt-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="w-full mt-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(6,182,212,0.25)] disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {tradeExecuting ? (
                     <>
@@ -905,7 +808,7 @@ export default function PortfolioPage() {
                   ) : (
                     <>
                       <Check className="w-3.5 h-3.5" />
-                      <span>Execute {tradeAction} Trade ({tradePreview?.calculated_quantity || 0} shares)</span>
+                      <span className="tabular-nums">Execute {tradeAction} Trade ({tradePreview?.calculated_quantity || 0} shares)</span>
                     </>
                   )}
                 </button>
@@ -916,34 +819,34 @@ export default function PortfolioPage() {
 
         {/* Pending Rebalance Proposal Banner (Active for Systematic Accounts) */}
         {activeAccount !== "paper_manual_1" && proposal && (
-          <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-950/40 via-slate-900/60 to-slate-900/40 border border-cyan-800/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+          <div className="p-5 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3.5">
+              <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
                 <Layers className="w-4 h-4" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <span className="text-xs font-mono text-cyan-300 font-semibold">
                     Rebalance Session: {proposal.session_date}
                   </span>
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded font-mono border ${
+                    className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono border ${
                       proposal.status === "EXECUTED"
-                        ? "bg-emerald-950/80 border-emerald-700/60 text-emerald-300"
-                        : "bg-amber-950/80 border-amber-700/60 text-amber-300"
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                        : "bg-amber-500/10 border-amber-500/30 text-amber-400"
                     }`}
                   >
                     STATUS: {proposal.status}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Model: <span className="font-mono text-slate-300">{proposal.model_composite_id || "8_FACTOR_BLENDED"}</span> • Projected Turnover: <span className="font-mono text-cyan-400">{proposal.turnover_pct}%</span> • Est. Friction: <span className="font-mono text-slate-300">{proposal.projected_cost_bps} bps</span>
+                <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                  Model: <span className="text-slate-300">{proposal.model_composite_id || "8_FACTOR_BLENDED"}</span> • Projected Turnover: <span className="text-cyan-400 tabular-nums">{proposal.turnover_pct}%</span> • Est. Friction: <span className="text-slate-300 tabular-nums">{proposal.projected_cost_bps} bps</span>
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-mono">
+              <span className="text-xs text-slate-400 font-mono px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] tabular-nums">
                 {Object.keys(proposal.holdings_after || {}).length} Target Equities
               </span>
             </div>
@@ -951,9 +854,9 @@ export default function PortfolioPage() {
         )}
 
         {/* Active Holdings Table */}
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden shadow-lg">
-          <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+        <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
               <FileText className="w-4 h-4 text-cyan-400" />
               <h2 className="text-sm font-semibold text-white tracking-wide">
                 Active Positions ({positions.length} Equities)
@@ -966,11 +869,11 @@ export default function PortfolioPage() {
 
           {positions.length === 0 ? (
             <div className="p-12 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-slate-800/80 text-slate-400 flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-slate-400 flex items-center justify-center mx-auto">
                 <Wallet className="w-6 h-6" />
               </div>
-              <p className="text-sm text-slate-300 font-medium">No Open Positions</p>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
+              <p className="text-sm text-slate-200 font-medium">No Open Positions</p>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
                 {activeAccount === "paper_manual_1"
                   ? "Use the FrontPage Discretionary Trade Ticket above to execute a trade."
                   : "Click 'Run Rebalance Cycle' to deploy capital across top-ranked factor compounders."}
@@ -979,23 +882,23 @@ export default function PortfolioPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950/60 border-b border-slate-800 font-mono text-slate-400">
+                <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
                   <tr>
-                    <th className="py-3 px-4">Symbol</th>
-                    <th className="py-3 px-4 text-right">Shares</th>
-                    <th className="py-3 px-4 text-right">Avg Entry</th>
-                    <th className="py-3 px-4 text-right">LTP (Close)</th>
-                    <th className="py-3 px-4 text-right">Market Value</th>
-                    <th className="py-3 px-4 text-right">Alloc %</th>
-                    <th className="py-3 px-4 text-right">Unrealized P&L</th>
+                    <th className="py-3.5 px-5">Symbol</th>
+                    <th className="py-3.5 px-5 text-right">Shares</th>
+                    <th className="py-3.5 px-5 text-right">Avg Entry</th>
+                    <th className="py-3.5 px-5 text-right">LTP (Close)</th>
+                    <th className="py-3.5 px-5 text-right">Market Value</th>
+                    <th className="py-3.5 px-5 text-right">Alloc %</th>
+                    <th className="py-3.5 px-5 text-right">Unrealized P&L</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50 font-mono">
+                <tbody className="divide-y divide-white/[0.04] font-mono">
                   {positions.map((pos) => {
                     const isProfit = pos.unrealized_pnl >= 0;
                     return (
-                      <tr key={pos.position_id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-3 px-4 font-bold">
+                      <tr key={pos.position_id} className="hover:bg-white/[0.03] transition-colors">
+                        <td className="py-3.5 px-5 font-bold">
                           <Link
                             href={`/stocks/${pos.symbol}`}
                             className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 group"
@@ -1004,29 +907,62 @@ export default function PortfolioPage() {
                             <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </Link>
                         </td>
-                        <td className="py-3 px-4 text-right text-slate-200">
+                        <td className="py-3.5 px-5 text-right text-slate-200 tabular-nums">
                           {pos.quantity.toLocaleString("en-IN")}
                         </td>
-                        <td className="py-3 px-4 text-right text-slate-400">
+                        <td className="py-3.5 px-5 text-right text-slate-400 tabular-nums">
                           ₹{pos.average_entry_price.toFixed(2)}
                         </td>
-                        <td className="py-3 px-4 text-right text-slate-200 font-semibold">
+                        <td className="py-3.5 px-5 text-right text-slate-200 font-semibold tabular-nums">
                           ₹{pos.current_price.toFixed(2)}
                         </td>
-                        <td className="py-3 px-4 text-right text-slate-100">
+                        <td className="py-3.5 px-5 text-right text-slate-100 tabular-nums">
                           {formatINR(pos.market_value)}
                         </td>
-                        <td className="py-3 px-4 text-right text-cyan-300">
-                          {pos.weight_pct.toFixed(2)}%
+                        <td className="py-3.5 px-5 text-right font-mono">
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={cn(
+                                  "tabular-nums font-semibold text-xs",
+                                  pos.weight_pct > 35
+                                    ? "text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                                    : "text-cyan-300"
+                                )}
+                              >
+                                {pos.weight_pct.toFixed(2)}%
+                              </span>
+                              {pos.weight_pct > 35 && (
+                                <span
+                                  className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/35"
+                                  title="Concentration Guard: Allocation exceeds 35% risk guardrail"
+                                >
+                                  Concentrated
+                                </span>
+                              )}
+                            </div>
+                            {/* Inline horizontal allocation progress bar */}
+                            <div className="w-24 h-1.5 bg-slate-900/90 rounded-full overflow-hidden border border-white/[0.06] p-[1px] flex items-center">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-300",
+                                  pos.weight_pct > 35
+                                    ? "bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+                                    : "bg-gradient-to-r from-cyan-600 via-cyan-400 to-emerald-400 shadow-[0_0_6px_rgba(6,182,212,0.4)]"
+                                )}
+                                style={{ width: `${Math.min(100, Math.max(0, (pos.weight_pct / 40) * 100))}%` }}
+                              />
+                            </div>
+                          </div>
                         </td>
                         <td
-                          className={`py-3 px-4 text-right font-semibold ${
+                          className={`py-3.5 px-5 text-right font-semibold tabular-nums ${
                             isProfit ? "text-emerald-400" : "text-rose-400"
                           }`}
                         >
                           {isProfit ? "+" : ""}
                           {formatINR(pos.unrealized_pnl)}
-                          <span className="text-[11px] font-normal ml-1 text-slate-400">
+                          <span className="text-[11px] font-normal ml-1 text-slate-400 tabular-nums">
                             ({isProfit ? "+" : ""}{pos.unrealized_pnl_pct.toFixed(2)}%)
                           </span>
                         </td>
@@ -1040,9 +976,9 @@ export default function PortfolioPage() {
         </div>
 
         {/* Execution Blotter / Orders History */}
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden shadow-lg">
-          <div className="p-4 border-b border-slate-800/80 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+        <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
               <Clock className="w-4 h-4 text-amber-400" />
               <h2 className="text-sm font-semibold text-white tracking-wide">
                 Execution Blotter ({orders.length} Fills on {activeAccount})
@@ -1060,56 +996,56 @@ export default function PortfolioPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950/60 border-b border-slate-800 font-mono text-slate-400">
+                <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
                   <tr>
-                    <th className="py-2.5 px-4">Timestamp</th>
-                    <th className="py-2.5 px-4">Action</th>
-                    <th className="py-2.5 px-4">Symbol</th>
-                    <th className="py-2.5 px-4 text-right">Quantity</th>
-                    <th className="py-2.5 px-4 text-right">Fill Price</th>
-                    <th className="py-2.5 px-4 text-right">Gross Value</th>
-                    <th className="py-2.5 px-4 text-right">Friction Paid</th>
-                    <th className="py-2.5 px-4">Thesis Note</th>
+                    <th className="py-3 px-5">Timestamp</th>
+                    <th className="py-3 px-5">Action</th>
+                    <th className="py-3 px-5">Symbol</th>
+                    <th className="py-3 px-5 text-right">Quantity</th>
+                    <th className="py-3 px-5 text-right">Fill Price</th>
+                    <th className="py-3 px-5 text-right">Gross Value</th>
+                    <th className="py-3 px-5 text-right">Friction Paid</th>
+                    <th className="py-3 px-5">Thesis Note</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/50 font-mono">
+                <tbody className="divide-y divide-white/[0.04] font-mono">
                   {orders.map((ord) => {
                     const isBuy = ord.action === "BUY";
                     const gross = ord.quantity * ord.fill_price;
                     return (
-                      <tr key={ord.order_id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-2.5 px-4 text-slate-400">
+                      <tr key={ord.order_id} className="hover:bg-white/[0.03] transition-colors">
+                        <td className="py-3 px-5 text-slate-400 tabular-nums">
                           {ord.executed_at ? ord.executed_at.slice(0, 19).replace("T", " ") : "—"}
                         </td>
-                        <td className="py-2.5 px-4">
+                        <td className="py-3 px-5">
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                               isBuy
-                                ? "bg-emerald-950/80 border-emerald-700/60 text-emerald-300"
-                                : "bg-rose-950/80 border-rose-700/60 text-rose-300"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                : "bg-rose-500/10 border-rose-500/30 text-rose-400"
                             }`}
                           >
                             {ord.action}
                           </span>
                         </td>
-                        <td className="py-2.5 px-4 font-bold text-slate-200">
+                        <td className="py-3 px-5 font-bold text-slate-200">
                           <Link href={`/stocks/${ord.symbol}`} className="hover:text-cyan-400">
                             {ord.symbol}
                           </Link>
                         </td>
-                        <td className="py-2.5 px-4 text-right text-slate-300">
+                        <td className="py-3 px-5 text-right text-slate-300 tabular-nums">
                           {ord.quantity.toLocaleString("en-IN")}
                         </td>
-                        <td className="py-2.5 px-4 text-right text-slate-300">
+                        <td className="py-3 px-5 text-right text-slate-300 tabular-nums">
                           ₹{ord.fill_price.toFixed(2)}
                         </td>
-                        <td className="py-2.5 px-4 text-right text-slate-100 font-medium">
+                        <td className="py-3 px-5 text-right text-slate-100 font-medium tabular-nums">
                           {formatINR(gross)}
                         </td>
-                        <td className="py-2.5 px-4 text-right text-amber-400 font-medium">
+                        <td className="py-3 px-5 text-right text-amber-400 font-medium tabular-nums">
                           {formatINR(ord.friction_paid)}
                         </td>
-                        <td className="py-2.5 px-4 text-slate-400 text-[11px] truncate max-w-[200px]">
+                        <td className="py-3 px-5 text-slate-400 text-[11px] truncate max-w-[200px]">
                           {ord.thesis_note || "—"}
                         </td>
                       </tr>
@@ -1124,16 +1060,16 @@ export default function PortfolioPage() {
 
       {/* Capital Management Modal */}
       {showCapitalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="bg-[#080c14]/95 border border-white/[0.12] rounded-3xl max-w-md w-full p-6 space-y-5 shadow-[0_25px_70px_rgba(0,0,0,0.9)]">
+            <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+              <div className="flex items-center gap-2.5">
                 <Sliders className="w-5 h-5 text-amber-400" />
                 <h3 className="font-bold text-white text-base">Capital Control: {activeAccount}</h3>
               </div>
               <button
                 onClick={() => setShowCapitalModal(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/[0.06] transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1141,7 +1077,7 @@ export default function PortfolioPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1">
+                <label className="text-xs font-mono text-slate-400 block mb-1.5">
                   Preset Initial Seeds:
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -1150,10 +1086,10 @@ export default function PortfolioPage() {
                       key={seed}
                       type="button"
                       onClick={() => setCapitalInput(seed.toString())}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-mono border ${
+                      className={`py-1.5 px-2 rounded-xl text-xs font-mono border transition-all tabular-nums ${
                         capitalInput === seed.toString()
-                          ? "bg-amber-500/20 border-amber-500 text-amber-300 font-bold"
-                          : "bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800"
+                          ? "bg-amber-500/20 border-amber-500 text-amber-300 font-bold shadow-[0_0_10px_rgba(245,158,11,0.2)]"
+                          : "bg-[#050810] border-white/[0.08] text-slate-300 hover:bg-white/[0.05]"
                       }`}
                     >
                       {formatINR(seed)}
@@ -1163,29 +1099,29 @@ export default function PortfolioPage() {
               </div>
 
               <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1">
+                <label className="text-xs font-mono text-slate-400 block mb-1.5">
                   Custom Starting Capital (INR):
                 </label>
                 <input
                   type="number"
                   value={capitalInput}
                   onChange={(e) => setCapitalInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 font-mono text-sm text-white focus:outline-none focus:border-amber-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#050810] border border-white/[0.1] font-mono text-sm text-white focus:outline-none focus:border-amber-400 tabular-nums"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1">
+                <label className="text-xs font-mono text-slate-400 block mb-1.5">
                   Statutory Fee Tier:
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setFeeTierInput("RETAIL_MICRO")}
-                    className={`py-2 px-3 rounded-lg text-xs font-mono border text-left ${
+                    className={`py-2.5 px-3.5 rounded-xl text-xs font-mono border text-left transition-all ${
                       feeTierInput === "RETAIL_MICRO"
-                        ? "bg-cyan-950 border-cyan-500 text-cyan-300 font-bold"
-                        : "bg-slate-950 border-slate-800 text-slate-400"
+                        ? "bg-cyan-950/80 border-cyan-500 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+                        : "bg-[#050810] border-white/[0.08] text-slate-400"
                     }`}
                   >
                     <div>RETAIL_MICRO</div>
@@ -1194,10 +1130,10 @@ export default function PortfolioPage() {
                   <button
                     type="button"
                     onClick={() => setFeeTierInput("INSTITUTIONAL")}
-                    className={`py-2 px-3 rounded-lg text-xs font-mono border text-left ${
+                    className={`py-2.5 px-3.5 rounded-xl text-xs font-mono border text-left transition-all ${
                       feeTierInput === "INSTITUTIONAL"
-                        ? "bg-cyan-950 border-cyan-500 text-cyan-300 font-bold"
-                        : "bg-slate-950 border-slate-800 text-slate-400"
+                        ? "bg-cyan-950/80 border-cyan-500 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+                        : "bg-[#050810] border-white/[0.08] text-slate-400"
                     }`}
                   >
                     <div>INSTITUTIONAL</div>
@@ -1210,14 +1146,14 @@ export default function PortfolioPage() {
                 type="button"
                 onClick={() => handleResetCapital(parseFloat(capitalInput), feeTierInput)}
                 disabled={capitalActionLoading || isNaN(parseFloat(capitalInput)) || parseFloat(capitalInput) <= 0}
-                className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(245,158,11,0.25)] transition-all"
               >
                 {capitalActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
                 <span>Reset Capital & Clear Positions</span>
               </button>
 
-              <div className="pt-3 border-t border-slate-800">
-                <label className="text-xs font-mono text-slate-400 block mb-1">
+              <div className="pt-3 border-t border-white/[0.08]">
+                <label className="text-xs font-mono text-slate-400 block mb-1.5">
                   Deposit / Withdraw Cash (Keeps active positions):
                 </label>
                 <div className="flex gap-2">
@@ -1226,13 +1162,13 @@ export default function PortfolioPage() {
                     value={cashDeltaInput}
                     onChange={(e) => setCashDeltaInput(e.target.value)}
                     placeholder="e.g. +500 or -200"
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 font-mono text-xs text-white focus:outline-none focus:border-cyan-500"
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-[#050810] border border-white/[0.1] font-mono text-xs text-white focus:outline-none focus:border-cyan-400 tabular-nums"
                   />
                   <button
                     type="button"
                     onClick={handleAdjustCash}
                     disabled={capitalActionLoading || !cashDeltaInput}
-                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-mono text-xs font-bold"
+                    className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-white font-mono text-xs font-bold transition-all"
                   >
                     Apply Cash
                   </button>

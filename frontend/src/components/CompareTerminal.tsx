@@ -141,7 +141,7 @@ export default function CompareTerminal() {
   return (
     <div className="flex flex-col space-y-6">
       {/* Control Banner */}
-      <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-md shadow-xl flex flex-col space-y-4">
+      <div className="p-6 rounded-2xl bg-[#080c14]/90 border border-white/[0.08] backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
         {/* Top row: Symbol Chips + Input */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -152,21 +152,21 @@ export default function CompareTerminal() {
             {symbols.map((sym) => (
               <span
                 key={sym}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800/80 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-semibold shadow-sm"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-cyan-500/30 text-cyan-300 font-mono text-xs font-semibold shadow-[0_0_10px_rgba(6,182,212,0.15)]"
               >
                 {sym}
                 <button
                   onClick={() => handleRemoveSymbol(sym)}
-                  className="hover:text-rose-400 transition-colors p-0.5 rounded"
+                  className="hover:text-rose-400 text-slate-400 transition-colors p-0.5 rounded"
                   title={`Remove ${sym}`}
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </span>
             ))}
 
             {/* Quick add input */}
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1.5">
               <input
                 type="text"
                 placeholder="+ ADD SYMBOL"
@@ -177,12 +177,12 @@ export default function CompareTerminal() {
                     handleAddSymbol(newSymbolInput);
                   }
                 }}
-                className="w-28 px-2.5 py-1 text-xs font-mono bg-slate-950 border border-slate-700/80 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                className="w-32 px-3 py-1.5 text-xs font-mono bg-[#050810] border border-white/[0.1] rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_12px_rgba(6,182,212,0.2)]"
               />
               <button
                 onClick={() => handleAddSymbol(newSymbolInput)}
                 disabled={!newSymbolInput.trim()}
-                className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 transition-colors"
+                className="p-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 disabled:opacity-40 transition-colors border border-white/[0.08]"
                 title="Add symbol"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -192,14 +192,14 @@ export default function CompareTerminal() {
 
           {/* Popular suggestion chips */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-mono text-slate-500">Suggested:</span>
+            <span className="text-[11px] font-mono text-slate-400">Suggested:</span>
             {POPULAR_SUGGESTIONS.filter((s) => !symbols.includes(s))
               .slice(0, 5)
               .map((s) => (
                 <button
                   key={s}
                   onClick={() => handleAddSymbol(s)}
-                  className="px-2 py-0.5 text-[11px] font-mono rounded bg-slate-800/50 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700/40 transition-colors"
+                  className="px-2.5 py-1 text-[11px] font-mono rounded-lg bg-white/[0.03] hover:bg-cyan-500/10 text-slate-400 hover:text-cyan-300 border border-white/[0.06] hover:border-cyan-500/30 transition-all"
                 >
                   +{s}
                 </button>
@@ -208,20 +208,20 @@ export default function CompareTerminal() {
         </div>
 
         {/* Bottom row: Timeframe presets & Date Pickers */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-slate-800/80">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-white/[0.06]">
+          <div className="flex items-center gap-2.5">
             <span className="text-xs uppercase font-mono tracking-wider text-slate-400 flex items-center gap-1.5 mr-1">
               <Sliders className="w-3.5 h-3.5 text-cyan-400" />
               Horizon:
             </span>
-            <div className="flex items-center rounded-lg bg-slate-950 p-1 border border-slate-800">
+            <div className="flex items-center rounded-xl bg-[#050810] p-1 border border-white/[0.08]">
               {TIMEFRAME_PRESETS.map((p) => (
                 <button
                   key={p.label}
                   onClick={() => handleSelectPreset(p)}
-                  className={`px-3 py-1 text-xs font-mono rounded-md transition-all ${
+                  className={`px-3 py-1.5 text-xs font-mono rounded-lg transition-all ${
                     activePreset === p.label
-                      ? "bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40 shadow-sm"
+                      ? "bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]"
                       : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
@@ -233,25 +233,25 @@ export default function CompareTerminal() {
 
           <div className="flex items-center gap-3">
             <div className="flex items-center space-x-2 text-xs font-mono">
-              <span className="text-slate-500">From:</span>
+              <span className="text-slate-400">From:</span>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-300 focus:outline-none focus:border-cyan-400"
+                className="bg-[#050810] border border-white/[0.1] rounded-xl px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 tabular-nums"
               />
-              <span className="text-slate-500">To:</span>
+              <span className="text-slate-400">To:</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-300 focus:outline-none focus:border-cyan-400"
+                className="bg-[#050810] border border-white/[0.1] rounded-xl px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 tabular-nums"
               />
             </div>
             <button
               onClick={handleCustomRun}
               disabled={loading}
-              className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold font-mono text-xs flex items-center gap-1.5 shadow-lg shadow-cyan-500/10 transition-all disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold font-mono text-xs flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all disabled:opacity-50"
             >
               {loading ? (
                 <>
@@ -271,14 +271,14 @@ export default function CompareTerminal() {
 
       {/* Error Banner */}
       {error && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-center justify-between shadow-[0_4px_20px_rgba(244,63,94,0.15)]">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-rose-400 flex-shrink-0" />
             <span>{error}</span>
           </div>
           <button
             onClick={() => executeComparison(symbols, startDate, endDate)}
-            className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-mono"
+            className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-mono"
           >
             Retry
           </button>
@@ -287,80 +287,82 @@ export default function CompareTerminal() {
 
       {/* Main Multi-Line Normalized Chart */}
       {result && result.normalized_series && result.normalized_series.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <BarChart2 className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-sm font-semibold font-mono text-slate-200">
+              <h3 className="text-sm font-semibold font-mono text-white">
                 Base-100 Performance Continuum
               </h3>
-              <span className="text-[11px] font-mono text-slate-500">
+              <span className="text-[11px] font-mono text-slate-400 tabular-nums">
                 ({result.start_date} → {result.end_date} | {result.normalized_series.length} sessions)
               </span>
             </div>
             <div className="text-[11px] font-mono text-slate-400">
-              Benchmark: <span className="text-slate-300 font-semibold">{result.benchmark_symbol}</span>
+              Benchmark: <span className="text-slate-200 font-semibold">{result.benchmark_symbol}</span>
             </div>
           </div>
 
-          <BacktestCompareChart
-            normalizedSeries={result.normalized_series}
-            symbols={result.symbols}
-            benchmarkSymbol={result.benchmark_symbol}
-          />
+          <div className="rounded-2xl border border-white/[0.08] bg-[#080c14]/85 backdrop-blur-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+            <BacktestCompareChart
+              normalizedSeries={result.normalized_series}
+              symbols={result.symbols}
+              benchmarkSymbol={result.benchmark_symbol}
+            />
+          </div>
         </div>
       )}
 
       {/* Comparative Performance Table & Metric Cards */}
       {result && result.comparison_metrics && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 px-1">
+          <div className="flex items-center gap-2.5 px-1">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <h3 className="text-sm font-semibold font-mono text-slate-200">
+            <h3 className="text-sm font-semibold font-mono text-white">
               Cross-Sectional Risk & Return Matrix
             </h3>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur-md">
+          <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#080c14]/85 backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
             <table className="w-full text-left text-xs font-mono border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/70 text-slate-400">
-                  <th className="py-3 px-4 font-semibold uppercase tracking-wider">Asset / Instrument</th>
-                  <th className="py-3 px-3 text-right font-semibold uppercase tracking-wider">Total Return</th>
-                  <th className="py-3 px-3 text-right font-semibold uppercase tracking-wider">CAGR</th>
-                  <th className="py-3 px-3 text-right font-semibold uppercase tracking-wider">Volatility (Ann.)</th>
-                  <th className="py-3 px-3 text-right font-semibold uppercase tracking-wider">Sharpe Ratio</th>
-                  <th className="py-3 px-3 text-right font-semibold uppercase tracking-wider">Max Drawdown</th>
-                  <th className="py-3 px-3 text-right font-semibold uppercase tracking-wider">Beta (to Bench)</th>
+                <tr className="border-b border-white/[0.08] bg-[#050810]/80 text-slate-400 text-[11px] uppercase tracking-wider">
+                  <th className="py-3.5 px-5 font-semibold">Asset / Instrument</th>
+                  <th className="py-3.5 px-4 text-right font-semibold">Total Return</th>
+                  <th className="py-3.5 px-4 text-right font-semibold">CAGR</th>
+                  <th className="py-3.5 px-4 text-right font-semibold">Volatility (Ann.)</th>
+                  <th className="py-3.5 px-4 text-right font-semibold">Sharpe Ratio</th>
+                  <th className="py-3.5 px-4 text-right font-semibold">Max Drawdown</th>
+                  <th className="py-3.5 px-4 text-right font-semibold">Beta (to Bench)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-white/[0.04]">
                 {Object.values(result.comparison_metrics).map((m: StockComparisonMetric) => {
                   const isBench = m.symbol === result.benchmark_symbol;
                   return (
                     <tr
                       key={m.symbol}
-                      className={`hover:bg-slate-800/40 transition-colors ${
-                        isBench ? "bg-slate-950/40 font-semibold text-slate-300" : ""
+                      className={`hover:bg-white/[0.03] transition-colors ${
+                        isBench ? "bg-white/[0.02] font-semibold text-slate-300" : ""
                       }`}
                     >
-                      <td className="py-3 px-4 flex items-center gap-2">
+                      <td className="py-3.5 px-5 flex items-center gap-2.5">
                         <span
                           className={`w-2 h-2 rounded-full ${
-                            isBench ? "bg-slate-400" : "bg-cyan-400"
+                            isBench ? "bg-slate-400" : "bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]"
                           }`}
                         />
-                        <span className={isBench ? "text-slate-400" : "text-slate-100 font-bold"}>
+                        <span className={isBench ? "text-slate-400" : "text-white font-bold"}>
                           {m.symbol}
                         </span>
                         {isBench && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 text-slate-400">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-400">
                             BENCHMARK
                           </span>
                         )}
                       </td>
                       <td
-                        className={`py-3 px-3 text-right font-semibold ${
+                        className={`py-3.5 px-4 text-right font-semibold tabular-nums ${
                           m.total_return_pct >= 0 ? "text-emerald-400" : "text-rose-400"
                         }`}
                       >
@@ -368,18 +370,18 @@ export default function CompareTerminal() {
                         {m.total_return_pct.toFixed(2)}%
                       </td>
                       <td
-                        className={`py-3 px-3 text-right font-semibold ${
+                        className={`py-3.5 px-4 text-right font-semibold tabular-nums ${
                           m.cagr_pct >= 0 ? "text-emerald-400" : "text-rose-400"
                         }`}
                       >
                         {m.cagr_pct >= 0 ? "+" : ""}
                         {m.cagr_pct.toFixed(2)}%
                       </td>
-                      <td className="py-3 px-3 text-right text-slate-300">
+                      <td className="py-3.5 px-4 text-right text-slate-300 tabular-nums">
                         {m.annualized_volatility_pct.toFixed(2)}%
                       </td>
                       <td
-                        className={`py-3 px-3 text-right font-semibold ${
+                        className={`py-3.5 px-4 text-right font-semibold tabular-nums ${
                           m.sharpe_ratio >= 1.0
                             ? "text-emerald-400"
                             : m.sharpe_ratio >= 0.5
@@ -391,10 +393,10 @@ export default function CompareTerminal() {
                       >
                         {m.sharpe_ratio.toFixed(2)}
                       </td>
-                      <td className="py-3 px-3 text-right text-rose-400 font-semibold">
+                      <td className="py-3.5 px-4 text-right text-rose-400 font-semibold tabular-nums">
                         {m.max_drawdown_pct.toFixed(2)}%
                       </td>
-                      <td className="py-3 px-3 text-right text-slate-300 font-mono">
+                      <td className="py-3.5 px-4 text-right text-slate-300 font-mono tabular-nums">
                         {m.beta_to_bench.toFixed(2)}
                       </td>
                     </tr>
@@ -411,33 +413,33 @@ export default function CompareTerminal() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 1. Correlation Matrix Heatmap */}
           {result.correlation_matrix && (
-            <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 backdrop-blur-md flex flex-col space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+            <div className="p-6 rounded-2xl bg-[#080c14]/90 border border-white/[0.08] backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+                <div className="flex items-center gap-2.5">
                   <Activity className="w-4 h-4 text-cyan-400" />
-                  <h4 className="text-sm font-semibold font-mono text-slate-200">
+                  <h4 className="text-sm font-semibold font-mono text-white">
                     Pairwise Correlation Matrix
                   </h4>
                 </div>
-                <span className="text-[10px] font-mono text-slate-500">Daily Log-Returns</span>
+                <span className="text-[10px] font-mono text-slate-400">Daily Log-Returns</span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-center text-xs font-mono border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 text-slate-400">
-                      <th className="p-2 text-left font-semibold">Asset</th>
+                    <tr className="border-b border-white/[0.06] text-slate-400">
+                      <th className="p-2.5 text-left font-semibold">Asset</th>
                       {Object.keys(result.correlation_matrix).map((col) => (
-                        <th key={col} className="p-2 font-semibold">
+                        <th key={col} className="p-2.5 font-semibold">
                           {col}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/40">
+                  <tbody className="divide-y divide-white/[0.04]">
                     {Object.entries(result.correlation_matrix).map(([rowKey, rowVals]) => (
                       <tr key={rowKey}>
-                        <td className="p-2 text-left font-bold text-slate-300 bg-slate-950/40">
+                        <td className="p-2.5 text-left font-bold text-white bg-white/[0.02]">
                           {rowKey}
                         </td>
                         {Object.keys(result.correlation_matrix).map((colKey) => {
@@ -445,7 +447,7 @@ export default function CompareTerminal() {
                           return (
                             <td key={colKey} className="p-1">
                               <div
-                                className={`py-1.5 px-2 rounded border text-xs font-mono transition-all ${getCorrelationColor(
+                                className={`py-1.5 px-2 rounded-lg border text-xs font-mono transition-all tabular-nums ${getCorrelationColor(
                                   val
                                 )}`}
                               >
@@ -464,15 +466,15 @@ export default function CompareTerminal() {
 
           {/* 2. Factor Radar Breakdown */}
           {result.radar_scores && (
-            <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 backdrop-blur-md flex flex-col space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+            <div className="p-6 rounded-2xl bg-[#080c14]/90 border border-white/[0.08] backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+                <div className="flex items-center gap-2.5">
                   <Percent className="w-4 h-4 text-emerald-400" />
-                  <h4 className="text-sm font-semibold font-mono text-slate-200">
+                  <h4 className="text-sm font-semibold font-mono text-white">
                     Quant Factor Quintile Profiles
                   </h4>
                 </div>
-                <span className="text-[10px] font-mono text-slate-500">Normalized [0–100]</span>
+                <span className="text-[10px] font-mono text-slate-400">Normalized [0–100]</span>
               </div>
 
               <div className="space-y-4 pt-1">
@@ -486,60 +488,60 @@ export default function CompareTerminal() {
                   return (
                     <div
                       key={sym}
-                      className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 flex flex-col space-y-2"
+                      className="p-3.5 rounded-xl bg-[#050810]/70 border border-white/[0.06] flex flex-col space-y-2.5"
                     >
                       <div className="flex items-center justify-between text-xs font-mono">
-                        <span className="font-bold text-slate-200">{sym}</span>
-                        <div className="flex items-center space-x-3 text-[11px] text-slate-400">
+                        <span className="font-bold text-white">{sym}</span>
+                        <div className="flex items-center space-x-3 text-[11px] text-slate-400 tabular-nums">
                           <span>
-                            Q: <span className="text-cyan-400">{scores.quality.toFixed(0)}</span>
+                            Q: <span className="text-cyan-400 font-semibold">{scores.quality.toFixed(0)}</span>
                           </span>
                           <span>
-                            M: <span className="text-emerald-400">{scores.momentum.toFixed(0)}</span>
+                            M: <span className="text-emerald-400 font-semibold">{scores.momentum.toFixed(0)}</span>
                           </span>
                           <span>
-                            T: <span className="text-amber-400">{scores.trend.toFixed(0)}</span>
+                            T: <span className="text-amber-400 font-semibold">{scores.trend.toFixed(0)}</span>
                           </span>
                           <span>
-                            V: <span className="text-purple-400">{scores.volatility.toFixed(0)}</span>
+                            V: <span className="text-purple-400 font-semibold">{scores.volatility.toFixed(0)}</span>
                           </span>
                         </div>
                       </div>
 
                       {/* Mini stacked/segmented bar */}
-                      <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono">
+                      <div className="grid grid-cols-4 gap-2 text-[10px] font-mono">
                         <div className="flex flex-col">
-                          <span className="text-slate-500 text-[9px] mb-0.5">Quality</span>
-                          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <span className="text-slate-400 text-[9px] mb-1">Quality</span>
+                          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-white/[0.04]">
                             <div
-                              className="bg-cyan-400 h-full rounded-full"
+                              className="bg-cyan-400 h-full rounded-full shadow-[0_0_8px_rgba(6,182,212,0.6)]"
                               style={{ width: `${Math.min(100, Math.max(0, scores.quality))}%` }}
                             />
                           </div>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-slate-500 text-[9px] mb-0.5">Momentum</span>
-                          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <span className="text-slate-400 text-[9px] mb-1">Momentum</span>
+                          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-white/[0.04]">
                             <div
-                              className="bg-emerald-400 h-full rounded-full"
+                              className="bg-emerald-400 h-full rounded-full shadow-[0_0_8px_rgba(16,185,129,0.6)]"
                               style={{ width: `${Math.min(100, Math.max(0, scores.momentum))}%` }}
                             />
                           </div>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-slate-500 text-[9px] mb-0.5">Trend</span>
-                          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <span className="text-slate-400 text-[9px] mb-1">Trend</span>
+                          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-white/[0.04]">
                             <div
-                              className="bg-amber-400 h-full rounded-full"
+                              className="bg-amber-400 h-full rounded-full shadow-[0_0_8px_rgba(245,158,11,0.6)]"
                               style={{ width: `${Math.min(100, Math.max(0, scores.trend))}%` }}
                             />
                           </div>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-slate-500 text-[9px] mb-0.5">Low-Vol</span>
-                          <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <span className="text-slate-400 text-[9px] mb-1">Low-Vol</span>
+                          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-white/[0.04]">
                             <div
-                              className="bg-purple-400 h-full rounded-full"
+                              className="bg-purple-400 h-full rounded-full shadow-[0_0_8px_rgba(168,85,247,0.6)]"
                               style={{ width: `${Math.min(100, Math.max(0, scores.volatility))}%` }}
                             />
                           </div>

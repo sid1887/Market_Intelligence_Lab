@@ -25,7 +25,7 @@ export default function MacroRibbon({
 
   const effectiveIngestTime = lastIngestTimestamp || supervisorStatus?.last_ingestion_timestamp;
 
-  // 1. Elapsed Time Ticker since last dynamic ingest
+  // Elapsed Time Ticker since last dynamic ingest
   useEffect(() => {
     if (!effectiveIngestTime) {
       setIngestElapsed("just now");
@@ -61,7 +61,7 @@ export default function MacroRibbon({
     return () => clearInterval(interval);
   }, [effectiveIngestTime]);
 
-  // 2. Kinetic Flash Detection on SSE Ticks
+  // Kinetic Flash Detection on SSE Ticks
   useEffect(() => {
     if (!macroData?.indicators) return;
 
@@ -91,23 +91,23 @@ export default function MacroRibbon({
     switch (supervisorState) {
       case "NORMAL":
         return {
-          icon: <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />,
+          icon: <ShieldCheck className="w-3 h-3 text-emerald-400" />,
           label: "NORMAL",
-          badgeClass: "bg-emerald-950/70 border-emerald-500/40 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.4)] ring-1 ring-emerald-500/30",
-          modelText: supervisorStatus?.model_name || "Champion Model Active",
+          badgeClass: "text-emerald-300",
+          modelText: supervisorStatus?.model_name || "Champion ML Active",
         };
       case "NO_ACTIVE_MODEL":
         return {
-          icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />,
-          label: "NO ACTIVE MODEL",
-          badgeClass: "bg-amber-950/70 border-amber-500/40 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.25)]",
+          icon: <AlertTriangle className="w-3 h-3 text-amber-400" />,
+          label: "TOURNAMENT_PENDING",
+          badgeClass: "text-amber-300",
           modelText: "Tournament Pending",
         };
       default:
         return {
-          icon: <AlertCircle className="w-3.5 h-3.5 text-rose-400" />,
+          icon: <AlertCircle className="w-3 h-3 text-rose-400" />,
           label: supervisorState,
-          badgeClass: "bg-rose-950/70 border-rose-500/40 text-rose-300 shadow-[0_0_10px_rgba(244,63,94,0.3)]",
+          badgeClass: "text-rose-300",
           modelText: "Degraded Invariant",
         };
     }
@@ -116,10 +116,10 @@ export default function MacroRibbon({
   const supervisorInfo = getSupervisorBadge();
 
   return (
-    <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 font-mono text-[11px]">
+    <div className="flex items-center overflow-x-auto no-scrollbar font-mono text-[11px] divide-x divide-white/[0.06] bg-white/[0.02] border-b border-white/[0.06] h-8 w-full select-none">
       {/* Live SSE Pulse Pill */}
       <div
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#050811] border border-white/[0.08] text-slate-300 whitespace-nowrap shadow-sm shrink-0"
+        className="flex items-center gap-2 px-3 py-1 text-slate-300 whitespace-nowrap shrink-0"
         title={
           effectiveIngestTime
             ? `Last Dynamic Ingestion: ${new Date(effectiveIngestTime).toLocaleString()} (Continuous feed)`
@@ -132,7 +132,7 @@ export default function MacroRibbon({
           )}
           <span
             className={`relative inline-flex rounded-full h-2 w-2 ${
-              isConnected ? "bg-emerald-500" : "bg-rose-500"
+              isConnected ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-rose-500"
             }`}
           />
         </span>
@@ -140,7 +140,7 @@ export default function MacroRibbon({
           {isConnected ? (
             <>
               <span className="text-emerald-400 font-bold">LIVE NSE</span>
-              <span className="text-slate-400 font-normal">· {ingestElapsed}</span>
+              <span className="text-slate-500 font-normal">· {ingestElapsed}</span>
             </>
           ) : (
             <span className="text-rose-400 flex items-center gap-1">
@@ -150,7 +150,7 @@ export default function MacroRibbon({
         </span>
       </div>
 
-      {/* Macro Indicators with Decaying Flash Keyframes */}
+      {/* Macro Indicators with Decaying Flash Keyframes & Tabular Numerals */}
       {indicators.map((ind) => {
         const hasVal = ind.value !== null && ind.value !== undefined;
         const change = ind.change_pct;
@@ -178,15 +178,15 @@ export default function MacroRibbon({
         return (
           <div
             key={ind.symbol}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#050811] border border-white/[0.06] text-slate-300 whitespace-nowrap shadow-sm shrink-0 transition-colors ${flashClass}`}
+            className={`flex items-center gap-2 px-3 py-1 text-slate-300 whitespace-nowrap shrink-0 transition-colors ${flashClass}`}
             title={`${ind.label} (${ind.source}) - ${ind.freshness_status || "LIVE"}`}
           >
-            <span className="text-slate-500 font-medium">{ind.label}:</span>
-            <span className="font-bold text-slate-200">{formattedVal}</span>
+            <span className="text-slate-500 font-medium text-[10px] uppercase tracking-wider">{ind.label}:</span>
+            <span className="font-bold text-slate-200 tabular-nums">{formattedVal}</span>
 
             {hasVal && typeof change === "number" && (
               <span
-                className={`flex items-center text-[10px] font-semibold ${
+                className={`flex items-center text-[10px] font-semibold tabular-nums ${
                   isPositive
                     ? "text-emerald-400"
                     : isNegative
@@ -215,12 +215,12 @@ export default function MacroRibbon({
 
       {/* Supervisor Health State */}
       <div
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-mono whitespace-nowrap shrink-0 ${supervisorInfo.badgeClass}`}
+        className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-mono whitespace-nowrap shrink-0 ml-auto"
         title={`Autonomous Supervisor State: ${supervisorInfo.label} | ${supervisorInfo.modelText}`}
       >
         {supervisorInfo.icon}
-        <span className="font-bold">{supervisorInfo.label}</span>
-        <span className="text-slate-400">· {supervisorInfo.modelText}</span>
+        <span className={`font-bold ${supervisorInfo.badgeClass}`}>{supervisorInfo.label}</span>
+        <span className="text-slate-500 hidden xl:inline">· {supervisorInfo.modelText}</span>
       </div>
     </div>
   );

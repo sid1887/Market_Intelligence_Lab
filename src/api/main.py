@@ -55,6 +55,7 @@ from src.api.routes_jobs import router as jobs_router
 from src.api.routes_stream import router as stream_router
 from src.api.routes_portfolio import router as portfolio_router
 from src.api.routes_backtest import router as backtest_router
+from src.api.routes_push import router as push_router
 
 from contextlib import asynccontextmanager
 import asyncio
@@ -130,6 +131,7 @@ app.include_router(jobs_router)
 app.include_router(stream_router)
 app.include_router(portfolio_router)
 app.include_router(backtest_router)
+app.include_router(push_router, prefix="/api/v1")
 
 
 @app.get("/health")

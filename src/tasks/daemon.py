@@ -230,6 +230,15 @@ class AutonomousPlatformDaemon:
                 except Exception:
                     pass
 
+            # 3. Intraday Causal Catalyst Scan (Anomalies >= 3% move or >= 2.5x RVOL with Web Push)
+            try:
+                from src.tasks.catalyst_engine import catalyst_engine
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, catalyst_engine.run_intraday_scan)
+                logger.info("Executed intraday causal catalyst scan.")
+            except Exception as e:
+                logger.warning(f"Catalyst engine scan error: {e}")
+
         except Exception as e:
             logger.warning(f"Intraday telemetry refresh partial: {e}")
 

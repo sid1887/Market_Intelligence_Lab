@@ -13,6 +13,7 @@ import {
   Briefcase,
   LineChart,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import {
   apiFetch,
   prefetchStockBundle,
@@ -29,6 +30,11 @@ import ScreenerWorkspace from "@/components/ScreenerWorkspace";
 import StockInspector from "@/components/StockInspector";
 import CopilotDrawer from "@/components/CopilotDrawer";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
+
+const TopographicBackground = dynamic(
+  () => import("@/components/TopographicBackground"),
+  { ssr: false }
+);
 
 export default function CockpitPage() {
   const [candidates, setCandidates] = useState<ScreenerCandidate[]>([]);
@@ -197,6 +203,9 @@ export default function CockpitPage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] bg-grid-pattern relative select-none text-slate-100 font-sans">
+      {/* Immersive 3D Topographic WebGL Wave Canvas */}
+      <TopographicBackground className="fixed inset-0 pointer-events-none z-0 overflow-hidden opacity-70" />
+
       {/* Ambient Radial Neon Bleeds */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[128px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[128px] pointer-events-none" />
@@ -323,12 +332,12 @@ export default function CockpitPage() {
       <IngestionProgressBanner activeJob={activeJob} onDismiss={dismissActiveJob} />
 
       {/* ──────────────── 3. SPLIT-PANE WORKBENCH ──────────────── */}
-      <div className="flex flex-1 overflow-hidden relative z-10">
+      <div className="flex flex-1 overflow-hidden relative z-10 min-h-0 h-full">
         {/* Left: Screener Workspace */}
         <div
           className={`${
             isInspectorCollapsed ? "w-full" : "hidden lg:flex w-full lg:w-[54%]"
-          } flex flex-col overflow-hidden shrink-0 backdrop-blur-md bg-slate-950/75 border-r border-slate-800/80 transition-all duration-300 ease-in-out`}
+          } flex flex-col h-full overflow-hidden shrink-0 min-h-0 backdrop-blur-md bg-slate-950/75 border-r border-slate-800/80 transition-all duration-300 ease-in-out`}
         >
           <ScreenerWorkspace
             candidates={candidates}
@@ -346,7 +355,7 @@ export default function CockpitPage() {
 
         {/* Right: Stock Deep Inspector */}
         {!isInspectorCollapsed && (
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0 backdrop-blur-md bg-slate-950/75 transition-all duration-300 ease-in-out">
+          <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0 min-h-0 backdrop-blur-md bg-slate-950/75 transition-all duration-300 ease-in-out">
             <StockInspector
               symbol={selectedSymbol}
               activeCandidate={activeCandidate}

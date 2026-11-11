@@ -63,32 +63,32 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
     // Common chart options
     const commonOptions = {
       layout: {
-        background: { type: ColorType.Solid, color: "#090d16" },
+        background: { type: ColorType.Solid, color: "#040609" },
         textColor: "#94a3b8",
         fontSize: 11,
         fontFamily: "var(--font-geist-mono), monospace",
       },
       grid: {
-        vertLines: { color: "#1e293b", style: LineStyle.Dotted },
-        horzLines: { color: "#1e293b", style: LineStyle.Dotted },
+        vertLines: { color: "rgba(255, 255, 255, 0.04)", style: LineStyle.Dotted },
+        horzLines: { color: "rgba(255, 255, 255, 0.04)", style: LineStyle.Dotted },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: "#38bdf8",
+          color: "#06b6d4",
           width: 1 as const,
           style: LineStyle.Dashed,
-          labelBackgroundColor: "#0f172a",
+          labelBackgroundColor: "#080c14",
         },
         horzLine: {
-          color: "#38bdf8",
+          color: "#06b6d4",
           width: 1 as const,
           style: LineStyle.Dashed,
-          labelBackgroundColor: "#0f172a",
+          labelBackgroundColor: "#080c14",
         },
       },
       timeScale: {
-        borderColor: "#1e293b",
+        borderColor: "rgba(255, 255, 255, 0.08)",
         timeVisible: false,
         secondsVisible: false,
       },
@@ -101,7 +101,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
       width: eqWidth,
       height: 320,
       rightPriceScale: {
-        borderColor: "#1e293b",
+        borderColor: "rgba(255, 255, 255, 0.08)",
         scaleMargins: { top: 0.1, bottom: 0.1 },
       },
     });
@@ -114,7 +114,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
     });
 
     const benchmarkSeries = eqChart.addSeries(LineSeries, {
-      color: "#94a3b8",
+      color: "#64748b",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       title: "NIFTY 50 TRI",
@@ -127,7 +127,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
       width: ddWidth,
       height: 150,
       rightPriceScale: {
-        borderColor: "#1e293b",
+        borderColor: "rgba(255, 255, 255, 0.08)",
         scaleMargins: { top: 0.05, bottom: 0.05 },
       },
     });
@@ -135,14 +135,14 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
 
     const ddStrategySeries = ddChart.addSeries(AreaSeries, {
       lineColor: "#f43f5e",
-      topColor: "rgba(244, 63, 94, 0.45)",
-      bottomColor: "rgba(136, 19, 55, 0.02)",
+      topColor: "rgba(244, 63, 94, 0.4)",
+      bottomColor: "rgba(136, 19, 55, 0.01)",
       lineWidth: 2,
       title: "Strategy DD %",
     });
 
     const ddBenchmarkSeries = ddChart.addSeries(LineSeries, {
-      color: "#64748b",
+      color: "#475569",
       lineWidth: 1,
       lineStyle: LineStyle.Dotted,
       title: "NIFTY DD %",
@@ -255,84 +255,84 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
   return (
     <div className="space-y-4">
       {/* Telemetry Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-3.5 bg-slate-950/80 rounded-lg border border-slate-800 text-xs font-mono">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-[#050810]/90 backdrop-blur-2xl rounded-2xl border border-white/[0.08] text-xs font-mono shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
         <div className="flex items-center space-x-2">
           <span className="text-slate-400">Date:</span>
-          <span className="font-semibold text-slate-200">{currentDate}</span>
+          <span className="font-semibold text-white tabular-nums">{currentDate}</span>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+        <div className="flex items-center flex-wrap gap-4">
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
             <span className="text-slate-400">Strategy NAV:</span>
-            <span className="font-semibold text-emerald-300">
+            <span className="font-semibold text-emerald-300 tabular-nums">
               ₹{currentNav.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             </span>
-            <span className={`text-[11px] ${pReturn >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            <span className={`text-[11px] tabular-nums font-semibold ${pReturn >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
               ({pReturn >= 0 ? "+" : ""}{pReturn.toFixed(1)}%)
             </span>
           </div>
 
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
             <span className="text-slate-400">NIFTY 50:</span>
-            <span className="font-semibold text-slate-300">
+            <span className="font-semibold text-slate-300 tabular-nums">
               ₹{currentBench.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             </span>
-            <span className={`text-[11px] ${bReturn >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            <span className={`text-[11px] tabular-nums font-semibold ${bReturn >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
               ({bReturn >= 0 ? "+" : ""}{bReturn.toFixed(1)}%)
             </span>
           </div>
 
-          <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-2">
             <span className="text-slate-400">Excess Alpha:</span>
-            <span className={`font-semibold ${alphaSpread >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            <span className={`font-semibold tabular-nums ${alphaSpread >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
               {alphaSpread >= 0 ? "+" : ""}{alphaSpread.toFixed(1)}%
             </span>
           </div>
 
-          <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-2">
             <span className="text-slate-400">Drawdown:</span>
-            <span className="font-semibold text-rose-400">{currentDd.toFixed(1)}%</span>
-            <span className="text-slate-500 text-[11px]">(BM: {currentBenchDd.toFixed(1)}%)</span>
+            <span className="font-semibold text-rose-400 tabular-nums">{currentDd.toFixed(1)}%</span>
+            <span className="text-slate-500 text-[11px] tabular-nums">(BM: {currentBenchDd.toFixed(1)}%)</span>
           </div>
         </div>
       </div>
 
       {/* Equity Curve Container */}
-      <div className="relative bg-slate-950 rounded-lg p-2 border border-slate-800">
-        <div className="flex items-center justify-between pb-2 px-2 text-xs font-mono text-slate-400 border-b border-slate-900">
-          <span>PORTFOLIO EQUITY CURVE (INR)</span>
+      <div className="relative bg-[#040609] rounded-2xl p-3 border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-between pb-3 px-2 text-xs font-mono text-slate-400 border-b border-white/[0.06]">
+          <span className="uppercase tracking-wider font-semibold text-slate-300">PORTFOLIO EQUITY CURVE (INR)</span>
           <div className="flex items-center space-x-3 text-[11px]">
-            <span className="flex items-center space-x-1 text-emerald-400">
-              <span className="w-3 h-0.5 bg-emerald-400 inline-block" />
+            <span className="flex items-center space-x-1.5 text-emerald-400 font-medium">
+              <span className="w-3 h-0.5 bg-emerald-400 inline-block rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
               <span>Strategy</span>
             </span>
-            <span className="flex items-center space-x-1 text-slate-400">
+            <span className="flex items-center space-x-1.5 text-slate-400">
               <span className="w-3 h-0.5 border-t border-dashed border-slate-400 inline-block" />
               <span>NIFTY 50 TRI</span>
             </span>
           </div>
         </div>
-        <div ref={equityChartContainerRef} className="w-full" />
+        <div ref={equityChartContainerRef} className="w-full pt-2" />
       </div>
 
       {/* Underwater Drawdown Container */}
-      <div className="relative bg-slate-950 rounded-lg p-2 border border-slate-800">
-        <div className="flex items-center justify-between pb-2 px-2 text-xs font-mono text-slate-400 border-b border-slate-900">
-          <span>UNDERWATER DRAWDOWN PROFILE (% FROM PEAK)</span>
+      <div className="relative bg-[#040609] rounded-2xl p-3 border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-between pb-3 px-2 text-xs font-mono text-slate-400 border-b border-white/[0.06]">
+          <span className="uppercase tracking-wider font-semibold text-slate-300">UNDERWATER DRAWDOWN PROFILE (% FROM PEAK)</span>
           <div className="flex items-center space-x-3 text-[11px]">
-            <span className="flex items-center space-x-1 text-rose-400">
-              <span className="w-3 h-2 bg-rose-500/30 border border-rose-500 inline-block" />
+            <span className="flex items-center space-x-1.5 text-rose-400 font-medium">
+              <span className="w-3 h-2 bg-rose-500/30 border border-rose-500 inline-block rounded-sm" />
               <span>Strategy Drawdown</span>
             </span>
-            <span className="flex items-center space-x-1 text-slate-500">
+            <span className="flex items-center space-x-1.5 text-slate-500">
               <span className="w-3 h-0.5 border-t border-dotted border-slate-500 inline-block" />
               <span>NIFTY 50</span>
             </span>
           </div>
         </div>
-        <div ref={drawdownChartContainerRef} className="w-full" />
+        <div ref={drawdownChartContainerRef} className="w-full pt-2" />
       </div>
     </div>
   );

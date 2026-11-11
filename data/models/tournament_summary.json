@@ -1,11 +1,11 @@
 {
   "overall_summary": {
-    "last_trained_at": "2026-11-10T15:54:33.390862+00:00",
+    "last_trained_at": "2026-11-11T14:25:27.613993+00:00",
     "champion_model": "HistGradientBoosting (20D)",
-    "best_rank_ic": 0.0338,
-    "ic_information_ratio": 0.42,
-    "directional_hit_rate_pct": 51.58,
-    "top_decile_spread_bps": 163.2,
+    "best_rank_ic": 0.032,
+    "ic_information_ratio": 0.4,
+    "directional_hit_rate_pct": 51.69,
+    "top_decile_spread_bps": 166.7,
     "feature_importance_pct": {
       "tactical_20d": 0.125,
       "trend_60d": 0.125,
@@ -19,22 +19,22 @@
   },
   "horizon_champions": {
     "5D": {
-      "run_id": "run_5d_elasticnet_6ef09f",
-      "model": "ElasticNet",
-      "rank_ic": 0.0391,
-      "samples": 2229052
+      "run_id": "run_5d_ridge_e1720a",
+      "model": "Ridge",
+      "rank_ic": 0.0378,
+      "samples": 2230190
     },
     "20D": {
-      "run_id": "run_20d_histgradientboosting_816236",
+      "run_id": "run_20d_histgradientboosting_eed07a",
       "model": "HistGradientBoosting",
-      "rank_ic": 0.0338,
-      "samples": 2206149
+      "rank_ic": 0.032,
+      "samples": 2206751
     },
     "60D": {
-      "run_id": "run_60d_histgradientboosting_e6f5a1",
+      "run_id": "run_60d_histgradientboosting_cf6098",
       "model": "HistGradientBoosting",
-      "rank_ic": 0.0442,
-      "samples": 2145289
+      "rank_ic": 0.0425,
+      "samples": 2145802
     }
   }
 }

@@ -71,37 +71,37 @@ export default function BacktestCompareChart({
       width,
       height: 380,
       layout: {
-        background: { type: ColorType.Solid, color: "#090d16" },
+        background: { type: ColorType.Solid, color: "#040609" },
         textColor: "#94a3b8",
         fontSize: 11,
         fontFamily: "var(--font-geist-mono), monospace",
       },
       grid: {
-        vertLines: { color: "#1e293b", style: LineStyle.Dotted },
-        horzLines: { color: "#1e293b", style: LineStyle.Dotted },
+        vertLines: { color: "rgba(255, 255, 255, 0.04)", style: LineStyle.Dotted },
+        horzLines: { color: "rgba(255, 255, 255, 0.04)", style: LineStyle.Dotted },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: "#38bdf8",
+          color: "#06b6d4",
           width: 1,
           style: LineStyle.Dashed,
-          labelBackgroundColor: "#0f172a",
+          labelBackgroundColor: "#080c14",
         },
         horzLine: {
-          color: "#38bdf8",
+          color: "#06b6d4",
           width: 1,
           style: LineStyle.Dashed,
-          labelBackgroundColor: "#0f172a",
+          labelBackgroundColor: "#080c14",
         },
       },
       timeScale: {
-        borderColor: "#1e293b",
+        borderColor: "rgba(255, 255, 255, 0.08)",
         timeVisible: false,
         secondsVisible: false,
       },
       rightPriceScale: {
-        borderColor: "#1e293b",
+        borderColor: "rgba(255, 255, 255, 0.08)",
         scaleMargins: { top: 0.1, bottom: 0.1 },
       },
     });
@@ -222,19 +222,19 @@ export default function BacktestCompareChart({
   }, [normalizedSeries, symbols, benchmarkSymbol, symbolColorMap]);
 
   return (
-    <div className="w-full flex flex-col space-y-2">
+    <div className="w-full flex flex-col space-y-3">
       {/* Legend & Hover inspection ribbon */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-900/80 border border-slate-800/80 rounded-lg text-xs font-mono">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#050810]/90 border border-white/[0.08] rounded-2xl text-xs font-mono backdrop-blur-2xl shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
         <div className="flex items-center space-x-2 text-slate-400">
           <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Session:</span>
-          <span className="text-cyan-400 font-semibold">{hoveredData?.date || "—"}</span>
+          <span className="text-cyan-400 font-semibold tabular-nums">{hoveredData?.date || "—"}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Benchmark pill */}
-          <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-slate-800/50 border border-slate-700/50">
+          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/[0.08]">
             <span className="w-2.5 h-0.5 bg-slate-400 inline-block border-b border-dashed border-slate-300" />
             <span className="text-slate-400 text-[11px]">{benchmarkSymbol}:</span>
-            <span className="font-semibold text-slate-300">
+            <span className="font-semibold text-slate-300 tabular-nums">
               {hoveredData?.values[benchmarkSymbol] != null
                 ? hoveredData.values[benchmarkSymbol].toFixed(2)
                 : "—"}
@@ -243,24 +243,24 @@ export default function BacktestCompareChart({
           {/* Symbol pills */}
           {symbols.map((sym) => {
             const val = hoveredData?.values[sym];
-            const color = symbolColorMap[sym] || "#38bdf8";
+            const color = symbolColorMap[sym] || "#06b6d4";
             const diffFromBase = val != null ? val - 100 : null;
             return (
               <div
                 key={sym}
-                className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-slate-800/50 border border-slate-700/50"
+                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-white/[0.08]"
               >
                 <span
-                  className="w-2 h-2 rounded-full inline-block"
+                  className="w-2 h-2 rounded-full inline-block shadow-[0_0_8px_currentColor]"
                   style={{ backgroundColor: color }}
                 />
                 <span className="text-slate-300 font-medium text-[11px]">{sym}:</span>
-                <span className="font-semibold" style={{ color }}>
+                <span className="font-semibold tabular-nums" style={{ color }}>
                   {val != null ? val.toFixed(2) : "—"}
                 </span>
                 {diffFromBase != null && (
                   <span
-                    className={`text-[10px] font-mono ${
+                    className={`text-[10px] font-mono tabular-nums font-semibold ${
                       diffFromBase >= 0 ? "text-emerald-400" : "text-rose-400"
                     }`}
                   >
@@ -275,7 +275,7 @@ export default function BacktestCompareChart({
       </div>
 
       {/* Chart Canvas */}
-      <div className="relative w-full rounded-xl overflow-hidden border border-slate-800/80 bg-[#090d16]">
+      <div className="relative w-full rounded-2xl overflow-hidden border border-white/[0.08] bg-[#040609] p-3 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
         <div ref={containerRef} className="w-full h-[380px]" />
       </div>
     </div>

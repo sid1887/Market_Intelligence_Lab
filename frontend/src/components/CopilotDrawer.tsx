@@ -531,23 +531,23 @@ export default function CopilotDrawer({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#050811] border-l border-white/[0.08] shadow-2xl backdrop-blur-xl ${
+              className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#06090f]/95 border-l border-white/[0.1] shadow-[-20px_0_60px_rgba(0,0,0,0.85)] backdrop-blur-3xl ${
                 isExpanded ? "w-full md:w-[720px]" : "w-full sm:w-[480px] lg:w-[520px]"
               }`}
             >
               {/* Header Bar */}
-              <div className="h-14 px-4 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-slate-950/80">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-cyan-950/80 border border-cyan-800/80 flex items-center justify-center text-cyan-400 shadow-sm">
+              <div className="h-14 px-5 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-[#080c14]/90 backdrop-blur-2xl">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
                     <BrainCircuit className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs font-bold font-mono text-white tracking-wide">
+                      <span className="text-xs font-bold font-mono text-white tracking-wider">
                         QUANT COPILOT
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950 text-cyan-300 border border-cyan-800/60 font-semibold">
-                        Multi-Agent
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_8px_rgba(6,182,212,0.2)]">
+                        Multi-Agent Committee
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400 font-mono block">
@@ -557,18 +557,18 @@ export default function CopilotDrawer({
                 </div>
 
                 {/* Right controls */}
-                <div className="flex items-center space-x-1.5">
+                <div className="flex items-center space-x-2">
                   <button
                     onClick={() => setIsExpanded(!isExpanded)}
                     title={isExpanded ? "Restore width" : "Expand width"}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors hidden sm:block"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors hidden sm:block"
                   >
-                    {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                    {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                   </button>
                   <button
                     onClick={handleClose}
                     title="Close Drawer (Esc)"
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 transition-colors"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/[0.06] transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -576,31 +576,31 @@ export default function CopilotDrawer({
               </div>
 
               {/* Context-Aware Active Instrument Banner */}
-              <div className="px-4 py-2 bg-slate-900/60 border-b border-white/[0.06] flex items-center justify-between font-mono text-xs shrink-0">
-                <div className="flex items-center space-x-2">
-                  <span className="text-slate-500 text-[11px]">Active Context:</span>
+              <div className="px-5 py-2.5 bg-[#050810]/80 border-b border-white/[0.06] flex items-center justify-between font-mono text-xs shrink-0">
+                <div className="flex items-center space-x-2.5">
+                  <span className="text-slate-400 text-[11px] uppercase tracking-wider">Active Context:</span>
                   {activeSymbol ? (
-                    <span className="text-white font-bold tracking-tight px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700">
+                    <span className="text-white font-bold tracking-tight px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.1] shadow-sm">
                       {activeSymbol}
                     </span>
                   ) : (
                     <span className="text-slate-400 italic text-[11px]">Market Overview</span>
                   )}
                   {activePrice !== undefined ? (
-                    <span className="text-slate-300 font-medium">₹{activePrice.toFixed(2)}</span>
+                    <span className="text-slate-200 font-semibold tabular-nums">₹{activePrice.toFixed(2)}</span>
                   ) : activeSymbol ? (
                     <span className="text-slate-500 text-[11px] flex items-center space-x-1">
-                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                      <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
                       <span>Syncing...</span>
                     </span>
                   ) : null}
                 </div>
                 {activeVerdict ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-950 text-emerald-300 border border-emerald-800/80">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
                     {activeVerdict.replace(/_/g, " ")}
                   </span>
                 ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono text-slate-500 border border-slate-800">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono text-slate-400 border border-white/[0.08]">
                     {activeSymbol ? "Pending Verdict" : "NIFTY 50 Active"}
                   </span>
                 )}
@@ -608,9 +608,9 @@ export default function CopilotDrawer({
 
               {/* Progress Indicator */}
               {state.stage !== "idle" && (
-                <div className="w-full bg-slate-950 h-1 relative overflow-hidden">
+                <div className="w-full bg-[#050810] h-1 relative overflow-hidden">
                   <motion.div
-                    className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-400"
+                    className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]"
                     initial={{ width: "0%" }}
                     animate={{ width: `${state.progressPct}%` }}
                     transition={{ ease: "easeInOut", duration: 0.3 }}
@@ -623,10 +623,10 @@ export default function CopilotDrawer({
               {/* ───────────────────────────────────────────────────────────── */}
               <div
                 ref={scrollContainerRef}
-                className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent"
+                className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent"
               >
                 {/* Status Bar */}
-                <div className="bg-slate-950/70 border border-white/[0.06] rounded-xl p-3 flex items-center space-x-2.5 font-mono text-xs">
+                <div className="bg-[#050810]/70 border border-white/[0.06] rounded-xl p-3.5 flex items-center space-x-2.5 font-mono text-xs">
                   {state.stage === "complete" ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   ) : state.stage === "error" ? (
@@ -637,7 +637,7 @@ export default function CopilotDrawer({
                     <Activity className="w-4 h-4 text-slate-500 shrink-0" />
                   )}
                   <span className="text-slate-300 flex-1 truncate">{state.statusText}</span>
-                  <span className="text-[10px] text-slate-500 shrink-0">{state.progressPct}%</span>
+                  <span className="text-[10px] text-cyan-400 font-semibold tabular-nums shrink-0">{state.progressPct}%</span>
                 </div>
 
                 {/* ───────────────────────────────────────────────────────────── */}
@@ -878,33 +878,33 @@ export default function CopilotDrawer({
               {/* ───────────────────────────────────────────────────────────── */}
               {/* 4. ACTIONABLE PROMPT CHIPS & INPUT BOX                        */}
               {/* ───────────────────────────────────────────────────────────── */}
-              <div className="p-3.5 border-t border-white/[0.08] bg-slate-950/90 space-y-2.5 shrink-0">
+              <div className="p-4 border-t border-white/[0.08] bg-[#06090f]/95 space-y-3 shrink-0">
                 {/* 1-Click Action Chips */}
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => runDeliberation("Debate Bull vs Bear Thesis")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-cyan-950/60 border border-slate-800 hover:border-cyan-600/50 text-[11px] font-mono text-cyan-300 transition-colors flex items-center space-x-1"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-500/10 border border-white/[0.08] hover:border-cyan-500/40 text-[11px] font-mono text-cyan-300 transition-all flex items-center space-x-1.5"
                   >
-                    <Sparkles className="w-3 h-3 text-cyan-400" />
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Debate Bull vs Bear Thesis</span>
                   </button>
 
                   <button
                     onClick={() => runDeliberation("Check Corporate Actions & Shareholding Filings")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[11px] font-mono text-slate-300 transition-colors flex items-center space-x-1"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11px] font-mono text-slate-300 transition-all flex items-center space-x-1.5"
                   >
-                    <Layers className="w-3 h-3 text-indigo-400" />
+                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
                     <span>Corporate Actions</span>
                   </button>
 
                   <button
                     onClick={() => runDeliberation("Evaluate GARCH Cone & Risk/Reward Profile")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[11px] font-mono text-slate-300 transition-colors flex items-center space-x-1"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11px] font-mono text-slate-300 transition-all flex items-center space-x-1.5"
                   >
-                    <Activity className="w-3 h-3 text-emerald-400" />
+                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Risk/Reward Profile</span>
                   </button>
                 </div>
@@ -918,7 +918,7 @@ export default function CopilotDrawer({
                       setPrompt("");
                     }
                   }}
-                  className="flex items-center space-x-2"
+                  className="flex items-center space-x-2.5"
                 >
                   <div className="relative flex-1">
                     <input
@@ -930,14 +930,14 @@ export default function CopilotDrawer({
                           ? `Ask Quant Copilot about ${activeSymbol}...`
                           : "Ask Quant Copilot about NIFTY 50, sector rotations, or backtests..."
                       }
-                      className="w-full bg-slate-900/90 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                      className="w-full bg-[#050810] border border-white/[0.1] rounded-xl px-4 py-2.5 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all"
                     />
                   </div>
                   {state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error" ? (
                     <button
                       type="button"
                       onClick={stopDeliberation}
-                      className="px-3 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-300 text-xs font-mono transition-colors flex items-center space-x-1.5 shadow-md shrink-0"
+                      className="px-3.5 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-mono transition-all flex items-center space-x-1.5 shadow-[0_0_12px_rgba(244,63,94,0.2)] shrink-0"
                       title="Stop Generating (Abort Stream)"
                     >
                       <Square className="w-3.5 h-3.5 fill-rose-400 text-rose-400" />
@@ -947,7 +947,7 @@ export default function CopilotDrawer({
                     <button
                       type="submit"
                       disabled={!prompt.trim()}
-                      className="p-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white transition-colors shrink-0 shadow-md shadow-cyan-950/40"
+                      className="p-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-40 text-white transition-all shrink-0 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
                       title="Send Prompt"
                     >
                       <Send className="w-4 h-4" />

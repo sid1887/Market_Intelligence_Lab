@@ -94,7 +94,7 @@ export default function StockChart({
       width: container.clientWidth,
       height: chartHeight,
       layout: {
-        background: { type: ColorType.Solid, color: "#050811" },
+        background: { type: ColorType.Solid, color: "#040609" },
         textColor: "#94a3b8",
         fontSize: 11,
         fontFamily: "var(--font-jetbrains-mono), monospace"
@@ -365,26 +365,26 @@ export default function StockChart({
           <button
             onClick={() => setShowForecast(!showForecast)}
             title="Toggle Walk-Forward GARCH(1,1) & OU Mean-Reversion Fan Cone"
-            className={`flex items-center space-x-1.5 px-2 py-0.5 rounded text-[10px] font-mono transition-all border ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-xl text-[10px] font-mono transition-all border ${
               showForecast
-                ? "bg-cyan-950/80 border-cyan-500/60 text-cyan-300 font-semibold"
-                : "bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200"
+                ? "bg-cyan-950/80 border-cyan-500/50 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.3)]"
+                : "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-slate-200"
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${showForecast ? "bg-cyan-400 animate-pulse" : "bg-slate-600"}`} />
-            <span>20D Cone</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${showForecast ? "bg-cyan-400 animate-pulse shadow-[0_0_8px_#22d3ee]" : "bg-slate-600"}`} />
+            <span>20D Forecast Cone</span>
           </button>
 
-          {/* Time Horizon Selector */}
-          <div className="flex items-center space-x-0.5 bg-slate-950 p-0.5 rounded border border-white/[0.06] text-[10px] font-mono">
+          {/* Time Horizon Selector (Obsidian Glass Pills) */}
+          <div className="flex items-center space-x-1 bg-black/50 p-1 rounded-xl border border-white/[0.08] text-[10px] font-mono">
             {(["3M", "6M", "1Y", "3Y", "MAX"] as const).map(range => (
               <button
                 key={range}
                 onClick={() => setActiveRange(range)}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
+                className={`px-2 py-0.5 rounded-lg transition-all ${
                   activeRange === range
-                    ? "bg-cyan-600 text-white font-semibold shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-cyan-950/70 border border-cyan-500/50 text-cyan-300 font-bold shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]"
                 }`}
               >
                 {range}
