@@ -351,32 +351,44 @@ class WalkForwardMLTrainer:
                 }
                 all_results.append(run_payload)
 
-                # Persist to ml_training_runs
-                with self.db.get_connection() as conn:
-                    conn.execute("""
-                        INSERT INTO ml_training_runs (
-                            run_id, trained_at, model_family, horizon_days,
-                            train_start_date, train_end_date, total_samples, unique_symbols,
-                            oos_ic_mean, oos_rank_ic_mean, oos_ic_ir, oos_hit_rate_pct,
-                            top_decile_spread_bps, feature_weights_json, hyperparameters_json, is_champion
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                    """, (
-                        run_id,
-                        now_iso,
-                        model_name,
-                        h,
-                        run_payload["train_start_date"],
-                        run_payload["train_end_date"],
-                        run_payload["total_samples"],
-                        run_payload["unique_symbols"],
-                        run_payload["oos_ic_mean"],
-                        run_payload["oos_rank_ic_mean"],
-                        run_payload["oos_ic_ir"],
-                        run_payload["oos_hit_rate_pct"],
-                        run_payload["top_decile_spread_bps"],
-                        json.dumps(normalized_weights),
-                        json.dumps(run_payload["hyperparameters"])
-                    ))
+                # Persist to ml_training_runs with busy-lock retry
+                for attempt in range(5):
+                    try:
+                        with self.db.get_connection() as conn:
+                            conn.execute("""
+                                INSERT INTO ml_training_runs (
+                                    run_id, trained_at, model_family, horizon_days,
+                                    train_start_date, train_end_date, total_samples, unique_symbols,
+                                    oos_ic_mean, oos_rank_ic_mean, oos_ic_ir, oos_hit_rate_pct,
+                                    top_decile_spread_bps, feature_weights_json, hyperparameters_json, is_champion
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                            """, (
+                                run_id,
+                                now_iso,
+                                model_name,
+                                h,
+                                run_payload["train_start_date"],
+                                run_payload["train_end_date"],
+                                run_payload["total_samples"],
+                                run_payload["unique_symbols"],
+                                run_payload["oos_ic_mean"],
+                                run_payload["oos_rank_ic_mean"],
+                                run_payload["oos_ic_ir"],
+                                run_payload["oos_hit_rate_pct"],
+                                run_payload["top_decile_spread_bps"],
+                                json.dumps(normalized_weights),
+                                json.dumps(run_payload["hyperparameters"])
+                            ))
+                        break
+                    except sqlite3.OperationalError as oe:
+                        if "locked" in str(oe).lower() and attempt < 4:
+                            time.sleep(1.0 * (attempt + 1))
+                        else:
+                            logger.warning(f"Could not persist run {run_id} to ml_training_runs: {oe}")
+                            break
+                    except Exception as ex:
+                        logger.warning(f"Could not persist run {run_id} to ml_training_runs: {ex}")
+                        break
 
         # Designate Champion Models per Horizon (Highest oos_rank_ic_mean)
         champions = {}
@@ -385,9 +397,21 @@ class WalkForwardMLTrainer:
             if h_runs:
                 best_run = max(h_runs, key=lambda x: x["oos_rank_ic_mean"])
                 champions[h] = best_run
-                with self.db.get_connection() as conn:
-                    conn.execute("UPDATE ml_training_runs SET is_champion = 0 WHERE horizon_days = ?", (h,))
-                    conn.execute("UPDATE ml_training_runs SET is_champion = 1 WHERE run_id = ?", (best_run["run_id"],))
+                for attempt in range(3):
+                    try:
+                        with self.db.get_connection() as conn:
+                            conn.execute("UPDATE ml_training_runs SET is_champion = 0 WHERE horizon_days = ?", (h,))
+                            conn.execute("UPDATE ml_training_runs SET is_champion = 1 WHERE run_id = ?", (best_run["run_id"],))
+                        break
+                    except sqlite3.OperationalError as oe:
+                        if "locked" in str(oe).lower() and attempt < 2:
+                            time.sleep(1.0)
+                        else:
+                            logger.warning(f"Could not update champion in ml_training_runs: {oe}")
+                            break
+                    except Exception as ex:
+                        logger.warning(f"Could not update champion in ml_training_runs: {ex}")
+                        break
 
         # Write tournament summary file
         if champions:

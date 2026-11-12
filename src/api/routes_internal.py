@@ -79,7 +79,7 @@ def export_state_endpoint(
     - Active portfolio positions
     - Priority equity universe (NIFTY50 + top liquid)
     - Latest settled trading date
-    - Recent 260 daily OHLCV bars for target symbol group
+    - Recent 750 daily OHLCV bars (approx. 3 years) for target symbol group
     """
     cur = conn.cursor()
 
@@ -125,7 +125,7 @@ def export_state_endpoint(
     latest_ohlcv_date_row = cur.fetchone()
     latest_ohlcv_date = latest_ohlcv_date_row[0] if latest_ohlcv_date_row else None
 
-    # 5. Recent OHLCV bars (last 260 trading sessions) for Watchlist + Portfolio + Top 150
+    # 5. Recent OHLCV bars (last 750 trading sessions, ~3 years) for Watchlist + Portfolio + Top 150
     target_symbols = list(dict.fromkeys(watchlist_symbols + portfolio_symbols + priority_symbols[:150]))
     recent_ohlcv: List[Dict[str, Any]] = []
 
@@ -140,7 +140,7 @@ def export_state_endpoint(
         df = pd.read_sql_query(query, conn, params=target_symbols)
         if not df.empty:
             for sym, group in df.groupby("symbol"):
-                recent_sub = group.tail(260)
+                recent_sub = group.tail(750)
                 for _, row in recent_sub.iterrows():
                     recent_ohlcv.append({
                         "symbol": row["symbol"],
@@ -242,7 +242,7 @@ def sync_internal_state_endpoint(
                             symbol, company_name, sector, move_pct, rvol, classification,
                             pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
                             causal_headline, causal_bullets, triggered_at, push_sent
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         sym,
                         cat.get("company_name", sym),
@@ -257,6 +257,7 @@ def sync_internal_state_endpoint(
                         headline,
                         bullets_json,
                         trig_at,
+                        1 if payload.dispatch_push else 0,
                     ))
                     existing_catalysts.add(dedup_key)
                     new_catalyst_records.append(cat)
@@ -265,8 +266,9 @@ def sync_internal_state_endpoint(
                 counts["catalysts"] = len(new_catalyst_records)
                 logger.info(f"[INTERNAL-SYNC] Inserted {len(new_catalyst_records)} new unique catalysts.")
 
-                # Dispatch push notifications if requested
+                # Dispatch push notifications on Render server if requested
                 if payload.dispatch_push and new_catalyst_records:
+                    from src.notifications.web_push import broadcast_push
                     for c in new_catalyst_records:
                         headline = c.get("causal_headline", f"Catalyst Alert: {c.get('symbol')}")
                         bullets = c.get("causal_bullets", [])
@@ -276,13 +278,15 @@ def sync_internal_state_endpoint(
                             body_text = headline
 
                         try:
-                            broadcast_push(
+                            push_stats = broadcast_push(
                                 title=headline,
                                 body=body_text,
                                 url=f"/stocks/{c.get('symbol')}",
                                 tag=f"catalyst-{c.get('symbol')}-{int(time.time())}",
                             )
-                            counts["catalysts_push_sent"] += 1
+                            if isinstance(push_stats, dict) and push_stats.get("sent", 0) > 0:
+                                counts["catalysts_push_sent"] += push_stats["sent"]
+                            logger.info(f"[INTERNAL-SYNC] Web push dispatch for {c.get('symbol')}: {push_stats}")
                         except Exception as pe:
                             logger.warning(f"[INTERNAL-SYNC] Web push dispatch warning for {c.get('symbol')}: {pe}")
 

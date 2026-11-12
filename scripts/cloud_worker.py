@@ -242,44 +242,45 @@ def run_parallel_news_pipeline(
     dry_run: bool = False
 ) -> Dict[str, Any]:
     """
-    Executes 8-thread concurrent Google News RSS fetching and runs
-    the 4-pillar causal anomaly detection radar across priority equities.
+    Executes multi-source market-wide news & exchange filings aggregation
+    (BSE Filings, NSE Filings, Direct Wire RSS, and Targeted Watchlist RSS)
+    and runs the 4-pillar causal anomaly detection radar.
     """
-    logger.info("=== STARTING PARALLEL NEWS & CAUSAL RADAR PIPELINE ===")
+    logger.info("=== STARTING MULTI-SOURCE NEWS & CAUSAL RADAR PIPELINE ===")
     t0 = time.time()
     db = DatabaseManager(db_path)
-    target_symbols = state.get("target_news_symbols", [])
-    if not target_symbols:
-        target_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS", "ITC", "BEL", "SBIN", "RVNL", "NHPC"]
 
-    logger.info(f"Executing 8-thread parallel RSS sweep across {len(target_symbols)} equities...")
+    # Priority watchlist + portfolio symbols for targeted deep coverage
+    wl_syms = [w["symbol"] for w in state.get("watchlist", [])]
+    pf_syms = state.get("portfolio_symbols", [])
+    priority_symbols = list(dict.fromkeys(wl_syms + pf_syms))
+    if not priority_symbols:
+        priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS", "ITC", "BEL", "SBIN", "RVNL", "NHPC"]
 
-    all_articles: List[Dict[str, Any]] = []
-    # 8-Thread parallel fetching with stagger
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = {
-            executor.submit(_fetch_single_symbol_news, sym, i, db): sym
-            for i, sym in enumerate(target_symbols)
-        }
-        for fut in as_completed(futures):
-            sym = futures[fut]
-            try:
-                arts = fut.result()
-                if arts:
-                    all_articles.extend(arts)
-            except Exception as e:
-                logger.warning(f"Thread failed for {sym}: {e}")
+    logger.info(f"Triggering market-wide news & filings sweep (priority targets: {len(priority_symbols)})...")
+    news_client = NewsClient(db)
+    agg_result = news_client.fetch_market_wide_news_and_filings(priority_symbols=priority_symbols)
 
-    logger.info(f"RSS sweep complete. Retrieved {len(all_articles)} total articles across {len(target_symbols)} equities.")
+    counts = agg_result.get("counts", {})
+    all_articles = agg_result.get("articles", [])
 
-    # Run Causal Anomaly Detection across targets
+    logger.info(
+        f"[NEWS-SYNC] BSE Filings: {counts.get('bse_filings', 0)} | "
+        f"NSE Filings: {counts.get('nse_filings', 0)} | "
+        f"Direct Wire (MC/ET/Mint): {counts.get('direct_wire', 0)} | "
+        f"Watchlist RSS: {counts.get('watchlist_rss', 0)}"
+    )
+
+    # Run Causal Anomaly Detection across targets (worker never broadcasts push locally)
     logger.info("Running 4-Pillar Causal Catalyst Anomaly Radar...")
-    catalyst_engine = CausalCatalystEngine()
+    catalyst_engine = CausalCatalystEngine(auto_push=False)
     detected_catalysts: List[Dict[str, Any]] = []
 
+    target_symbols = state.get("target_news_symbols", priority_symbols)
     for sym in target_symbols:
         try:
-            cat = catalyst_engine.investigate_symbol(sym)
+            # Explicitly disable local push; push is dispatched remotely by Render on sync
+            cat = catalyst_engine.investigate_symbol(sym, dispatch_push=False)
             if cat:
                 detected_catalysts.append(cat)
         except Exception as e:
@@ -287,11 +288,12 @@ def run_parallel_news_pipeline(
 
     logger.info(f"Causal Radar identified {len(detected_catalysts)} active catalysts.")
 
-    # Prepare sync payload
+    # Prepare sync payload (explicitly instruct Render backend to dispatch push for new catalysts)
+    has_catalysts = len(detected_catalysts) > 0
     payload = {
         "news_articles": all_articles,
         "catalysts": detected_catalysts,
-        "dispatch_push": True
+        "dispatch_push": True if has_catalysts else False
     }
 
     elapsed = round(time.time() - t0, 1)
@@ -301,7 +303,8 @@ def run_parallel_news_pipeline(
         "symbols_processed": len(target_symbols),
         "articles_count": len(all_articles),
         "catalysts_count": len(detected_catalysts),
-        "synced": False
+        "synced": False,
+        "source_breakdown": counts
     }
 
     if dry_run:

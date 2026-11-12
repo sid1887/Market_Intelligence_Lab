@@ -70,8 +70,9 @@ class CausalCatalystEngine:
     _cooldowns: Dict[str, datetime] = {}
     COOLDOWN_HOURS = 4
 
-    def __init__(self):
+    def __init__(self, auto_push: bool = True):
         init_catalyst_tables()
+        self.auto_push = auto_push
 
     def get_watchlist_and_priority_symbols(self) -> List[str]:
         """Gathers symbols from active portfolio positions, watchlists, and prominent equities."""
@@ -391,7 +392,12 @@ class CausalCatalystEngine:
             "pillar4": p4,
         }
 
-    def investigate_symbol(self, symbol: str, force: bool = False) -> Optional[Dict[str, Any]]:
+    def investigate_symbol(
+        self,
+        symbol: str,
+        force: bool = False,
+        dispatch_push: Optional[bool] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Runs full 4-pillar investigation on a symbol.
         Triggers if abs(move_pct) >= 3.0 or rvol >= 2.5 (or force=True).
@@ -458,28 +464,37 @@ class CausalCatalystEngine:
         synth["triggered_at"] = now_iso
         self._cooldowns[symbol] = now
 
-        # Broadcast Web Push Notification to mobile & desktop subscribers
-        push_body = synth["causal_bullets"][0][:140] + "..." if synth["causal_bullets"] else synth["causal_headline"]
-        broadcast_push(
-            title=synth["causal_headline"],
-            body=push_body,
-            url=f"/stocks/{symbol}",
-            tag=f"catalyst-{symbol}-{int(now.timestamp())}"
-        )
+        # Broadcast Web Push Notification to mobile & desktop subscribers if enabled
+        should_push = self.auto_push if dispatch_push is None else dispatch_push
+        if should_push:
+            push_body = synth["causal_bullets"][0][:140] + "..." if synth["causal_bullets"] else synth["causal_headline"]
+            try:
+                broadcast_push(
+                    title=synth["causal_headline"],
+                    body=push_body,
+                    url=f"/stocks/{symbol}",
+                    tag=f"catalyst-{symbol}-{int(now.timestamp())}"
+                )
+            except Exception as pe:
+                logger.warning(f"Error dispatching web push for {symbol}: {pe}")
 
-        logger.info(f"Catalyst synthesized and dispatched for {symbol}: {synth['causal_headline']}")
+        logger.info(f"Catalyst synthesized{' and push dispatched' if should_push else ''} for {symbol}: {synth['causal_headline']}")
         return synth
 
-    def run_intraday_scan(self, force_symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    def run_intraday_scan(
+        self,
+        force_symbol: Optional[str] = None,
+        dispatch_push: Optional[bool] = None
+    ) -> List[Dict[str, Any]]:
         """Scans universe for anomalies and returns any newly synthesized catalysts."""
         if force_symbol:
-            res = self.investigate_symbol(force_symbol, force=True)
+            res = self.investigate_symbol(force_symbol, force=True, dispatch_push=dispatch_push)
             return [res] if res else []
 
         symbols = self.get_watchlist_and_priority_symbols()
         results = []
         for sym in symbols:
-            cat = self.investigate_symbol(sym, force=False)
+            cat = self.investigate_symbol(sym, force=False, dispatch_push=dispatch_push)
             if cat:
                 results.append(cat)
 
