@@ -14,8 +14,12 @@ jobs:
 
     steps:
       - name: Ping MIL Quant Backend Health Endpoint
+        env:
+          CUSTOM_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
         run: |
-          TARGET_URL="https://mil-quant-backend.onrender.com/api/v1/health"
+          BASE_URL="${CUSTOM_BACKEND_URL:-https://mil-quant-backend.onrender.com}"
+          BASE_URL="${BASE_URL%/}"
+          TARGET_URL="${BASE_URL}/api/v1/health"
           echo "Pinging Render backend at: $TARGET_URL"
           START_TIME=$(date +%s%N)
           HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" --max-time 30 "$TARGET_URL")

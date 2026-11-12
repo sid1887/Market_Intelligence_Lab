@@ -47,6 +47,64 @@ _forecast_cache_lock = threading.Lock()
 _forecast_cache: Dict[Tuple[str, str], Tuple[Dict[str, Any], float]] = {}
 FORECAST_CACHE_TTL_SECONDS: float = 900.0  # 15 minutes
 
+# Thread-safe precomputed forecast cache (from external compute workers)
+_precomputed_forecasts_lock = threading.Lock()
+_precomputed_forecasts: Dict[str, Dict[str, Any]] = {}
+PRECOMPUTED_FORECASTS_PATH = Path("data/models/precomputed_forecasts.json")
+
+
+def load_precomputed_forecasts(file_path: Optional[Path] = None) -> int:
+    """Loads precomputed forecasts from data/models/precomputed_forecasts.json."""
+    global _precomputed_forecasts
+    target = file_path or PRECOMPUTED_FORECASTS_PATH
+    if not target.exists():
+        alt_path = Path(__file__).resolve().parent.parent.parent / "data" / "models" / "precomputed_forecasts.json"
+        if alt_path.exists():
+            target = alt_path
+        else:
+            return 0
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                with _precomputed_forecasts_lock:
+                    _precomputed_forecasts.update(data)
+                logger.info(f"[ML-CACHE] Loaded {len(data)} precomputed forecasts from {target}")
+                return len(data)
+    except Exception as e:
+        logger.warning(f"[ML-CACHE] Failed to load precomputed forecasts from {target}: {e}")
+    return 0
+
+
+def update_precomputed_forecasts(new_forecasts: Dict[str, Dict[str, Any]]) -> int:
+    """
+    Updates the in-memory precomputed forecasts and writes atomically to precomputed_forecasts.json.
+    """
+    global _precomputed_forecasts
+    if not new_forecasts:
+        return 0
+    with _precomputed_forecasts_lock:
+        _precomputed_forecasts.update(new_forecasts)
+        snapshot = dict(_precomputed_forecasts)
+
+    try:
+        target = PRECOMPUTED_FORECASTS_PATH
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, indent=2)
+        os.replace(tmp, target)
+        logger.info(f"[ML-CACHE] Persisted {len(snapshot)} precomputed forecasts to {target}")
+    except Exception as e:
+        logger.error(f"[ML-CACHE] Error persisting precomputed forecasts: {e}")
+
+    invalidate_forecast_cache()
+    return len(new_forecasts)
+
+
+# Auto-load precomputed forecasts on module import
+load_precomputed_forecasts()
+
 
 def invalidate_forecast_cache() -> None:
     """Clears the in-memory ML forecast cache."""
@@ -423,6 +481,12 @@ class WalkForwardMLTrainer:
         """
         import math
         sym = symbol.strip().upper()
+
+        # 1. Fast-path: Check in-memory precomputed forecast from 7GB worker (< 1ms)
+        with _precomputed_forecasts_lock:
+            if sym in _precomputed_forecasts:
+                return dict(_precomputed_forecasts[sym])
+
         with self.db.get_connection() as conn:
             row = conn.execute("""
                 SELECT f.symbol, f.trading_date, f.close, f.sma_20, f.sma_50, f.sma_200,

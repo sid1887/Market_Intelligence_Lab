@@ -27,3 +27,5 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: INTERNAL_SYNC_TOKEN
+        sync: false
