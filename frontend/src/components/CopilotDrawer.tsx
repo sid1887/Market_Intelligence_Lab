@@ -84,7 +84,7 @@ export function FormattedMarkdown({
 }) {
   if (!content) return null;
 
-  const lines = content.split("\n");
+  const rawLines = content.split("\n");
 
   const parseInline = (text: string) => {
     const parts: React.ReactNode[] = [];
@@ -133,9 +133,114 @@ export function FormattedMarkdown({
     return parts;
   };
 
+  // Group lines into blocks: table, code, or normal lines
+  type Block =
+    | { type: "table"; headers: string[]; rows: string[][] }
+    | { type: "code"; lang: string; lines: string[] }
+    | { type: "line"; line: string };
+
+  const blocks: Block[] = [];
+  let i = 0;
+
+  while (i < rawLines.length) {
+    const line = rawLines[i];
+    const trimmed = line.trim();
+
+    // Check code block
+    if (trimmed.startsWith("```")) {
+      const lang = trimmed.slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < rawLines.length && !rawLines[i].trim().startsWith("```")) {
+        codeLines.push(rawLines[i]);
+        i++;
+      }
+      i++; // skip closing ```
+      blocks.push({ type: "code", lang, lines: codeLines });
+      continue;
+    }
+
+    // Check table row (starts and ends with pipe, or contains | and has separator line next)
+    if (
+      trimmed.startsWith("|") &&
+      trimmed.endsWith("|") &&
+      i + 1 < rawLines.length &&
+      rawLines[i + 1].trim().startsWith("|") &&
+      /^[|\s-:]+$/.test(rawLines[i + 1].trim())
+    ) {
+      const parseRow = (r: string) => {
+        const segs = r.trim().split("|");
+        return segs.slice(1, segs.length - 1);
+      };
+
+      const headers = parseRow(trimmed);
+      i += 2; // skip header and separator row
+      const rows: string[][] = [];
+
+      while (i < rawLines.length) {
+        const rowLine = rawLines[i].trim();
+        if (!rowLine.startsWith("|") || !rowLine.endsWith("|")) {
+          break;
+        }
+        rows.push(parseRow(rowLine));
+        i++;
+      }
+
+      blocks.push({ type: "table", headers, rows });
+      continue;
+    }
+
+    blocks.push({ type: "line", line });
+    i++;
+  }
+
   return (
     <div className="space-y-1.5 text-xs leading-relaxed font-sans text-slate-200">
-      {lines.map((line, idx) => {
+      {blocks.map((block, idx) => {
+        if (block.type === "code") {
+          return (
+            <div key={idx} className="my-2 p-3 rounded-xl bg-[#030508] border border-white/[0.08] font-mono text-[11px] overflow-x-auto text-cyan-200">
+              <pre>{block.lines.join("\n")}</pre>
+            </div>
+          );
+        }
+
+        if (block.type === "table") {
+          return (
+            <div key={idx} className="w-full overflow-x-auto my-3 rounded-xl border border-white/[0.08] bg-[#050811] shadow-md">
+              <table className="w-full text-xs font-mono border-collapse my-0">
+                <thead className="bg-[#080d1a] border-b border-white/[0.1] text-slate-300">
+                  <tr>
+                    {block.headers.map((h, hIdx) => (
+                      <th
+                        key={hIdx}
+                        className="px-3 py-2 text-left font-semibold tracking-wider text-[11px] uppercase border-r border-white/[0.04] last:border-r-0 text-slate-300"
+                      >
+                        {parseInline(h.trim())}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.04]">
+                  {block.rows.map((row, rIdx) => (
+                    <tr key={rIdx} className="hover:bg-white/[0.02] transition-colors">
+                      {row.map((cell, cIdx) => (
+                        <td
+                          key={cIdx}
+                          className="px-3 py-2 text-slate-200 border-r border-white/[0.04] last:border-r-0"
+                        >
+                          {parseInline(cell.trim())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        const line = block.line;
         const trimmed = line.trim();
         if (!trimmed) {
           return <div key={idx} className="h-1" />;
@@ -531,7 +636,7 @@ export default function CopilotDrawer({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#06090f] border-l border-white/[0.1] shadow-[-20px_0_60px_rgba(0,0,0,0.85)] ${
+              className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#06090f] border-l border-white/[0.1] shadow-[-20px_0_60px_rgba(0,0,0,0.85)] h-[100dvh] max-h-[100dvh] ${
                 isExpanded ? "w-full md:w-[720px]" : "w-full sm:w-[480px] lg:w-[520px]"
               }`}
             >
@@ -878,7 +983,7 @@ export default function CopilotDrawer({
               {/* ───────────────────────────────────────────────────────────── */}
               {/* 4. ACTIONABLE PROMPT CHIPS & INPUT BOX                        */}
               {/* ───────────────────────────────────────────────────────────── */}
-              <div className="p-4 border-t border-white/[0.08] bg-[#06090f]/95 space-y-3 shrink-0">
+              <div className="p-4 border-t border-white/[0.08] bg-[#06090f]/95 space-y-3 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 {/* 1-Click Action Chips */}
                 <div className="flex flex-wrap items-center gap-2">
                   <button

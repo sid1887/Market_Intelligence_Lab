@@ -7,10 +7,12 @@ authentic out-of-sample Rank IC, and logs verifiable telemetry to ml_training_ru
 """
 
 import os
+import time
 import json
 import uuid
 import logging
 import sqlite3
+import threading
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +40,19 @@ FEATURE_COLUMNS_8 = [
     "relative_strength_nifty",
     "news_sentiment_7d"
 ]
+
+
+# Thread-safe in-memory cache for ML inference (15-min TTL)
+_forecast_cache_lock = threading.Lock()
+_forecast_cache: Dict[Tuple[str, str], Tuple[Dict[str, Any], float]] = {}
+FORECAST_CACHE_TTL_SECONDS: float = 900.0  # 15 minutes
+
+
+def invalidate_forecast_cache() -> None:
+    """Clears the in-memory ML forecast cache."""
+    global _forecast_cache
+    with _forecast_cache_lock:
+        _forecast_cache.clear()
 
 
 class WalkForwardMLTrainer:
@@ -439,6 +454,15 @@ class WalkForwardMLTrainer:
         if not row:
             return {"symbol": sym, "error": f"No factors found for {sym}"}
 
+        trading_date = str(row["trading_date"])
+        cache_key = (sym, trading_date)
+        now = time.time()
+        with _forecast_cache_lock:
+            if cache_key in _forecast_cache:
+                cached_res, ts = _forecast_cache[cache_key]
+                if (now - ts) < FORECAST_CACHE_TTL_SECONDS:
+                    return cached_res
+
         close = float(row["close"])
         vol = max(float(row["volatility_20d"]), 0.05)
         sma200 = float(row["sma_200"]) if row["sma_200"] else close
@@ -515,7 +539,7 @@ class WalkForwardMLTrainer:
                         "signal": sig
                     })
 
-        return {
+        result_payload = {
             "symbol": sym,
             "as_of_date": row["trading_date"],
             "current_price": close,
@@ -526,3 +550,7 @@ class WalkForwardMLTrainer:
             "forecasts": forecasts,
             "feature_attributions": attributions
         }
+        with _forecast_cache_lock:
+            _forecast_cache[cache_key] = (result_payload, now)
+
+        return result_payload

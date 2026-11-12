@@ -217,19 +217,34 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
       }
     });
 
-    // Handle Window Resize
-    const handleResize = () => {
-      if (equityChartContainerRef.current && eqChart) {
-        eqChart.applyOptions({ width: equityChartContainerRef.current.clientWidth });
+    // Container ResizeObserver with requestAnimationFrame debouncing
+    let rafId: number | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
       }
-      if (drawdownChartContainerRef.current && ddChart) {
-        ddChart.applyOptions({ width: drawdownChartContainerRef.current.clientWidth });
-      }
-    };
-    window.addEventListener("resize", handleResize);
+      rafId = requestAnimationFrame(() => {
+        if (equityChartContainerRef.current && equityChartRef.current) {
+          const w = equityChartContainerRef.current.clientWidth;
+          if (w > 0) equityChartRef.current.applyOptions({ width: w });
+        }
+        if (drawdownChartContainerRef.current && drawdownChartRef.current) {
+          const w = drawdownChartContainerRef.current.clientWidth;
+          if (w > 0) drawdownChartRef.current.applyOptions({ width: w });
+        }
+      });
+    });
+
+    if (equityChartContainerRef.current) resizeObserver.observe(equityChartContainerRef.current);
+    if (drawdownChartContainerRef.current && drawdownChartContainerRef.current !== equityChartContainerRef.current) {
+      resizeObserver.observe(drawdownChartContainerRef.current);
+    }
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver.disconnect();
       if (equityChartRef.current) {
         equityChartRef.current.remove();
         equityChartRef.current = null;

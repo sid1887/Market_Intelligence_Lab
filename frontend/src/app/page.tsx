@@ -6,8 +6,6 @@ import {
   RefreshCw,
   Command,
   PanelRightOpen,
-  Loader2,
-  Zap,
   BrainCircuit,
   LayoutDashboard,
   Briefcase,
@@ -16,14 +14,11 @@ import {
   Bell,
   BellRing,
 } from "lucide-react";
-import dynamic from "next/dynamic";
 import {
   apiFetch,
   ScreenerCandidate,
   ScreenerResponse,
   WatchlistResponse,
-  triggerSystemIngest,
-  fetchIngestStatus,
   clearMemoryCache,
 } from "@/lib/api";
 import { usePlatformEvents } from "@/hooks/usePlatformEvents";
@@ -34,12 +29,8 @@ import IngestionProgressBanner from "@/components/IngestionProgressBanner";
 import ScreenerWorkspace from "@/components/ScreenerWorkspace";
 import StockInspector from "@/components/StockInspector";
 import CopilotDrawer from "@/components/CopilotDrawer";
+import IngestStatusButton from "@/components/IngestStatusButton";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
-
-const TopographicBackground = dynamic(
-  () => import("@/components/TopographicBackground"),
-  { ssr: false }
-);
 
 export default function CockpitPage() {
   const [candidates, setCandidates] = useState<ScreenerCandidate[]>([]);
@@ -51,7 +42,6 @@ export default function CockpitPage() {
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
   const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [isIngesting, setIsIngesting] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
 
@@ -64,8 +54,6 @@ export default function CockpitPage() {
     lastTickAt,
     lastIngestTimestamp,
     dismissActiveJob,
-    setActiveJob,
-    setLastIngestTimestamp,
   } = usePlatformEvents();
 
   // 2. Initial Screener & Watchlist Data Fetch
@@ -99,11 +87,27 @@ export default function CockpitPage() {
     }
   }, []);
 
+  // 3. Initial Load, Push Subscription & URL Query Parameter Initialization
   useEffect(() => {
     void loadPageData();
     checkPushSubscription().then((res) => {
       setIsPushSubscribed(res.isSubscribed);
     });
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const symParam = params.get("symbol");
+      if (symParam) {
+        setSelectedSymbol(symParam.toUpperCase());
+        if (window.innerWidth < 1024) {
+          setIsMobileInspectorOpen(true);
+        }
+      }
+      const viewParam = params.get("view");
+      if (viewParam === "heatmap") {
+        setViewMode("heatmap");
+      }
+    }
 
     const handleRefresh = () => {
       void loadPageData(true);
@@ -112,126 +116,37 @@ export default function CockpitPage() {
     return () => window.removeEventListener("mil:screener-refresh", handleRefresh);
   }, [loadPageData]);
 
+  // 4. URL State Synchronization (Non-reloading history replace)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (selectedSymbol) {
+      url.searchParams.set("symbol", selectedSymbol);
+    } else {
+      url.searchParams.delete("symbol");
+    }
+    if (viewMode === "heatmap") {
+      url.searchParams.set("view", "heatmap");
+    } else {
+      url.searchParams.delete("view");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }, [selectedSymbol, viewMode]);
+
   // Active Candidate lookup
   const activeCandidate = useMemo(() => {
     if (!selectedSymbol || !candidates.length) return null;
     return candidates.find((c) => c.symbol === selectedSymbol) || null;
   }, [candidates, selectedSymbol]);
 
-  // 3. Universal Ingest Action with Dynamic Animated Progress Stages
-  const handleUniversalIngest = async () => {
-    if (isIngesting) return;
-    setIsIngesting(true);
-    const jobId = `sys-ingest-${Date.now()}`;
-    setActiveJob({
-      job_id: jobId,
-      stage: "FETCHING_NSE_SETTLEMENT",
-      progress_pct: 15,
-      status: "RUNNING",
-      message: "Connecting to exchange feeds & bhavcopy...",
-    });
-
-    // Progressive simulated animation advancing smoothly while backend executes
-    const progressInterval = setInterval(() => {
-      setActiveJob((prev) => {
-        if (!prev || prev.status !== "RUNNING") return prev;
-        const currentPct = prev.progress_pct;
-        if (currentPct < 35) {
-          return {
-            ...prev,
-            stage: "PARALLEL_INGESTION",
-            progress_pct: currentPct + 5,
-            message: "Ingesting live multi-ticker bars across 16 worker threads...",
-          };
-        } else if (currentPct < 65) {
-          return {
-            ...prev,
-            stage: "FACTOR_COMPUTATION",
-            progress_pct: currentPct + 6,
-            message: "Computing vectorized multi-horizon factors on multi-core pool...",
-          };
-        } else if (currentPct < 85) {
-          return {
-            ...prev,
-            stage: "SECTOR_SENTIMENT",
-            progress_pct: currentPct + 4,
-            message: "Imputing hierarchical sector sentiment across universe...",
-          };
-        } else if (currentPct < 96) {
-          return {
-            ...prev,
-            stage: "SYNCHRONIZING_CACHE",
-            progress_pct: currentPct + 2,
-            message: "Materializing screener snapshot view and cache...",
-          };
-        }
-        return prev;
-      });
-    }, 450);
-
-    try {
-      const res = await triggerSystemIngest();
-      clearInterval(progressInterval);
-
-      if (res.status === "running" || res.status === "accepted") {
-        // Poll status every 2 seconds until completed or error
-        let pollAttempts = 0;
-        while (pollAttempts < 60) {
-          await new Promise((r) => setTimeout(r, 2000));
-          pollAttempts++;
-          try {
-            const st = await fetchIngestStatus();
-            if (st.status === "running") {
-              const pct = st.total > 0 ? Math.round((st.progress / st.total) * 100) : 50;
-              setActiveJob({
-                job_id: jobId,
-                stage: "CLOUD_INCREMENTAL_SYNC",
-                progress_pct: Math.min(Math.max(pct, 20), 95),
-                status: "RUNNING",
-                message: st.message || `Synchronizing equities (${st.progress}/${st.total})...`,
-              });
-            } else if (st.status === "completed") {
-              break;
-            } else if (st.status === "error") {
-              throw new Error(st.message || "Cloud ingestion failed");
-            }
-          } catch (e) {
-            console.warn("Poll status check error:", e);
-          }
-        }
-      }
-
-      const nowIso = new Date().toISOString();
-      setLastIngestTimestamp(nowIso);
-
-      setActiveJob({
-        job_id: jobId,
-        stage: "COMPLETED",
-        progress_pct: 100,
-        status: "SUCCEEDED",
-        message: `Settled ${res.symbols_updated || "universe"} equities for session ${res.settled_date || "today"}.`,
-      });
-
-      // Auto-dismiss banner after 6 seconds on successful completion
-      setTimeout(() => {
-        setActiveJob((prev) => (prev?.status === "SUCCEEDED" ? null : prev));
-      }, 6000);
-
-      clearMemoryCache();
-      await loadPageData();
-    } catch (err: unknown) {
-      clearInterval(progressInterval);
-      setActiveJob({
-        job_id: `sys-ingest-err-${Date.now()}`,
-        stage: "FAILED",
-        progress_pct: 100,
-        status: "FAILED",
-        error: err instanceof Error ? err.message : "Ingestion failed",
-      });
-    } finally {
-      setIsIngesting(false);
+  // Memoized Symbol Selection Callback
+  const handleSelectSymbol = useCallback((sym: string) => {
+    setSelectedSymbol(sym);
+    setIsInspectorCollapsed(false);
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setIsMobileInspectorOpen(true);
     }
-  };
+  }, []);
 
   // Keyboard shortcut for command palette (⌘K)
   useEffect(() => {
@@ -247,9 +162,6 @@ export default function CockpitPage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] bg-grid-pattern relative select-none text-slate-100 font-sans">
-      {/* Immersive 3D Topographic Canvas */}
-      <TopographicBackground className="fixed inset-0 pointer-events-none z-0 overflow-hidden opacity-70" />
-
       {/* ──────────────── 1. TOP HEADER NAVIGATION ──────────────── */}
       <header className="h-12 shrink-0 border-b border-white/[0.06] flex items-center justify-between px-3 sm:px-4 bg-[#030508] z-30">
         {/* Left: Brand + Navigation Tabs (Desktop) */}
@@ -296,7 +208,7 @@ export default function CockpitPage() {
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={() => void loadPageData(true)}
-            disabled={pageLoading || isIngesting}
+            disabled={pageLoading}
             title="Force refresh universe and invalidate cache"
             className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800/60 border border-white/[0.06] transition-colors disabled:opacity-50"
           >
@@ -351,25 +263,8 @@ export default function CockpitPage() {
             </span>
           </button>
 
-          {/* Dynamic Ingest (Desktop) */}
-          <button
-            onClick={handleUniversalIngest}
-            disabled={isIngesting || pageLoading}
-            title="Execute Dynamic Ingestion for live NSE settlement"
-            className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-600/40 hover:border-emerald-500 text-xs font-mono font-medium transition-all shadow-sm disabled:opacity-60 whitespace-nowrap"
-          >
-            {isIngesting ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                <span className="animate-pulse">Ingesting...</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Dynamic Ingest</span>
-              </>
-            )}
-          </button>
+          {/* Real-Time Dynamic Ingest Button (Desktop) */}
+          <IngestStatusButton />
 
           {isInspectorCollapsed && (
             <button
@@ -409,11 +304,7 @@ export default function CockpitPage() {
           <ScreenerWorkspace
             candidates={candidates}
             selectedSymbol={selectedSymbol}
-            onSelectSymbol={(sym) => {
-              setSelectedSymbol(sym);
-              setIsInspectorCollapsed(false);
-              setIsMobileInspectorOpen(true);
-            }}
+            onSelectSymbol={handleSelectSymbol}
             asOfDate={asOfDate}
             loading={pageLoading}
             viewMode={viewMode}
@@ -501,18 +392,8 @@ export default function CockpitPage() {
           <LineChart className="w-4 h-4 mb-0.5 text-slate-400" />
           <span>Backtest</span>
         </Link>
-        <button
-          onClick={handleUniversalIngest}
-          disabled={isIngesting || pageLoading}
-          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-emerald-400 hover:text-emerald-300"
-        >
-          {isIngesting ? (
-            <Loader2 className="w-4 h-4 mb-0.5 animate-spin text-emerald-400" />
-          ) : (
-            <Zap className="w-4 h-4 mb-0.5 text-emerald-400" />
-          )}
-          <span>{isIngesting ? "Syncing..." : "Ingest"}</span>
-        </button>
+        {/* Dynamic Ingest in Mobile Bottom Bar */}
+        <IngestStatusButton compact />
       </nav>
 
       {/* ──────────────── 6. MODALS & COCKPIT DRAWERS ──────────────── */}

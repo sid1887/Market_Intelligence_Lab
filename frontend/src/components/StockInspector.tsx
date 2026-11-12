@@ -16,6 +16,7 @@ import CausalCatalystFeed from "./CausalCatalystFeed";
 import {
   apiFetch,
   fetchStockBundle,
+  requestLifecycle,
   ScreenerCandidate,
   CandleData,
   ForecastData,
@@ -75,7 +76,7 @@ const VERDICT_CONFIG: Record<
 
 const DEFAULT_VERDICT_CFG = VERDICT_CONFIG["HOLD_FAIRLY_VALUED"];
 
-export default function StockInspector({
+function StockInspectorComponent({
   symbol,
   activeCandidate,
   onClose,
@@ -100,12 +101,13 @@ export default function StockInspector({
     }
 
     setIsSyncing(true);
-    const controller = new AbortController();
 
     const timer = setTimeout(async () => {
+      const { signal, generation } = requestLifecycle.prepareRequest("inspector_active");
+
       try {
-        const bundle = await fetchStockBundle(symbol, { signal: controller.signal, useCache: true });
-        if (!controller.signal.aborted) {
+        const bundle = await fetchStockBundle(symbol, { signal, useCache: true });
+        if (requestLifecycle.isLatest("inspector_active", generation) && !signal.aborted) {
           setCandles(bundle.tearsheet?.history || []);
           setForecast(bundle.forecast || null);
           setMemo(bundle.memo || null);
@@ -119,19 +121,19 @@ export default function StockInspector({
           setIsSyncing(false);
         }
       } catch {
-        if (controller.signal.aborted) return;
-        // Fallback to parallel fetch if bundle endpoint fails
+        if (signal.aborted || !requestLifecycle.isLatest("inspector_active", generation)) return;
+        // Fallback to parallel fetch if bundle endpoint fails (extracting history from tearsheet)
         Promise.allSettled([
-          apiFetch<CandleData[]>(`/stocks/${symbol}/history`, { signal: controller.signal, useCache: true }),
-          apiFetch<ForecastData>(`/stocks/${symbol}/forecast`, { signal: controller.signal, useCache: true }),
-          apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal: controller.signal, useCache: true }),
-          apiFetch<NewsResponse>(`/stocks/${symbol}/news`, { signal: controller.signal, useCache: true }),
-        ]).then(([candlesRes, forecastRes, memoRes, newsRes]) => {
-          if (controller.signal.aborted) return;
-          setCandles(candlesRes.status === "fulfilled" ? candlesRes.value : []);
+          apiFetch<{ history?: CandleData[] }>(`/stocks/${symbol}/tearsheet`, { signal, useCache: true }),
+          apiFetch<ForecastData>(`/stocks/${symbol}/forecast`, { signal, useCache: true }),
+          apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal, useCache: true }),
+          apiFetch<NewsResponse>(`/stocks/${symbol}/news`, { signal, useCache: true }),
+        ]).then(([tearsheetRes, forecastRes, memoRes, newsRes]) => {
+          if (signal.aborted || !requestLifecycle.isLatest("inspector_active", generation)) return;
+          setCandles(tearsheetRes.status === "fulfilled" && tearsheetRes.value ? tearsheetRes.value.history || [] : []);
           setForecast(forecastRes.status === "fulfilled" ? forecastRes.value : null);
           setMemo(memoRes.status === "fulfilled" ? memoRes.value : null);
-          setNews(newsRes.status === "fulfilled" ? newsRes.value.articles || [] : []);
+          setNews(newsRes.status === "fulfilled" && newsRes.value ? newsRes.value.articles || [] : []);
           setIsSyncing(false);
         });
       }
@@ -139,7 +141,7 @@ export default function StockInspector({
 
     return () => {
       clearTimeout(timer);
-      controller.abort();
+      requestLifecycle.cleanup("inspector_active");
     };
   }, [symbol]);
 
@@ -546,3 +548,6 @@ export default function StockInspector({
     </div>
   );
 }
+
+const StockInspector = React.memo(StockInspectorComponent);
+export default StockInspector;

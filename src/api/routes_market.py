@@ -856,11 +856,14 @@ def get_system_accuracy():
 
 
 
-def run_cloud_safe_ingestion() -> None:
+class IngestRequestBody(BaseModel):
+    symbols: Optional[List[str]] = None
+
+
+def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None:
     """
     Background worker for asynchronous market ingestion.
-    In cloud lightweight mode, processes symbols in small batches (batch_size=25, max_workers=1)
-    with garbage collection to maintain memory strictly under 300 MB on 512 MB containers.
+    Processes symbols in batches with garbage collection and vectorized factor refresh.
     """
     global _CLOUD_INGEST_STATUS
     import sys
@@ -880,7 +883,9 @@ def run_cloud_safe_ingestion() -> None:
     manager = UniverseIngestionManager(DATABASE_PATH)
     
     try:
-        if is_cloud_lightweight_mode():
+        if target_symbols and len(target_symbols) > 0:
+            priority_symbols = [s.strip().upper() for s in target_symbols if s.strip()]
+        elif is_cloud_lightweight_mode():
             # In cloud lightweight mode: prioritize Watchlist + Portfolio + Top 125 liquid equities (~130 total)
             with manager.db.get_connection() as conn:
                 wl_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM user_watchlists").fetchall()]
@@ -895,108 +900,116 @@ def run_cloud_safe_ingestion() -> None:
             priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + top_rows))
             if not priority_symbols:
                 priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT", "FEDERALBNK", "UNIONBANK"]
-                
-            total_symbols = len(priority_symbols)
-            batch_size = 25
-            total_batches = math.ceil(total_symbols / batch_size)
+        else:
+            with manager.db.get_connection() as conn:
+                wl_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM user_watchlists").fetchall()]
+                pf_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM portfolio_positions WHERE quantity > 0").fetchall()]
+                top_rows = [r[0] for r in conn.execute("""
+                    SELECT symbol FROM securities_master 
+                    WHERE is_active = 1 
+                    ORDER BY is_nifty50 DESC, (tier = 'LARGE') DESC, (tier = 'MID') DESC 
+                    LIMIT 200
+                """).fetchall()]
+            priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + top_rows))
+            if not priority_symbols:
+                priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT", "FEDERALBNK", "UNIONBANK"]
 
-            _CLOUD_INGEST_STATUS = {
-                "status": "running",
-                "stage": "BATCH_SYNC",
-                "progress": 0,
-                "total": total_symbols,
-                "current_batch": 0,
-                "total_batches": total_batches,
-                "last_symbol": None,
-                "started_at": started_iso,
-                "elapsed_sec": 0.0,
-                "message": f"Ingesting {total_symbols} priority equities across {total_batches} batches..."
-            }
-            logger.info(f"[CLOUD-INGEST] Cloud Lightweight Ingest: processing {total_symbols} symbols in {total_batches} batches of {batch_size}...")
-            sys.stdout.flush()
+        total_symbols = len(priority_symbols)
+        batch_size = 25
+        total_batches = math.ceil(total_symbols / batch_size)
+
+        _CLOUD_INGEST_STATUS = {
+            "status": "running",
+            "stage": "BATCH_SYNC",
+            "progress": 0,
+            "total": total_symbols,
+            "current_batch": 0,
+            "total_batches": total_batches,
+            "last_symbol": None,
+            "started_at": started_iso,
+            "elapsed_sec": 0.0,
+            "message": f"Ingesting {total_symbols} priority equities across {total_batches} batches..."
+        }
+        logger.info(f"[CLOUD-INGEST] Processing {total_symbols} symbols in {total_batches} batches of {batch_size}...")
+        sys.stdout.flush()
+        
+        from src.data.universe_expander import ingest_symbols_parallel
+        for b_idx in range(total_batches):
+            start_i = b_idx * batch_size
+            chunk = priority_symbols[start_i:start_i + batch_size]
+            done_count = min(start_i + len(chunk), total_symbols)
             
-            from src.data.universe_expander import ingest_symbols_parallel
-            for b_idx in range(total_batches):
-                start_i = b_idx * batch_size
-                chunk = priority_symbols[start_i:start_i + batch_size]
-                done_count = min(start_i + len(chunk), total_symbols)
-                
-                logger.info(f"[CLOUD-INGEST] Batch {b_idx + 1}/{total_batches} ({len(chunk)} symbols: {chunk[0]}..{chunk[-1]}) — progress {done_count}/{total_symbols}")
-                sys.stdout.flush()
-
-                try:
-                    ingest_symbols_parallel(manager.db, chunk, max_workers=1, chunk_size=batch_size, period="5d")
-                except Exception as e:
-                    logger.warning(f"[CLOUD-INGEST] Batch {b_idx + 1} partial failure: {e}")
-                    sys.stdout.flush()
-
-                _CLOUD_INGEST_STATUS.update({
-                    "progress": done_count,
-                    "current_batch": b_idx + 1,
-                    "last_symbol": chunk[-1],
-                    "elapsed_sec": round(time.time() - t0, 1),
-                    "message": f"Batch {b_idx + 1}/{total_batches} • Synced {done_count}/{total_symbols} equities ({chunk[-1]})..."
-                })
-                gc.collect()
-
-            # Fast SQL/Pandas calculation over last 250 bars of updated symbols to refresh
-            # ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200 in quant_factors_daily in < 2 seconds
-            _CLOUD_INGEST_STATUS["stage"] = "FACTOR_REFRESH"
-            _CLOUD_INGEST_STATUS["message"] = "Calculating technical factors and 20D returns..."
-            logger.info("[CLOUD-INGEST] Vectorized refresh of 20D returns & SMAs in quant_factors_daily...")
+            logger.info(f"[CLOUD-INGEST] Batch {b_idx + 1}/{total_batches} ({len(chunk)} symbols: {chunk[0]}..{chunk[-1]}) — progress {done_count}/{total_symbols}")
             sys.stdout.flush()
 
             try:
-                with manager.db.get_connection() as conn:
-                    df = pd.read_sql_query(f"""
-                        SELECT symbol, trading_date, close
-                        FROM ohlcv_daily
-                        WHERE symbol IN ({','.join(['?']*len(priority_symbols))}) AND series = 'EQ'
-                        ORDER BY symbol, trading_date ASC
-                    """, conn, params=priority_symbols)
-
-                factor_updates = []
-                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                for sym, group in df.groupby("symbol"):
-                    if len(group) < 2:
-                        continue
-                    group = group.tail(250)
-                    closes = group["close"].values
-                    dates = group["trading_date"].values
-                    ret_1d = (closes[-1] / closes[-2] - 1.0) if len(closes) >= 2 else 0.0
-                    ret_5d = (closes[-1] / closes[-6] - 1.0) if len(closes) >= 6 else None
-                    ret_20d = (closes[-1] / closes[-21] - 1.0) if len(closes) >= 21 else (ret_5d * 4.0 if ret_5d is not None else 0.0)
-                    sma_20 = float(closes[-20:].mean()) if len(closes) >= 20 else None
-                    sma_50 = float(closes[-50:].mean()) if len(closes) >= 50 else None
-                    sma_200 = float(closes[-200:].mean()) if len(closes) >= 200 else None
-                    factor_updates.append((sym, str(dates[-1]), ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, now_iso))
-
-                if factor_updates:
-                    with manager.db.get_connection() as conn:
-                        conn.executemany("""
-                            INSERT INTO quant_factors_daily (
-                                symbol, trading_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(symbol, trading_date) DO UPDATE SET
-                                ret_1d=excluded.ret_1d,
-                                ret_5d=excluded.ret_5d,
-                                ret_20d=excluded.ret_20d,
-                                sma_20=excluded.sma_20,
-                                sma_50=excluded.sma_50,
-                                sma_200=excluded.sma_200,
-                                updated_at=excluded.updated_at
-                        """, factor_updates)
-                        conn.commit()
-                    logger.info(f"[CLOUD-INGEST] Fast vectorized factors refreshed for {len(factor_updates)} symbols.")
-                    sys.stdout.flush()
-            except Exception as fe:
-                logger.warning(f"[CLOUD-INGEST] Fast factor calculation error: {fe}")
+                ingest_symbols_parallel(manager.db, chunk, max_workers=1, chunk_size=batch_size, period="5d")
+            except Exception as e:
+                logger.warning(f"[CLOUD-INGEST] Batch {b_idx + 1} partial failure: {e}")
                 sys.stdout.flush()
 
-        else:
-            _CLOUD_INGEST_STATUS["message"] = "Executing full universe ingestion..."
-            manager.execute_universe_ingestion()
-            
+            _CLOUD_INGEST_STATUS.update({
+                "progress": done_count,
+                "current_batch": b_idx + 1,
+                "last_symbol": chunk[-1],
+                "elapsed_sec": round(time.time() - t0, 1),
+                "message": f"Batch {b_idx + 1}/{total_batches} • Synced {done_count}/{total_symbols} equities ({chunk[-1]})..."
+            })
+            gc.collect()
+
+        # Fast SQL/Pandas calculation over last 250 bars of updated symbols
+        _CLOUD_INGEST_STATUS["stage"] = "FACTOR_REFRESH"
+        _CLOUD_INGEST_STATUS["message"] = "Calculating technical factors and 20D returns..."
+        logger.info("[CLOUD-INGEST] Vectorized refresh of 20D returns & SMAs in quant_factors_daily...")
+        sys.stdout.flush()
+
+        try:
+            with manager.db.get_connection() as conn:
+                df = pd.read_sql_query(f"""
+                    SELECT symbol, trading_date, close
+                    FROM ohlcv_daily
+                    WHERE symbol IN ({','.join(['?']*len(priority_symbols))}) AND series = 'EQ'
+                    ORDER BY symbol, trading_date ASC
+                """, conn, params=priority_symbols)
+
+            factor_updates = []
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            for sym, group in df.groupby("symbol"):
+                if len(group) < 2:
+                    continue
+                group = group.tail(250)
+                closes = group["close"].values
+                dates = group["trading_date"].values
+                ret_1d = (closes[-1] / closes[-2] - 1.0) if len(closes) >= 2 else 0.0
+                ret_5d = (closes[-1] / closes[-6] - 1.0) if len(closes) >= 6 else None
+                ret_20d = (closes[-1] / closes[-21] - 1.0) if len(closes) >= 21 else (ret_5d * 4.0 if ret_5d is not None else 0.0)
+                sma_20 = float(closes[-20:].mean()) if len(closes) >= 20 else None
+                sma_50 = float(closes[-50:].mean()) if len(closes) >= 50 else None
+                sma_200 = float(closes[-200:].mean()) if len(closes) >= 200 else None
+                factor_updates.append((sym, str(dates[-1]), ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, now_iso))
+
+            if factor_updates:
+                with manager.db.get_connection() as conn:
+                    conn.executemany("""
+                        INSERT INTO quant_factors_daily (
+                            symbol, trading_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(symbol, trading_date) DO UPDATE SET
+                            ret_1d=excluded.ret_1d,
+                            ret_5d=excluded.ret_5d,
+                            ret_20d=excluded.ret_20d,
+                            sma_20=excluded.sma_20,
+                            sma_50=excluded.sma_50,
+                            sma_200=excluded.sma_200,
+                            updated_at=excluded.updated_at
+                    """, factor_updates)
+                    conn.commit()
+                logger.info(f"[CLOUD-INGEST] Fast vectorized factors refreshed for {len(factor_updates)} symbols.")
+                sys.stdout.flush()
+        except Exception as fe:
+            logger.warning(f"[CLOUD-INGEST] Fast factor calculation error: {fe}")
+            sys.stdout.flush()
+
         # Invalidate in-memory screener cache
         try:
             from src.api.main import invalidate_screener_cache
@@ -1014,16 +1027,16 @@ def run_cloud_safe_ingestion() -> None:
         _CLOUD_INGEST_STATUS = {
             "status": "completed",
             "stage": "COMPLETED",
-            "progress": _CLOUD_INGEST_STATUS.get("total", 130),
-            "total": _CLOUD_INGEST_STATUS.get("total", 130),
-            "current_batch": _CLOUD_INGEST_STATUS.get("total_batches", 6),
-            "total_batches": _CLOUD_INGEST_STATUS.get("total_batches", 6),
-            "last_symbol": _CLOUD_INGEST_STATUS.get("last_symbol"),
+            "progress": total_symbols,
+            "total": total_symbols,
+            "current_batch": total_batches,
+            "total_batches": total_batches,
+            "last_symbol": priority_symbols[-1] if priority_symbols else None,
             "started_at": started_iso,
             "elapsed_sec": elapsed,
-            "message": f"Cloud market ingestion completed successfully in {elapsed}s."
+            "message": f"Market ingestion completed successfully in {elapsed}s."
         }
-        logger.info(f"[CLOUD-INGEST] Completed in {elapsed}s across {total_symbols if is_cloud_lightweight_mode() else 'universe'} symbols.")
+        logger.info(f"[CLOUD-INGEST] Completed in {elapsed}s across {total_symbols} symbols.")
         sys.stdout.flush()
     except Exception as e:
         logger.error(f"[CLOUD-INGEST] Fatal error in market ingestion: {e}", exc_info=True)
@@ -1048,7 +1061,11 @@ def run_cloud_safe_ingestion() -> None:
 @router.get("/api/v1/ingest/status")
 def get_ingest_status():
     """Returns dynamic market ingestion progress and status."""
-    return sanitize_for_json(_CLOUD_INGEST_STATUS)
+    st = dict(_CLOUD_INGEST_STATUS)
+    st["is_running"] = (st.get("status") == "running")
+    st["processed_symbols"] = st.get("progress", 0)
+    st["latest_symbol"] = st.get("last_symbol")
+    return sanitize_for_json(st)
 
 
 @router.post("/system/ingest", status_code=202)
@@ -1057,6 +1074,7 @@ def get_ingest_status():
 @router.post("/api/v1/ingest", status_code=202)
 def trigger_system_ingest(
     background_tasks: BackgroundTasks,
+    payload: Optional[IngestRequestBody] = None,
     background: bool = Query(True, description="Run ingestion in background asynchronously"),
 ):
     """
@@ -1073,12 +1091,13 @@ def trigger_system_ingest(
             "message": "Market ingestion job is already running."
         })
 
-    background_tasks.add_task(run_cloud_safe_ingestion)
+    target_syms = payload.symbols if payload else None
+    background_tasks.add_task(run_cloud_safe_ingestion, target_symbols=target_syms)
     return sanitize_for_json({
         "status": "running",
         "job_id": "cloud-sync",
         "message": "Incremental market sync started in background.",
-        "mode": "CLOUD_LIGHTWEIGHT_MODE" if is_cloud_lightweight_mode() else "FULL_UNIVERSE"
+        "mode": "TARGET_SYMBOLS" if target_syms else ("CLOUD_LIGHTWEIGHT_MODE" if is_cloud_lightweight_mode() else "FULL_UNIVERSE")
     })
 
 

@@ -46,18 +46,21 @@ const POPULAR_SUGGESTIONS = [
 ];
 
 const TIMEFRAME_PRESETS = [
+  { label: "COVID Crash 2020", start: "2020-01-01", end: "2020-06-30", isRegime: true },
+  { label: "2022 Rate Cycle", start: "2022-01-01", end: "2022-12-31", isRegime: true },
+  { label: "2024 Election Volatility", start: "2024-05-01", end: "2024-06-30", isRegime: true },
   { label: "1Y", start: "2025-11-06", end: "2026-11-06" },
   { label: "3Y", start: "2023-11-06", end: "2026-11-06" },
   { label: "5Y", start: "2021-11-06", end: "2026-11-06" },
-  { label: "Full Cycle (2020-2026)", start: "2020-01-01", end: "2026-11-06" },
+  { label: "MAX", start: "2015-01-01", end: "2026-11-06" },
 ];
 
 export default function CompareTerminal() {
   const [symbols, setSymbols] = useState<string[]>(["TCS", "INFY", "HCLTECH"]);
   const [newSymbolInput, setNewSymbolInput] = useState<string>("");
-  const [startDate, setStartDate] = useState<string>("2021-01-04");
+  const [startDate, setStartDate] = useState<string>("2021-11-06");
   const [endDate, setEndDate] = useState<string>("2026-11-06");
-  const [activePreset, setActivePreset] = useState<string>("Full Cycle (2020-2026)");
+  const [activePreset, setActivePreset] = useState<string>("5Y");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<MultiStockCompareResponse | null>(null);
@@ -214,20 +217,27 @@ export default function CompareTerminal() {
               <Sliders className="w-3.5 h-3.5 text-cyan-400" />
               Horizon:
             </span>
-            <div className="flex items-center rounded-xl bg-[#050810] p-1 border border-white/[0.08]">
-              {TIMEFRAME_PRESETS.map((p) => (
-                <button
-                  key={p.label}
-                  onClick={() => handleSelectPreset(p)}
-                  className={`px-3 py-1.5 text-xs font-mono rounded-lg transition-all ${
-                    activePreset === p.label
-                      ? "bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {TIMEFRAME_PRESETS.map((p) => {
+                const isActive = activePreset === p.label;
+                return (
+                  <button
+                    key={p.label}
+                    onClick={() => handleSelectPreset(p)}
+                    className={`px-2.5 py-1 text-xs font-mono rounded-lg transition-all border ${
+                      isActive
+                        ? p.isRegime
+                          ? "bg-amber-500/20 text-amber-300 font-semibold border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]"
+                          : "bg-cyan-500/20 text-cyan-300 font-semibold border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]"
+                        : p.isRegime
+                        ? "bg-amber-950/20 text-amber-400/80 hover:text-amber-300 border-amber-500/20 hover:border-amber-500/40"
+                        : "bg-[#050810] text-slate-400 hover:text-slate-200 border-white/[0.08]"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

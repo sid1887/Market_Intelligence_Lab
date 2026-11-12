@@ -202,18 +202,29 @@ export default function BacktestCompareChart({
     };
     setHoveredPointFromLatest();
 
-    // Resize observer
-    const handleResize = () => {
-      if (container && chart) {
-        chart.applyOptions({ width: container.clientWidth });
+    // Container ResizeObserver with requestAnimationFrame debouncing
+    let rafId: number | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
       }
-    };
-    window.addEventListener("resize", handleResize);
+      rafId = requestAnimationFrame(() => {
+        if (container && chartRef.current) {
+          const w = container.clientWidth;
+          if (w > 0) chartRef.current.applyOptions({ width: w });
+        }
+      });
+    });
+
+    resizeObserver.observe(container);
 
     chart.timeScale().fitContent();
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver.disconnect();
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;

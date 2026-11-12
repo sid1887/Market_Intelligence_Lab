@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ArrowRight, Command } from "lucide-react";
-import { ScreenerCandidate, prefetchStockBundle } from "@/lib/api";
+import { ScreenerCandidate } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface CommandPaletteModalProps {
@@ -123,7 +123,6 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                 <button
                   key={sym}
                   onClick={() => handleSelect(sym)}
-                  onMouseEnter={() => prefetchStockBundle(sym)}
                   className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-cyan-950/40 border border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-500/40 transition-colors shrink-0"
                 >
                   {sym}
@@ -153,10 +152,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                 <div
                   key={item.symbol}
                   data-idx={idx}
-                  onMouseEnter={() => {
-                    setCursorIndex(idx);
-                    prefetchStockBundle(item.symbol);
-                  }}
+                  onMouseEnter={() => setCursorIndex(idx)}
                   onClick={() => handleSelect(item.symbol)}
                   className={cn(
                     "flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors border-l-2",

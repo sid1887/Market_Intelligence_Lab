@@ -35,6 +35,10 @@ export default function IngestStatusButton({
     pollTimerRef.current = setInterval(async () => {
       try {
         const data: IngestStatusResponse = await fetchIngestStatus();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("mil:ingest-progress", { detail: data }));
+        }
+
         if (data.status === "running") {
           setStatus("running");
           setProgress(data.progress || 0);

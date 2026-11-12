@@ -198,6 +198,20 @@ export default function StockChart({
     candlestickSeries.setData(candlePayload);
     volumeSeries.setData(volumePayload);
 
+    const isNarrowViewport = container.clientWidth < 640;
+
+    // Optional 200 SMA Reference Price Line on Candlestick Series
+    if (sma200 && sma200 > 0) {
+      candlestickSeries.createPriceLine({
+        price: sma200,
+        color: "rgba(234, 179, 8, 0.6)",
+        lineWidth: 1,
+        lineStyle: 2, // Dashed
+        axisLabelVisible: !isNarrowViewport,
+        title: isNarrowViewport ? "" : "200 SMA",
+      });
+    }
+
     // 3. Econometric Forecast Cones (B7.0 / B10.0 Walk-Forward Shaded Area Projection)
     // NOTE: Titles removed from all series to eliminate colliding canvas badges over price labels
     const lastBar = sortedData[sortedData.length - 1];
@@ -210,7 +224,9 @@ export default function StockChart({
         topColor: "rgba(6, 182, 212, 0.05)",
         bottomColor: "rgba(6, 182, 212, 0.05)",
         lineColor: "rgba(6, 182, 212, 0.22)",
-        lineWidth: 1
+        lineWidth: 1,
+        lastValueVisible: !isNarrowViewport,
+        priceLineVisible: false,
       });
       cone95Series.setData([
         anchorPoint,
@@ -243,7 +259,9 @@ export default function StockChart({
       const lower95Series = chart.addSeries(LineSeries, {
         color: "rgba(6, 182, 212, 0.22)",
         lineWidth: 1,
-        lineStyle: 2 // Dashed
+        lineStyle: 2, // Dashed
+        lastValueVisible: !isNarrowViewport,
+        priceLineVisible: false,
       });
       lower95Series.setData([
         anchorPoint,
@@ -298,25 +316,38 @@ export default function StockChart({
 
     chart.timeScale().fitContent();
 
-    // Resize Observer for dynamic responsiveness
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth
-        });
+    // Container ResizeObserver with requestAnimationFrame debouncing
+    let rafId: number | null = null;
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (!entries || entries.length === 0) return;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
       }
-    };
+      rafId = requestAnimationFrame(() => {
+        if (chartContainerRef.current && chartRef.current) {
+          const newWidth = chartContainerRef.current.clientWidth;
+          if (newWidth > 0) {
+            chartRef.current.applyOptions({
+              width: newWidth,
+            });
+          }
+        }
+      });
+    });
 
-    window.addEventListener("resize", handleResize);
+    resizeObserver.observe(container);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      resizeObserver.disconnect();
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
       }
     };
-  }, [data, activeRange, showForecast, forecast, chartHeight]);
+  }, [data, activeRange, showForecast, forecast, chartHeight, sma200]);
 
   const latest = hoverData || (data && data.length > 0 ? data[data.length - 1] : null);
   const isUp = latest ? latest.close >= latest.open : true;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { BentoCard } from "@/components/ui/BentoCard";
@@ -87,6 +87,29 @@ const ACCOUNTS: AccountTab[] = [
     desc: "Classic 15-stock equal-weight institutional factor compounding benchmark.",
   },
 ];
+
+const SECTOR_MAP: Record<string, string> = {
+  TCS: "IT", INFY: "IT", HCLTECH: "IT", WIPRO: "IT", TECHM: "IT", LTIM: "IT", COFORGE: "IT", PERSISTENT: "IT",
+  RELIANCE: "Energy", BPCL: "Energy", IOC: "Energy", ONGC: "Energy", NTPC: "Energy", POWERGRID: "Energy", TATAPOWER: "Energy", NHPC: "Energy", COALINDIA: "Energy", GAIL: "Energy",
+  HDFCBANK: "Financials", ICICIBANK: "Financials", SBIN: "Financials", KOTAKBANK: "Financials", AXISBANK: "Financials", BAJFINANCE: "Financials", BAJAJFINSV: "Financials", ABCAPITAL: "Financials", PNB: "Financials", CANBK: "Financials", BANKBARODA: "Financials",
+  TATAMOTORS: "Auto", MARUTI: "Auto", "M&M": "Auto", BAJAJ_AUTO: "Auto", HEROMOTOCO: "Auto", ASHOKLEY: "Auto", EICHERMOT: "Auto", TVSMOTOR: "Auto",
+  SUNPHARMA: "Pharma", DRREDDY: "Pharma", CIPLA: "Pharma", DIVISLAB: "Pharma", APOLLOHOSP: "Pharma", LUPIN: "Pharma", AUROPHARMA: "Pharma",
+  ITC: "FMCG", HINDUNILVR: "FMCG", NESTLEIND: "FMCG", BRITANNIA: "FMCG", TATACONSUM: "FMCG", DABUR: "FMCG",
+  TATASTEEL: "Metals", JSWSTEEL: "Metals", HINDALCO: "Metals", VEDL: "Metals", JINDALSTEL: "Metals", NMDC: "Metals",
+  LT: "Capital Goods", BHEL: "Capital Goods", SIEMENS: "Capital Goods", ABB: "Capital Goods", BEL: "Capital Goods", HAL: "Capital Goods",
+};
+
+function getStockSector(sym: string): string {
+  const clean = sym.toUpperCase().replace(/\.NS$/, "");
+  if (SECTOR_MAP[clean]) return SECTOR_MAP[clean];
+  if (clean.includes("BANK") || clean.includes("FIN") || clean.includes("CAP")) return "Financials";
+  if (clean.includes("TECH") || clean.includes("SOFT") || clean.includes("INFO")) return "IT";
+  if (clean.includes("POWER") || clean.includes("ENERGY") || clean.includes("PETRO") || clean.includes("GAS")) return "Energy";
+  if (clean.includes("PHARMA") || clean.includes("LAB") || clean.includes("HEALTH") || clean.includes("BIO")) return "Pharma";
+  if (clean.includes("MOTOR") || clean.includes("AUTO") || clean.includes("TYRE")) return "Auto";
+  if (clean.includes("STEEL") || clean.includes("METAL") || clean.includes("MIN")) return "Metals";
+  return "General";
+}
 
 export default function PortfolioPage() {
   const [activeAccount, setActiveAccount] = useState<string>("paper_alpha_2");
@@ -322,6 +345,7 @@ export default function PortfolioPage() {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(val);
   };
@@ -330,6 +354,58 @@ export default function PortfolioPage() {
   const totalNav = summary?.total_nav ?? initialCapital;
   const netPnl = totalNav - initialCapital;
   const netPnlPct = initialCapital > 0 ? (netPnl / initialCapital) * 100 : 0;
+
+  // Friction-buffered quick sizing chips for manual trading
+  const cashBal = Math.max(0, summary?.cash_balance ?? 0);
+  const calculateAffordable = (pct: number) => {
+    const targetPool = cashBal * pct;
+    // Reserve flat ₹16 broker fee + 0.15% STT buffer
+    return Math.max(0, Math.floor((targetPool - 16) / 1.0015));
+  };
+  const size25 = calculateAffordable(0.25);
+  const size50 = calculateAffordable(0.50);
+  const size75 = calculateAffordable(0.75);
+  const sizeMax = calculateAffordable(1.00);
+
+  // Dynamic Portfolio Sector Concentration & Cash Solvency Metrics
+  const sectorSolvencyMetrics = useMemo(() => {
+    const cash = Math.max(0, summary?.cash_balance ?? 0);
+    const totalVal = Math.max(
+      1,
+      summary?.total_nav ?? (cash + positions.reduce((acc, p) => acc + (p.market_value || 0), 0))
+    );
+
+    const sectorValues: Record<string, number> = {};
+    for (const pos of positions) {
+      const sec = getStockSector(pos.symbol);
+      sectorValues[sec] = (sectorValues[sec] || 0) + (pos.market_value || 0);
+    }
+
+    const sortedSectors = Object.entries(sectorValues)
+      .map(([sector, val]) => ({
+        name: sector,
+        value: val,
+        pct: (val / totalVal) * 100,
+      }))
+      .sort((a, b) => b.pct - a.pct);
+
+    const top4 = sortedSectors.slice(0, 4);
+    const remainingValue = sortedSectors.slice(4).reduce((acc, s) => acc + s.value, 0);
+    const otherPct = (remainingValue / totalVal) * 100;
+    const cashPct = (cash / totalVal) * 100;
+
+    const hasExceeding35 = sortedSectors.some((s) => s.pct > 35);
+    const exceedingSector = sortedSectors.find((s) => s.pct > 35);
+
+    return {
+      cashPct,
+      cashValue: cash,
+      top4,
+      otherPct,
+      hasExceeding35,
+      exceedingSector,
+    };
+  }, [summary, positions]);
 
   return (
     <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans relative selection:bg-cyan-500/20 selection:text-cyan-200">
@@ -728,6 +804,38 @@ export default function PortfolioPage() {
                     />
                   </div>
                 </div>
+
+                {/* 4 Quick Sizing Chips (Buffered with Friction Reserve) */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[11px] font-mono text-slate-400">Quick Sizing:</span>
+                  {[
+                    { label: "25% Cash", val: size25 },
+                    { label: "50% Cash", val: size50 },
+                    { label: "75% Cash", val: size75 },
+                    { label: "MAX AFFORDABLE", val: sizeMax, highlight: true },
+                  ].map((chip) => (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      onClick={() => {
+                        setTradeMode("INR");
+                        setTradeAmount(String(chip.val));
+                      }}
+                      disabled={chip.val <= 0}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all border ${
+                        chip.highlight
+                          ? "bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border-cyan-500/30 font-bold shadow-[0_0_8px_rgba(6,182,212,0.2)]"
+                          : "bg-white/[0.03] hover:bg-white/[0.08] text-slate-300 border-white/[0.06]"
+                      } disabled:opacity-40 disabled:cursor-not-allowed`}
+                      title={`Allocate ${formatINR(chip.val)}`}
+                    >
+                      <span>{chip.label}</span>
+                      <span className="ml-1 text-[10px] opacity-75 tabular-nums">
+                        ({formatINR(chip.val)})
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Live FrontPage Intelligence Card Preview */}
@@ -846,6 +954,106 @@ export default function PortfolioPage() {
             </div>
           </div>
         )}
+
+        {/* Dynamic Portfolio Sector Concentration & Cash Solvency Bar */}
+        <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                <PieChart className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold font-mono text-white tracking-wide uppercase">
+                  Portfolio Sector Concentration &amp; Cash Solvency
+                </h3>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                  Top sector exposures vs cash solvency guardrail (35% threshold)
+                </p>
+              </div>
+            </div>
+
+            {sectorSolvencyMetrics.hasExceeding35 && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-xs font-mono font-semibold animate-pulse">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  High Concentration: {sectorSolvencyMetrics.exceedingSector?.name} ({sectorSolvencyMetrics.exceedingSector?.pct.toFixed(1)}%) &gt; 35%
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Stacked Proportional Bar */}
+          <div className="space-y-2">
+            <div className="w-full h-3.5 rounded-full overflow-hidden flex bg-slate-900 border border-white/[0.08] p-[1px]">
+              {/* Top 4 sectors */}
+              {sectorSolvencyMetrics.top4.map((sec, idx) => {
+                if (sec.pct <= 0) return null;
+                const colors = [
+                  "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]",
+                  "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]",
+                  "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]",
+                  "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]",
+                ];
+                return (
+                  <div
+                    key={sec.name}
+                    className={`h-full ${colors[idx % colors.length]} transition-all duration-300 first:rounded-l-full`}
+                    style={{ width: `${sec.pct}%` }}
+                    title={`${sec.name}: ${sec.pct.toFixed(1)}% (${formatINR(sec.value)})`}
+                  />
+                );
+              })}
+
+              {/* Other sectors if any */}
+              {sectorSolvencyMetrics.otherPct > 0 && (
+                <div
+                  className="h-full bg-slate-600 transition-all duration-300"
+                  style={{ width: `${sectorSolvencyMetrics.otherPct}%` }}
+                  title={`Other: ${sectorSolvencyMetrics.otherPct.toFixed(1)}%`}
+                />
+              )}
+
+              {/* Cash Reserve */}
+              {sectorSolvencyMetrics.cashPct > 0 && (
+                <div
+                  className="h-full bg-blue-500 transition-all duration-300 last:rounded-r-full shadow-[0_0_8px_rgba(59,130,246,0.4)]"
+                  style={{ width: `${sectorSolvencyMetrics.cashPct}%` }}
+                  title={`Cash Solvency: ${sectorSolvencyMetrics.cashPct.toFixed(1)}% (${formatINR(sectorSolvencyMetrics.cashValue)})`}
+                />
+              )}
+            </div>
+
+            {/* Legend / Metrics Chips */}
+            <div className="flex flex-wrap items-center gap-3 pt-1 text-xs font-mono">
+              {sectorSolvencyMetrics.top4.map((sec, idx) => {
+                const dotColors = ["bg-cyan-400", "bg-emerald-400", "bg-amber-400", "bg-indigo-400"];
+                return (
+                  <div key={sec.name} className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${dotColors[idx % dotColors.length]}`} />
+                    <span className="text-slate-400">{sec.name}:</span>
+                    <strong className="text-slate-100 tabular-nums">{sec.pct.toFixed(1)}%</strong>
+                    <span className="text-slate-500 text-[10px]">({formatINR(sec.value)})</span>
+                  </div>
+                );
+              })}
+
+              {sectorSolvencyMetrics.otherPct > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-slate-500" />
+                  <span className="text-slate-400">Other:</span>
+                  <strong className="text-slate-100 tabular-nums">{sectorSolvencyMetrics.otherPct.toFixed(1)}%</strong>
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5 ml-auto">
+                <span className="w-2 h-2 rounded-full bg-blue-400" />
+                <span className="text-slate-400">Cash Solvency:</span>
+                <strong className="text-blue-300 tabular-nums">{sectorSolvencyMetrics.cashPct.toFixed(1)}%</strong>
+                <span className="text-slate-500 text-[10px]">({formatINR(sectorSolvencyMetrics.cashValue)})</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Active Holdings Table */}
         <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">

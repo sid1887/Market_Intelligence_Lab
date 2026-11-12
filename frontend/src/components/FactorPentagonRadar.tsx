@@ -70,14 +70,6 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
             <stop offset="70%" stopColor="#10b981" stopOpacity="0.22" />
             <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.05" />
           </radialGradient>
-
-          <filter id="glowFilter" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
         {/* Concentric Web Rings (5-axis polygon spiderweb) */}
@@ -132,8 +124,7 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
           transition={{ type: "spring", stiffness: 240, damping: 24 }}
           fill="url(#radarPentagonGlow)"
           stroke="#22d3ee"
-          strokeWidth="1.75"
-          filter="url(#glowFilter)"
+          strokeWidth="2"
         />
 
         {/* Interactive Vertex Nodes */}

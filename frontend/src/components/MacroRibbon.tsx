@@ -12,20 +12,20 @@ interface MacroRibbonProps {
   lastIngestTimestamp?: string | null;
 }
 
-export default function MacroRibbon({
+function MacroRibbonComponent({
   macroData,
   supervisorStatus,
   isConnected,
   lastTickAt,
   lastIngestTimestamp,
 }: MacroRibbonProps) {
-  const [ingestElapsed, setIngestElapsed] = useState<string>("syncing...");
+  const [ingestElapsed, setIngestElapsed] = useState<string>("just now");
   const prevValuesRef = useRef<Map<string, number | null>>(new Map());
   const [flashingKeys, setFlashingKeys] = useState<Record<string, "tick-up" | "tick-down">>({});
 
   const effectiveIngestTime = lastIngestTimestamp || supervisorStatus?.last_ingestion_timestamp;
 
-  // Elapsed Time Ticker since last dynamic ingest
+  // Elapsed Time Ticker since last dynamic ingest (30s timer with minute granularity)
   useEffect(() => {
     if (!effectiveIngestTime) {
       setIngestElapsed("just now");
@@ -41,15 +41,13 @@ export default function MacroRibbon({
     const updateTimer = () => {
       const diffSec = Math.max(0, Math.floor((Date.now() - targetMs) / 1000));
       if (diffSec < 60) {
-        setIngestElapsed(`${diffSec}s ago`);
+        setIngestElapsed("just now");
       } else if (diffSec < 3600) {
         const m = Math.floor(diffSec / 60);
-        const s = diffSec % 60;
-        setIngestElapsed(`${m}m ${s}s ago`);
+        setIngestElapsed(`${m}m ago`);
       } else if (diffSec < 86400) {
         const h = Math.floor(diffSec / 3600);
-        const m = Math.floor((diffSec % 3600) / 60);
-        setIngestElapsed(`${h}h ${m}m ago`);
+        setIngestElapsed(`${h}h ago`);
       } else {
         const d = Math.floor(diffSec / 86400);
         setIngestElapsed(`${d}d ago`);
@@ -57,7 +55,7 @@ export default function MacroRibbon({
     };
 
     updateTimer();
-    const interval = setInterval(updateTimer, 1000);
+    const interval = setInterval(updateTimer, 30000);
     return () => clearInterval(interval);
   }, [effectiveIngestTime]);
 
@@ -225,3 +223,6 @@ export default function MacroRibbon({
     </div>
   );
 }
+
+const MacroRibbon = React.memo(MacroRibbonComponent);
+export default MacroRibbon;

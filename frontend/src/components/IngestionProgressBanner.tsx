@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { ActivePlatformJob } from "@/hooks/usePlatformEvents";
@@ -15,14 +15,59 @@ export default function IngestionProgressBanner({
   activeJob,
   onDismiss,
 }: IngestionProgressBannerProps) {
-  if (!activeJob) return null;
+  const [liveBatchJob, setLiveBatchJob] = useState<ActivePlatformJob | null>(null);
 
-  const isRunning = activeJob.status === "RUNNING" || activeJob.status === "QUEUED";
-  const isSucceeded = activeJob.status === "SUCCEEDED";
-  const isFailed = activeJob.status === "FAILED";
+  useEffect(() => {
+    const handleProgress = (e: CustomEvent) => {
+      const data = e.detail;
+      if (!data) return;
+      if (data.status === "running") {
+        setLiveBatchJob({
+          job_id: "cloud-ingest",
+          status: "RUNNING",
+          stage: data.stage || "CLOUD_INCREMENTAL_SYNC",
+          progress_pct: data.total > 0 ? Math.round((data.progress / data.total) * 100) : 0,
+          records_processed: data.progress,
+          records_total: data.total,
+          symbol: data.last_symbol || undefined,
+          message: `Batch ${data.current_batch || 1}/${data.total_batches || 6} • ${data.progress}/${data.total} equities (${data.elapsed_sec?.toFixed(1) || 0}s)`,
+        });
+      } else if (data.status === "completed") {
+        setLiveBatchJob({
+          job_id: "cloud-ingest",
+          status: "SUCCEEDED",
+          stage: "COMPLETED",
+          progress_pct: 100,
+          records_processed: data.total,
+          records_total: data.total,
+          message: data.message || "Cloud market ingestion completed successfully.",
+        });
+        setTimeout(() => setLiveBatchJob(null), 5000);
+      } else if (data.status === "error") {
+        setLiveBatchJob({
+          job_id: "cloud-ingest",
+          status: "FAILED",
+          stage: "ERROR",
+          progress_pct: 0,
+          error: data.message || "Ingestion error",
+        });
+        setTimeout(() => setLiveBatchJob(null), 6000);
+      }
+    };
 
-  const stageLabel = (activeJob.stage || "PROCESSING").replace(/_/g, " ").toUpperCase();
-  const progressPct = Math.min(100, Math.max(0, activeJob.progress_pct || 0));
+    window.addEventListener("mil:ingest-progress", handleProgress as EventListener);
+    return () => window.removeEventListener("mil:ingest-progress", handleProgress as EventListener);
+  }, []);
+
+  const currentJob = liveBatchJob || activeJob;
+  if (!currentJob) return null;
+
+  const isRunning = currentJob.status === "RUNNING" || currentJob.status === "QUEUED";
+  const isSucceeded = currentJob.status === "SUCCEEDED";
+  const isFailed = currentJob.status === "FAILED";
+
+  const stageLabel = (currentJob.stage || "PROCESSING").replace(/_/g, " ").toUpperCase();
+  const progressPct = Math.min(100, Math.max(0, currentJob.progress_pct || 0));
 
   return (
     <AnimatePresence>
@@ -59,27 +104,27 @@ export default function IngestionProgressBanner({
               {stageLabel}
             </span>
 
-            {activeJob.symbol && (
+            {currentJob.symbol && (
               <span className="font-semibold text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/40">
-                [{activeJob.symbol}]
+                [{currentJob.symbol}]
               </span>
             )}
 
-            {activeJob.records_total !== undefined && activeJob.records_total > 0 && (
+            {currentJob.records_total !== undefined && currentJob.records_total > 0 && (
               <span className="text-slate-400 text-[11px] tabular-nums">
-                {activeJob.records_processed ?? 0} / {activeJob.records_total} bars
+                {currentJob.records_processed ?? 0} / {currentJob.records_total} bars
               </span>
             )}
 
-            {activeJob.message && (
+            {currentJob.message && (
               <span className="text-slate-300 text-[11px] truncate max-w-md">
-                {activeJob.message}
+                {currentJob.message}
               </span>
             )}
 
-            {activeJob.error && (
+            {currentJob.error && (
               <span className="text-rose-400 text-[11px] font-medium truncate max-w-md">
-                Error: {activeJob.error}
+                Error: {currentJob.error}
               </span>
             )}
           </div>
@@ -104,7 +149,10 @@ export default function IngestionProgressBanner({
           )}
 
           <button
-            onClick={onDismiss}
+            onClick={() => {
+              setLiveBatchJob(null);
+              onDismiss();
+            }}
             className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
             title="Dismiss banner"
           >

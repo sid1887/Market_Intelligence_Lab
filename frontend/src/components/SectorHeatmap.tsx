@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import { TrendingUp, TrendingDown, Layers } from "lucide-react";
-import { ScreenerCandidate, prefetchStockBundle } from "@/lib/api";
+import { ScreenerCandidate } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface SectorHeatmapProps {
@@ -154,11 +154,10 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
                     whileTap={{ scale: 0.98 }}
                     onClick={() => onSelect(stock.symbol)}
                     onMouseEnter={() => {
-                      prefetchStockBundle(stock.symbol);
                       if (onHover) onHover(stock.symbol);
                     }}
                     className={cn(
-                      "cursor-pointer rounded-xl border p-2.5 flex flex-col justify-between transition-all duration-150 min-h-[64px]",
+                      "cursor-pointer rounded-xl border p-2.5 flex flex-col justify-between transition-all duration-150 min-h-[68px]",
                       colorClasses
                     )}
                   >
