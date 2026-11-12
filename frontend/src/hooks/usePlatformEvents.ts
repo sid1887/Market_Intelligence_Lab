@@ -83,10 +83,48 @@ export function usePlatformEvents() {
     };
   }, []);
 
-  // 2. Continuous platform event streaming with recovery
+  // 2. Continuous platform event streaming with recovery (or calm 20s polling on remote cloud / Vercel)
   useEffect(() => {
     let isDisposed = false;
     let reconnectDelay = 1000;
+
+    const isRemote =
+      typeof window !== "undefined" &&
+      !window.location.hostname.includes("localhost") &&
+      !window.location.hostname.includes("127.0.0.1");
+
+    if (isRemote) {
+      // Remote / Vercel deployment: Use periodic 20s polling instead of aggressive EventSource reconnect loops
+      setIsConnected(true);
+      setError(null);
+
+      const pollRemote = () => {
+        if (isDisposed) return;
+        Promise.allSettled([fetchMacroTelemetry(), fetchSupervisorStatus()]).then(
+          ([macroRes, supRes]) => {
+            if (isDisposed) return;
+            if (macroRes.status === "fulfilled" && macroRes.value) {
+              setMacroData(macroRes.value);
+              setLastTickAt(Date.now());
+            }
+            if (supRes.status === "fulfilled" && supRes.value) {
+              setSupervisorStatus(supRes.value);
+              if (supRes.value.last_ingestion_timestamp) {
+                setLastIngestTimestamp(supRes.value.last_ingestion_timestamp);
+              }
+            }
+            setIsConnected(true);
+            setError(null);
+          }
+        );
+      };
+
+      const pollInterval = setInterval(pollRemote, 20000);
+      return () => {
+        isDisposed = true;
+        clearInterval(pollInterval);
+      };
+    }
 
     const connectStream = () => {
       if (isDisposed) return;

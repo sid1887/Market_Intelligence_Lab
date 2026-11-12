@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["stocks"])
 market_router = router
 
+_CLOUD_INGEST_STATUS: Dict[str, Any] = {
+    "status": "idle",
+    "progress": 0,
+    "total": 0,
+    "message": "System ready"
+}
+
 
 def run_dynamic_ingestion(symbol: str) -> None:
     """Background worker for on-demand dynamic ingestion."""
@@ -240,8 +247,59 @@ def get_stock_tearsheet(
     )
     factors_row = cur.fetchone()
 
-    # If NOT fully populated, resolve dynamically and trigger background ingestion
-    if not (sec_row or wl_row) or not ohlcv_row or ohlcv_count < 240 or not factors_row:
+    # If history is sparse (< 30 bars), attempt fast on-demand backfill via yfinance
+    if ohlcv_count < 30:
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(f"{sym}.NS")
+            df = ticker.history(period="1y", auto_adjust=True, timeout=6)
+            if not df.empty and len(df) >= 5:
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                insert_rows = []
+                for idx, row in df.iterrows():
+                    t_date = idx.strftime("%Y-%m-%d")
+                    insert_rows.append((
+                        sym, t_date, 'EQ',
+                        float(row['Open']), float(row['High']), float(row['Low']), float(row['Close']),
+                        float(row['Close']), float(row['Close']), int(row['Volume']),
+                        float(row['Volume'] * row['Close']), 0, 'YFINANCE_DYNAMIC_BACKFILL',
+                        now_iso, 0, 'final_settled', 'EXCHANGE_OFFICIAL', 0, 1, 1, 1
+                    ))
+                if insert_rows:
+                    conn.executemany("""
+                        INSERT OR REPLACE INTO ohlcv_daily (
+                            symbol, trading_date, series, open, high, low, close, ltp, prev_close,
+                            volume, turnover, delivery_qty, source, retrieval_timestamp, trades_count,
+                            data_status, provenance_class, is_synthetic, is_eligible_for_live_analytics,
+                            is_eligible_for_backtest, is_eligible_for_training
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, insert_rows)
+                    conn.commit()
+                    cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'", (sym,))
+                    ohlcv_count = cur.fetchone()[0]
+                    cur.execute(
+                        "SELECT trading_date, open, high, low, close, volume FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ' ORDER BY trading_date DESC LIMIT 1",
+                        (sym,)
+                    )
+                    ohlcv_row = cur.fetchone()
+        except Exception as e:
+            logger.warning(f"On-demand tearsheet history fetch failed for {sym}: {e}")
+
+    # Fallback to factors_daily if quant_factors_daily is missing
+    if not factors_row:
+        cur.execute(
+            """
+            SELECT symbol, trading_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200,
+                   volatility_annualized, NULL as beta_60d_nifty, NULL as volume_ratio_20d, NULL as volume_zscore_50d,
+                   NULL as roe_pct, NULL as debt_to_equity, NULL as ttm_pe, NULL as opm_pct
+            FROM factors_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1
+            """,
+            (sym,)
+        )
+        factors_row = cur.fetchone()
+
+    # Only trigger background ingestion if symbol has absolutely zero OHLCV records
+    if not (sec_row or wl_row) or not ohlcv_row or ohlcv_count == 0:
         resolver = SymbolResolver()
         try:
             resolver.resolve_symbol(sym)
@@ -431,6 +489,56 @@ def get_stock_history(
         (sym, max(1, limit))
     )
     rows = cur.fetchall()
+
+    if len(rows) < 60:
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(f"{sym}.NS")
+            df = ticker.history(period="1y", auto_adjust=True, timeout=6)
+            if not df.empty:
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                insert_rows = []
+                for idx, row in df.iterrows():
+                    t_date = idx.strftime("%Y-%m-%d")
+                    insert_rows.append((
+                        sym, t_date, 'EQ',
+                        float(row['Open']), float(row['High']), float(row['Low']), float(row['Close']),
+                        float(row['Close']), float(row['Close']), int(row['Volume']),
+                        float(row['Volume'] * row['Close']), 0, 'YFINANCE_DYNAMIC_BACKFILL',
+                        now_iso, 0, 'final_settled', 'EXCHANGE_OFFICIAL', 0, 1, 1, 1
+                    ))
+                if insert_rows:
+                    conn.executemany("""
+                        INSERT OR REPLACE INTO ohlcv_daily (
+                            symbol, trading_date, series, open, high, low, close, ltp, prev_close,
+                            volume, turnover, delivery_qty, source, retrieval_timestamp, trades_count,
+                            data_status, provenance_class, is_synthetic, is_eligible_for_live_analytics,
+                            is_eligible_for_backtest, is_eligible_for_training
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, insert_rows)
+                    conn.commit()
+                    cur.execute(
+                        """
+                        SELECT trading_date as time, open, high, low, close, volume,
+                               COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
+                               COALESCE(is_synthetic, 0) as is_synthetic
+                        FROM (
+                            SELECT trading_date, open, high, low, close, volume, provenance_class, is_synthetic
+                            FROM ohlcv_daily 
+                            WHERE symbol = ? AND series = 'EQ'
+                              AND COALESCE(is_synthetic, 0) = 0
+                              AND COALESCE(is_eligible_for_live_analytics, 1) = 1
+                            ORDER BY trading_date DESC 
+                            LIMIT ?
+                        )
+                        ORDER BY trading_date ASC
+                        """,
+                        (sym, max(1, limit))
+                    )
+                    rows = cur.fetchall()
+        except Exception as e:
+            logger.warning(f"On-demand Yahoo Finance history fetch failed for {sym}: {e}")
+
     if not rows:
         raise HTTPException(status_code=404, detail=f"No price history found for symbol '{sym}'.")
 
@@ -703,15 +811,22 @@ def get_system_accuracy():
 def run_cloud_safe_ingestion() -> None:
     """
     Background worker for asynchronous market ingestion.
-    In cloud lightweight mode, processes symbols in small batches (batch_size=40, max_workers=2)
-    with garbage collection to maintain memory strictly under 320 MB on 512 MB containers.
+    In cloud lightweight mode, processes symbols in small batches (batch_size=25, max_workers=1)
+    with garbage collection to maintain memory strictly under 300 MB on 512 MB containers.
     """
+    global _CLOUD_INGEST_STATUS
     import gc
     from src.storage.hydration import is_cloud_lightweight_mode
     from src.pipeline.universe_ingestion import UniverseIngestionManager
     from src.tasks.catalyst_engine import catalyst_engine
     
     logger.info("Starting background cloud-safe market ingestion...")
+    _CLOUD_INGEST_STATUS = {
+        "status": "running",
+        "progress": 0,
+        "total": 0,
+        "message": "Initializing cloud market ingestion..."
+    }
     manager = UniverseIngestionManager(DATABASE_PATH)
     
     try:
@@ -726,15 +841,20 @@ def run_cloud_safe_ingestion() -> None:
             if not priority_symbols:
                 priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT"]
                 
-            logger.info(f"Cloud Lightweight Ingest: processing {len(priority_symbols)} priority symbols in batches of 40...")
+            total_symbols = len(priority_symbols)
+            _CLOUD_INGEST_STATUS["total"] = total_symbols
+            _CLOUD_INGEST_STATUS["message"] = f"Ingesting {total_symbols} priority equities in batches of 25..."
+            logger.info(f"Cloud Lightweight Ingest: processing {total_symbols} priority symbols in batches of 25...")
             
             from src.data.universe_expander import ingest_symbols_parallel
-            for i in range(0, len(priority_symbols), 40):
-                chunk = priority_symbols[i:i + 40]
+            for i in range(0, total_symbols, 25):
+                chunk = priority_symbols[i:i + 25]
                 try:
-                    ingest_symbols_parallel(manager.db, chunk, max_workers=2, chunk_size=20, period="5d")
+                    ingest_symbols_parallel(manager.db, chunk, max_workers=1, chunk_size=25, period="5d")
                 except Exception as e:
-                    logger.warning(f"Batch {i//40 + 1} ingest partial: {e}")
+                    logger.warning(f"Batch {i//25 + 1} ingest partial: {e}")
+                _CLOUD_INGEST_STATUS["progress"] = min(i + len(chunk), total_symbols)
+                _CLOUD_INGEST_STATUS["message"] = f"Processed {min(i + len(chunk), total_symbols)}/{total_symbols} equities..."
                 gc.collect()
                 
             try:
@@ -742,7 +862,7 @@ def run_cloud_safe_ingestion() -> None:
             except Exception as e:
                 logger.warning(f"Priority factor calculation error: {e}")
         else:
-            # Full universe ingestion on local machine
+            _CLOUD_INGEST_STATUS["message"] = "Executing full universe ingestion..."
             manager.execute_universe_ingestion()
             
         # Invalidate in-memory screener cache
@@ -758,11 +878,30 @@ def run_cloud_safe_ingestion() -> None:
         except Exception as e:
             logger.warning(f"Catalyst scan post-ingest error: {e}")
             
+        _CLOUD_INGEST_STATUS = {
+            "status": "completed",
+            "progress": _CLOUD_INGEST_STATUS.get("total", 100),
+            "total": _CLOUD_INGEST_STATUS.get("total", 100),
+            "message": "Market ingestion completed successfully."
+        }
         logger.info("Background market ingestion completed successfully.")
     except Exception as e:
         logger.error(f"Error in background market ingestion: {e}", exc_info=True)
+        _CLOUD_INGEST_STATUS = {
+            "status": "error",
+            "progress": 0,
+            "total": 0,
+            "message": f"Ingestion error: {str(e)}"
+        }
     finally:
         gc.collect()
+
+
+@router.get("/ingest/status")
+@router.get("/api/v1/ingest/status")
+def get_ingest_status():
+    """Returns dynamic market ingestion progress and status."""
+    return sanitize_for_json(_CLOUD_INGEST_STATUS)
 
 
 @router.post("/system/ingest", status_code=202)
@@ -780,7 +919,8 @@ def trigger_system_ingest(
     from src.storage.hydration import is_cloud_lightweight_mode
     background_tasks.add_task(run_cloud_safe_ingestion)
     return sanitize_for_json({
-        "status": "accepted",
+        "status": "running",
+        "job_id": "cloud-sync",
         "message": "Incremental market sync started in background.",
         "mode": "CLOUD_LIGHTWEIGHT_MODE" if is_cloud_lightweight_mode() else "FULL_UNIVERSE"
     })
@@ -800,4 +940,5 @@ __all__ = [
     "get_system_accuracy",
     "run_dynamic_ingestion",
     "trigger_system_ingest",
+    "get_ingest_status",
 ]

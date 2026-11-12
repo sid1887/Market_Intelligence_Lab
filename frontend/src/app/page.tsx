@@ -24,6 +24,7 @@ import {
   ScreenerResponse,
   WatchlistResponse,
   triggerSystemIngest,
+  fetchIngestStatus,
   clearMemoryCache,
 } from "@/lib/api";
 import { usePlatformEvents } from "@/hooks/usePlatformEvents";
@@ -168,6 +169,35 @@ export default function CockpitPage() {
     try {
       const res = await triggerSystemIngest();
       clearInterval(progressInterval);
+
+      if (res.status === "running" || res.status === "accepted") {
+        // Poll status every 2 seconds until completed or error
+        let pollAttempts = 0;
+        while (pollAttempts < 60) {
+          await new Promise((r) => setTimeout(r, 2000));
+          pollAttempts++;
+          try {
+            const st = await fetchIngestStatus();
+            if (st.status === "running") {
+              const pct = st.total > 0 ? Math.round((st.progress / st.total) * 100) : 50;
+              setActiveJob({
+                job_id: jobId,
+                stage: "CLOUD_INCREMENTAL_SYNC",
+                progress_pct: Math.min(Math.max(pct, 20), 95),
+                status: "RUNNING",
+                message: st.message || `Synchronizing equities (${st.progress}/${st.total})...`,
+              });
+            } else if (st.status === "completed") {
+              break;
+            } else if (st.status === "error") {
+              throw new Error(st.message || "Cloud ingestion failed");
+            }
+          } catch (e) {
+            console.warn("Poll status check error:", e);
+          }
+        }
+      }
+
       const nowIso = new Date().toISOString();
       setLastIngestTimestamp(nowIso);
 
@@ -176,7 +206,7 @@ export default function CockpitPage() {
         stage: "COMPLETED",
         progress_pct: 100,
         status: "SUCCEEDED",
-        message: `Settled ${res.symbols_updated || "universe"} equities (${res.records_ingested || 0} bars) for session ${res.settled_date || "today"}.`,
+        message: `Settled ${res.symbols_updated || "universe"} equities for session ${res.settled_date || "today"}.`,
       });
 
       // Auto-dismiss banner after 6 seconds on successful completion

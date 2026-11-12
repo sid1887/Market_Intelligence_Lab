@@ -548,11 +548,20 @@ export async function fetchScreener(
 
 export interface IngestResponse {
   status: string;
+  job_id?: string;
   settled_date?: string;
   symbols_updated?: number;
   records_ingested?: number;
   factors_computed?: number;
   duration_seconds?: number;
+  message: string;
+  mode?: string;
+}
+
+export interface IngestStatusResponse {
+  status: "idle" | "running" | "completed" | "error";
+  progress: number;
+  total: number;
   message: string;
 }
 
@@ -654,6 +663,10 @@ export async function triggerSystemIngest(): Promise<IngestResponse> {
   const data = (await res.json()) as IngestResponse;
   clearMemoryCache();
   return data;
+}
+
+export async function fetchIngestStatus(): Promise<IngestStatusResponse> {
+  return apiFetch<IngestStatusResponse>("/ingest/status", { cache: "no-store" });
 }
 
 // ─── Paper Trading Portfolio Types & Client API ───────────────────────────────

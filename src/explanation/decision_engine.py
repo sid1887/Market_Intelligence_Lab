@@ -24,6 +24,16 @@ from src.api.utils import sanitize_for_json, safe_float
 logger = logging.getLogger(__name__)
 
 
+def _fmt(val: Any, spec: str = ".2f", fallback: str = "N/A") -> str:
+    """Safe formatting helper that never crashes on None or non-numeric types."""
+    if val is None:
+        return fallback
+    try:
+        return format(val, spec)
+    except Exception:
+        return str(val) if val is not None else fallback
+
+
 class InvestmentDecisionEngine:
     """
     Synthesizes multi-factor analytics into a definitive institutional tearsheet memo.
@@ -248,16 +258,16 @@ class InvestmentDecisionEngine:
             solv_detail = "Solvency Data Unavailable: Balance sheet debt/equity has not been ingested for this issuer."
         elif debt_to_equity <= 0.10:
             solv_status = "PASS"
-            solv_detail = f"Prudent capital structure. Debt-to-Equity is {debt_to_equity:.2f}x (Low / Negligible Debt Profile)."
+            solv_detail = f"Prudent capital structure. Debt-to-Equity is {_fmt(debt_to_equity, '.2f')}x (Low / Negligible Debt Profile)."
         elif debt_to_equity <= 0.5:
             solv_status = "PASS"
-            solv_detail = f"Prudent capital structure. Debt-to-Equity is {debt_to_equity:.2f}x (Threshold <= 0.50x)."
+            solv_detail = f"Prudent capital structure. Debt-to-Equity is {_fmt(debt_to_equity, '.2f')}x (Threshold <= 0.50x)."
         elif debt_to_equity <= 1.2:
             solv_status = "CAUTION"
-            solv_detail = f"Moderate leverage. Debt-to-Equity is {debt_to_equity:.2f}x (Monitored range 0.50x - 1.20x)."
+            solv_detail = f"Moderate leverage. Debt-to-Equity is {_fmt(debt_to_equity, '.2f')}x (Monitored range 0.50x - 1.20x)."
         else:
             solv_status = "FAIL"
-            solv_detail = f"Elevated balance sheet risk. Debt-to-Equity is {debt_to_equity:.2f}x exceeds safe ceiling of 1.20x."
+            solv_detail = f"Elevated balance sheet risk. Debt-to-Equity is {_fmt(debt_to_equity, '.2f')}x exceeds safe ceiling of 1.20x."
         checklist.append({
             "id": "solvency_leverage",
             "name": "Solvency & Leverage Health",
@@ -272,13 +282,13 @@ class InvestmentDecisionEngine:
             dil_detail = "Capital efficiency data unavailable: ROE has not been reported for this reporting period."
         elif roe_pct >= 15.0:
             dil_status = "PASS"
-            dil_detail = f"Strong capital stewardship. High ROE ({roe_pct:.1f}%) enables self-funded organic expansion without equity dilution."
+            dil_detail = f"Strong capital stewardship. High ROE ({_fmt(roe_pct, '.1f')}%) enables self-funded organic expansion without equity dilution."
         elif roe_pct >= 8.0:
             dil_status = "CAUTION"
-            dil_detail = f"Moderate capital efficiency. ROE of {roe_pct:.1f}% requires disciplined capex oversight."
+            dil_detail = f"Moderate capital efficiency. ROE of {_fmt(roe_pct, '.1f')}% requires disciplined capex oversight."
         else:
             dil_status = "FAIL"
-            dil_detail = f"Weak return on invested capital ({roe_pct:.1f}%) signals risk of shareholder dilution."
+            dil_detail = f"Weak return on invested capital ({_fmt(roe_pct, '.1f')}%) signals risk of shareholder dilution."
         checklist.append({
             "id": "dilution_promoters",
             "name": "Capital Efficiency & Dilution Risk",
@@ -288,15 +298,16 @@ class InvestmentDecisionEngine:
 
         # Diagnostic 3: Structural Price Trend
         if sma_200 and sma_50:
-            if current_price > sma_200 and sma_50 > sma_200:
+            if current_price and current_price > sma_200 and sma_50 > sma_200:
                 trend_status = "PASS"
-                trend_detail = f"Classic Golden Cross regime. Price (₹{current_price:,.2f}) > 50 SMA (₹{sma_50:,.2f}) > 200 SMA (₹{sma_200:,.2f})."
-            elif current_price > sma_200:
+                trend_detail = f"Classic Golden Cross regime. Price (₹{_fmt(current_price, ',.2f')}) > 50 SMA (₹{_fmt(sma_50, ',.2f')}) > 200 SMA (₹{_fmt(sma_200, ',.2f')})."
+            elif current_price and current_price > sma_200:
                 trend_status = "CAUTION"
-                trend_detail = f"Above 200 SMA (₹{sma_200:,.2f}), but 50 SMA consolidation underway."
+                trend_detail = f"Above 200 SMA (₹{_fmt(sma_200, ',.2f')}), but 50 SMA consolidation underway."
             else:
+                trend_detail_price = f"₹{_fmt(current_price, ',.2f')}" if current_price else "Price"
                 trend_status = "FAIL"
-                trend_detail = f"Structural downtrend. Price (₹{current_price:,.2f}) trades below 200 SMA (₹{sma_200:,.2f})."
+                trend_detail = f"Structural downtrend. Price ({trend_detail_price}) trades below 200 SMA (₹{_fmt(sma_200, ',.2f')})."
         else:
             trend_status = "CAUTION"
             trend_detail = "Warm-up period active for full 200-day moving average confirmation."
@@ -313,16 +324,16 @@ class InvestmentDecisionEngine:
             val_detail = "TTM P/E not applicable (transitional profitability cycle)."
         elif ttm_pe <= 0:
             val_status = "FAIL"
-            val_detail = f"Negative earnings base (P/E {ttm_pe:.1f}x indicates net losses)."
+            val_detail = f"Negative earnings base (P/E {_fmt(ttm_pe, '.1f')}x indicates net losses)."
         elif ttm_pe <= 35.0:
             val_status = "PASS"
-            val_detail = f"Attractively valued at {ttm_pe:.1f}x TTM P/E with margin of safety."
+            val_detail = f"Attractively valued at {_fmt(ttm_pe, '.1f')}x TTM P/E with margin of safety."
         elif ttm_pe <= 65.0:
             val_status = "CAUTION"
-            val_detail = f"Valuation is fully priced at {ttm_pe:.1f}x TTM P/E, requiring execution consistency."
+            val_detail = f"Valuation is fully priced at {_fmt(ttm_pe, '.1f')}x TTM P/E, requiring execution consistency."
         else:
             val_status = "FAIL"
-            val_detail = f"Rich valuation multiple of {ttm_pe:.1f}x TTM P/E leaves zero room for operational missteps."
+            val_detail = f"Rich valuation multiple of {_fmt(ttm_pe, '.1f')}x TTM P/E leaves zero room for operational missteps."
         checklist.append({
             "id": "valuation_percentile",
             "name": "Valuation Multiple & Percentile",
@@ -344,7 +355,7 @@ class InvestmentDecisionEngine:
         elif conviction_score >= 72 and num_passes >= 3 and trend_status == "PASS":
             verdict = "STRONG_BUY_COMPOUNDER"
             target_horizon = "12_TO_24_MONTHS"
-        elif conviction_score >= 58 and current_price > (sma_50 or 0):
+        elif conviction_score >= 58 and current_price and current_price > (sma_50 or 0):
             verdict = "TACTICAL_SWING_LONG"
             target_horizon = "2_TO_8_WEEKS"
         elif conviction_score >= 42:
@@ -356,39 +367,45 @@ class InvestmentDecisionEngine:
 
         # 8. Bull Case Catalysts (3 quantified points)
         bull_case: List[str] = []
-        if sma_200 and current_price > sma_200:
+        if sma_200 and current_price and current_price > sma_200:
             spread_200 = round(((current_price - sma_200) / sma_200) * 100.0, 1)
-            bull_case.append(f"Institutional Momentum: Operating in a robust multi-year bull structure, trading +{spread_200}% above the 200-day moving average (₹{sma_200:,.2f}).")
+            bull_case.append(f"Institutional Momentum: Operating in a robust multi-year bull structure, trading +{spread_200}% above the 200-day moving average (₹{_fmt(sma_200, ',.2f')}).")
         else:
-            bull_case.append(f"Short-Term Mean Reversion: GARCH conditional forecast models an expected 20-day target of ₹{exp_20d:,.2f} ({upside_pct:+.1f}% drift).")
+            exp_str = f"₹{_fmt(exp_20d, ',.2f')}" if exp_20d is not None else "projected price"
+            upside_str = f"{_fmt(upside_pct, '+.1f')}%" if upside_pct is not None else "0.0%"
+            bull_case.append(f"Short-Term Mean Reversion: GARCH conditional forecast models an expected 20-day target of {exp_str} ({upside_str} drift).")
 
         if roe_pct is not None and roe_pct >= 10.0:
-            bull_case.append(f"Capital Compounding: Generates superior capital efficiency with TTM Return on Equity of {roe_pct:.1f}% and healthy operating margins ({opm_pct or 0.0:.1f}% OPM).")
+            bull_case.append(f"Capital Compounding: Generates superior capital efficiency with TTM Return on Equity of {_fmt(roe_pct, '.1f')}% and healthy operating margins ({_fmt(opm_pct, '.1f', '0.0')}% OPM).")
         elif debt_to_equity is not None:
-            bull_case.append(f"Balance Sheet Safety: Total Debt-to-Equity maintained at {debt_to_equity:.2f}x, preserving solvency through market cycles.")
+            bull_case.append(f"Balance Sheet Safety: Total Debt-to-Equity maintained at {_fmt(debt_to_equity, '.2f')}x, preserving solvency through market cycles.")
         else:
             bull_case.append("Capital Efficiency: Operating fundamentals currently awaiting next quarterly publication cycle.")
 
         if news_rows:
-            top_catalyst = news_rows[0]["title"]
+            top_catalyst = news_rows[0].get("title", "Corporate development")
             bull_case.append(f"Regulatory & Operational Catalyst: Recent corporate disclosures highlight positive operational tailwinds — '{top_catalyst[:85]}...'.")
         else:
-            bull_case.append(f"Market Breadth Resilience: 60-day rolling beta vs NIFTY 50 stands at {beta_60d:.2f}, demonstrating disciplined risk absorption.")
+            beta_str = _fmt(beta_60d, ".2f", "1.00")
+            bull_case.append(f"Market Breadth Resilience: 60-day rolling beta vs NIFTY 50 stands at {beta_str}, demonstrating disciplined risk absorption.")
 
         # 9. Bear Case Risks (3 quantified points)
         bear_case: List[str] = []
         if ttm_pe is not None and ttm_pe > 40.0:
-            bear_case.append(f"Valuation Multiples: Current TTM P/E multiple of {ttm_pe:.1f}x demands pristine earnings execution and leaves minimal margin of safety against macro shocks.")
+            bear_case.append(f"Valuation Multiples: Current TTM P/E multiple of {_fmt(ttm_pe, '.1f')}x demands pristine earnings execution and leaves minimal margin of safety against macro shocks.")
         else:
-            bear_case.append(f"Lower Econometric Cone Buffer: 95% probabilistic confidence boundary dips to ₹{lower_95:,.2f}, representing a potential downside testing zone in adverse liquidity.")
+            lower_str = f"₹{_fmt(lower_95, ',.2f')}" if lower_95 is not None else "support boundary"
+            bear_case.append(f"Lower Econometric Cone Buffer: 95% probabilistic confidence boundary dips to {lower_str}, representing a potential downside testing zone in adverse liquidity.")
 
         if vol_ann and vol_ann > 0.35:
-            bear_case.append(f"Elevated Volatility Regime: Annualized volatility of {vol_ann * 100:.1f}% indicates wide intraday swings and sensitivity to broad-market risk-off rotations.")
+            vol_str = _fmt(vol_ann * 100, ".1f", "35.0")
+            bear_case.append(f"Elevated Volatility Regime: Annualized volatility of {vol_str}% indicates wide intraday swings and sensitivity to broad-market risk-off rotations.")
         else:
-            bear_case.append(f"Systematic Beta Exposure: Rolling 60-day beta of {beta_60d:.2f} leaves the security susceptible to broader NIFTY index drawdowns.")
+            beta_str = _fmt(beta_60d, ".2f", "1.00")
+            bear_case.append(f"Systematic Beta Exposure: Rolling 60-day beta of {beta_str} leaves the security susceptible to broader NIFTY index drawdowns.")
 
         if debt_to_equity is not None and debt_to_equity > 0.7:
-            bear_case.append(f"Debt Servicing Overhead: Financial leverage of {debt_to_equity:.2f}x D/E elevates interest coverage sensitivity during high repo-rate environments.")
+            bear_case.append(f"Debt Servicing Overhead: Financial leverage of {_fmt(debt_to_equity, '.2f')}x D/E elevates interest coverage sensitivity during high repo-rate environments.")
         else:
             bear_case.append(f"Execution & Cyclical Headwinds: Margin compression risk if raw material costs or operating expenses expand faster than top-line revenues.")
 

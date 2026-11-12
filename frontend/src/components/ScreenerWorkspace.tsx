@@ -232,9 +232,9 @@ export default function ScreenerWorkspace({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#030508]/65 backdrop-blur-xl text-slate-100 select-none min-h-0">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#070b14]/95 text-slate-100 select-none min-h-0">
       {/* Top Filter and Navigation Strip */}
-      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-[#030508]/75 backdrop-blur-md">
+      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-[#050811]/95">
         {/* Left: View Mode Toggle & Search */}
         <div className="flex items-center gap-2.5 flex-1 min-w-[280px]">
           {onViewModeChange && (
@@ -403,7 +403,7 @@ export default function ScreenerWorkspace({
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0 h-full">
           {/* Table Header: Desktop 12-Col vs Mobile Streamlined */}
-          <div className="hidden md:grid shrink-0 grid-cols-12 gap-2 px-3 py-2 border-b border-white/[0.08] bg-[#050811]/80 backdrop-blur-md text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
+          <div className="hidden md:grid shrink-0 grid-cols-12 gap-2 px-3 py-2 border-b border-white/[0.08] bg-[#050811]/95 text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
             <div
               className="col-span-1 cursor-pointer flex items-center gap-1 hover:text-slate-200"
               onClick={() => handleSort("rank")}
@@ -514,6 +514,7 @@ export default function ScreenerWorkspace({
                         width: "100%",
                         height: `${virtualRow.size}px`,
                         transform: `translateY(${virtualRow.start}px) translateZ(0)`,
+                        willChange: "transform",
                       }}
                     >
                       <motion.div
