@@ -609,14 +609,24 @@ def train_ml_tournament_endpoint(req: Optional[MLTrainRequest] = None):
     if is_cloud_lightweight_mode():
         logger.info("CLOUD_LIGHTWEIGHT_MODE active: Serving cached tournament summary and models without retraining.")
         summary_path = Path("data/models/tournament_summary.json")
+        if not summary_path.is_absolute():
+            summary_path = Path(__file__).resolve().parent.parent.parent / "data" / "models" / "tournament_summary.json"
         summary_data = {}
         if summary_path.exists():
             with open(summary_path, "r", encoding="utf-8") as f:
                 summary_data = json.load(f)
+        else:
+            try:
+                from src.quant.ml_trainer import WalkForwardMLTrainer
+                db = DatabaseManager(DATABASE_PATH)
+                trainer = WalkForwardMLTrainer(db=db)
+                summary_data = trainer.get_ml_telemetry(limit=10)
+            except Exception:
+                summary_data = {}
         return sanitize_for_json({
             "message": "Cloud Lightweight Mode active: Serving pre-trained champion models from registry.",
             "mode": "CLOUD_LIGHTWEIGHT_MODE",
-            "results": [summary_data.get("overall_summary", {})],
+            "results": [summary_data.get("overall_summary", summary_data)],
             "telemetry": summary_data
         })
     try:

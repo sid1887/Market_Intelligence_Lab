@@ -33,6 +33,10 @@ data/raw/
 *.log
 .system_generated/
 
+# Dynamic runtime telemetry & ML artifacts (generated dynamically by server)
+data/macro_telemetry.json
+data/models/
+
 # OS artifacts
 .DS_Store
 Thumbs.db

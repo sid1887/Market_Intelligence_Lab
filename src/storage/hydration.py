@@ -136,6 +136,9 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                 "factors_daily",
                 "user_watchlists",
                 "market_catalysts",
+                "model_registry",
+                "supervisor_state",
+                "ml_training_runs",
             ]
 
             for tbl in table_order:
@@ -147,7 +150,41 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                     conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
                     logger.info(f"Hydrated {len(rows)} records into {tbl}")
 
+            # Ensure supervisor state is valid and points to an approved champion
+            cur = conn.execute("SELECT active_model_id FROM supervisor_state WHERE singleton_id = 1")
+            ss_row = cur.fetchone()
+            if not ss_row or not ss_row[0]:
+                conn.execute("""
+                    INSERT OR REPLACE INTO supervisor_state (
+                        singleton_id, current_state, active_model_id, last_transition_at,
+                        transition_reason, quarantined_symbols_json, auto_retrain_enabled, updated_at
+                    ) VALUES (
+                        1, 'NORMAL', 'model_HistGradientBoosting_Alpha5D_20261107_131103_e80532',
+                        datetime('now'), 'COLD_BOOT_HYDRATION', '[]', 1, datetime('now')
+                    )
+                """)
+
             conn.commit()
+
+        # Dynamically generate runtime telemetry artifacts on the server filesystem
+        # so cloud containers (Render) have them ready without needing local git files.
+        tourney_summary = snap.get("tournament_summary")
+        if tourney_summary:
+            tourney_path = os.path.join(ROOT_DIR, "data", "models", "tournament_summary.json")
+            if not os.path.exists(tourney_path):
+                os.makedirs(os.path.dirname(tourney_path), exist_ok=True)
+                with open(tourney_path, "w", encoding="utf-8") as f:
+                    json.dump(tourney_summary, f, indent=2)
+                logger.info("Generated data/models/tournament_summary.json on server from snapshot.")
+
+        macro_telemetry = snap.get("macro_telemetry")
+        if macro_telemetry:
+            macro_path = os.path.join(ROOT_DIR, "data", "macro_telemetry.json")
+            if not os.path.exists(macro_path):
+                os.makedirs(os.path.dirname(macro_path), exist_ok=True)
+                with open(macro_path, "w", encoding="utf-8") as f:
+                    json.dump(macro_telemetry, f, indent=2)
+                logger.info("Generated data/macro_telemetry.json on server from snapshot.")
 
         elapsed = (datetime.now() - t0).total_seconds()
         logger.info(f"Instant cloud database hydration complete from snapshot in {elapsed:.3f}s.")

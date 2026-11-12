@@ -51,7 +51,32 @@ def load_tournament_weights(model_summary_path: str = "data/models/tournament_su
     }
     """
     path = Path(model_summary_path)
+    if not path.is_absolute():
+        alt_path = Path(__file__).resolve().parent.parent.parent / model_summary_path
+        if alt_path.exists():
+            path = alt_path
+
     if not path.exists():
+        # Dynamic fallback: check SQLite ml_training_runs for champion weights
+        try:
+            from src.storage.database import DatabaseManager
+            db_path = Path(__file__).resolve().parent.parent.parent / "data" / "market_lab.db"
+            if db_path.exists():
+                db = DatabaseManager(str(db_path))
+                with db.get_connection() as conn:
+                    cur = conn.execute("SELECT feature_weights_json FROM ml_training_runs WHERE is_champion = 1 ORDER BY horizon_days DESC LIMIT 1")
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        fw = json.loads(row[0])
+                        if fw and isinstance(fw, dict):
+                            valid = {k: float(v) for k, v in fw.items() if isinstance(v, (int, float)) and v > 0}
+                            total = sum(valid.values())
+                            if total > 0:
+                                logger.info("Loaded champion weights dynamically from ml_training_runs SQLite table.")
+                                return {k: round(v / total, 4) for k, v in valid.items()}
+        except Exception as e:
+            logger.debug(f"SQLite champion weight lookup fallback failed: {e}")
+
         logger.warning(f"Tournament summary not found at {model_summary_path}. Falling back to default weights.")
         return DEFAULT_TOURNAMENT_WEIGHTS.copy()
 
