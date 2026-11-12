@@ -160,7 +160,7 @@ export default function QuickInspectDrawer({ symbol, onClose }: QuickInspectDraw
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity"
+        className="fixed inset-0 bg-black/70 z-40 transition-opacity"
       />
 
       {/* Slide-over Drawer */}
@@ -169,7 +169,7 @@ export default function QuickInspectDrawer({ symbol, onClose }: QuickInspectDraw
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed top-0 right-0 h-full w-[480px] max-w-full bg-[#06090f]/95 border-l border-white/[0.1] z-50 shadow-[-20px_0_60px_rgba(0,0,0,0.85)] flex flex-col font-sans overflow-hidden backdrop-blur-3xl"
+        className="fixed top-0 right-0 h-full w-[480px] max-w-full bg-[#06090f] border-l border-white/[0.1] z-50 shadow-[-20px_0_60px_rgba(0,0,0,0.85)] flex flex-col font-sans overflow-hidden"
       >
         {/* Drawer Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/[0.08] bg-[#080c14]/90">

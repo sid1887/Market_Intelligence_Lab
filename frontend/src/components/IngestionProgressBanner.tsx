@@ -32,12 +32,12 @@ export default function IngestionProgressBanner({
         exit={{ opacity: 0, y: -10 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
         className={cn(
-          "shrink-0 w-full px-4 py-2 border-b flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono backdrop-blur-2xl transition-all shadow-md",
+          "shrink-0 w-full px-4 py-2 border-b flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono transition-all shadow-md",
           isFailed
-            ? "bg-rose-950/50 border-rose-500/40 text-rose-200"
+            ? "bg-rose-950/80 border-rose-500/40 text-rose-200"
             : isSucceeded
-            ? "bg-emerald-950/50 border-emerald-500/40 text-emerald-200"
-            : "bg-[#060c18]/85 border-cyan-500/30 text-cyan-200"
+            ? "bg-emerald-950/80 border-emerald-500/40 text-emerald-200"
+            : "bg-[#060c18] border-cyan-500/30 text-cyan-200"
         )}
       >
         {/* Left: Status Icon + Stage + Symbol Details */}
@@ -45,7 +45,6 @@ export default function IngestionProgressBanner({
           {isRunning && (
             <div className="relative flex items-center justify-center">
               <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
-              <span className="absolute w-2 h-2 rounded-full bg-cyan-400 blur-[4px]" />
             </div>
           )}
           {isSucceeded && (

@@ -224,7 +224,7 @@ export default function BacktestCompareChart({
   return (
     <div className="w-full flex flex-col space-y-3">
       {/* Legend & Hover inspection ribbon */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#050810]/90 border border-white/[0.08] rounded-2xl text-xs font-mono backdrop-blur-2xl shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-[#050810] border border-white/[0.08] rounded-2xl text-xs font-mono shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
         <div className="flex items-center space-x-2 text-slate-400">
           <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Session:</span>
           <span className="text-cyan-400 font-semibold tabular-nums">{hoveredData?.date || "—"}</span>

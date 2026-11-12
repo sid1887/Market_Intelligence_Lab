@@ -29,11 +29,104 @@ router = APIRouter(tags=["stocks"])
 market_router = router
 
 _CLOUD_INGEST_STATUS: Dict[str, Any] = {
-    "status": "idle",
+    "status": "idle",        # "idle" | "running" | "completed" | "error"
+    "stage": "READY",
     "progress": 0,
     "total": 0,
+    "current_batch": 0,
+    "total_batches": 0,
+    "last_symbol": None,
+    "started_at": None,
+    "elapsed_sec": 0.0,
     "message": "System ready"
 }
+
+
+def sync_yfinance_history_for_symbol(sym: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    On-demand helper to fetch 1y daily bars via yfinance.
+    Uses DatabaseManager(DATABASE_PATH).get_connection() as write_conn to avoid readonly DB errors.
+    Immediately updates ohlcv_daily and quant_factors_daily (ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200).
+    Returns the list of candlestick dicts in memory even if SQLite write locks or fails.
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(f"{sym}.NS")
+        df = ticker.history(period="1y", auto_adjust=True, timeout=6)
+        if df.empty or len(df) < 5:
+            return None
+
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        insert_rows = []
+        candles = []
+        for idx, row in df.iterrows():
+            t_date = idx.strftime("%Y-%m-%d")
+            c_open = float(row['Open'])
+            c_high = float(row['High'])
+            c_low = float(row['Low'])
+            c_close = float(row['Close'])
+            c_vol = int(row['Volume'])
+            insert_rows.append((
+                sym, t_date, 'EQ',
+                c_open, c_high, c_low, c_close,
+                c_close, c_close, c_vol,
+                float(c_vol * c_close), 0, 'YFINANCE_DYNAMIC_BACKFILL',
+                now_iso, 0, 'final_settled', 'EXCHANGE_OFFICIAL', 0, 1, 1, 1
+            ))
+            candles.append({
+                "time": t_date,
+                "open": round(c_open, 2),
+                "high": round(c_high, 2),
+                "low": round(c_low, 2),
+                "close": round(c_close, 2),
+                "volume": c_vol,
+                "provenance_class": "EXCHANGE_OFFICIAL",
+                "is_synthetic": False
+            })
+
+        # Calculate factors from df
+        closes = df['Close'].tolist()
+        ret_1d = (closes[-1] / closes[-2] - 1.0) if len(closes) >= 2 else 0.0
+        ret_5d = (closes[-1] / closes[-6] - 1.0) if len(closes) >= 6 else None
+        ret_20d = (closes[-1] / closes[-21] - 1.0) if len(closes) >= 21 else (ret_5d * 4.0 if ret_5d is not None else 0.0)
+        sma_20 = float(df['Close'].tail(20).mean()) if len(closes) >= 20 else None
+        sma_50 = float(df['Close'].tail(50).mean()) if len(closes) >= 50 else None
+        sma_200 = float(df['Close'].tail(200).mean()) if len(closes) >= 200 else None
+        latest_date = df.index[-1].strftime("%Y-%m-%d")
+
+        try:
+            with DatabaseManager(DATABASE_PATH).get_connection() as write_conn:
+                write_conn.executemany("""
+                    INSERT OR REPLACE INTO ohlcv_daily (
+                        symbol, trading_date, series, open, high, low, close, ltp, prev_close,
+                        volume, turnover, delivery_qty, source, retrieval_timestamp, trades_count,
+                        data_status, provenance_class, is_synthetic, is_eligible_for_live_analytics,
+                        is_eligible_for_backtest, is_eligible_for_training
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, insert_rows)
+
+                write_conn.execute("""
+                    INSERT INTO quant_factors_daily (
+                        symbol, trading_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(symbol, trading_date) DO UPDATE SET
+                        ret_1d=excluded.ret_1d,
+                        ret_5d=excluded.ret_5d,
+                        ret_20d=excluded.ret_20d,
+                        sma_20=excluded.sma_20,
+                        sma_50=excluded.sma_50,
+                        sma_200=excluded.sma_200,
+                        updated_at=excluded.updated_at
+                """, (sym, latest_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, now_iso))
+                write_conn.commit()
+                logger.info(f"Persisted on-demand 1y backfill for {sym} ({len(insert_rows)} candles).")
+        except Exception as write_err:
+            logger.warning(f"Failed to persist on-demand backfill to SQLite for {sym}: {write_err}")
+
+        return candles
+    except Exception as e:
+        logger.warning(f"On-demand yfinance fetch failed for {sym}: {e}")
+        return None
 
 
 def run_dynamic_ingestion(symbol: str) -> None:
@@ -247,43 +340,19 @@ def get_stock_tearsheet(
     )
     factors_row = cur.fetchone()
 
-    # If history is sparse (< 30 bars), attempt fast on-demand backfill via yfinance
-    if ohlcv_count < 30:
-        try:
-            import yfinance as yf
-            ticker = yf.Ticker(f"{sym}.NS")
-            df = ticker.history(period="1y", auto_adjust=True, timeout=6)
-            if not df.empty and len(df) >= 5:
-                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                insert_rows = []
-                for idx, row in df.iterrows():
-                    t_date = idx.strftime("%Y-%m-%d")
-                    insert_rows.append((
-                        sym, t_date, 'EQ',
-                        float(row['Open']), float(row['High']), float(row['Low']), float(row['Close']),
-                        float(row['Close']), float(row['Close']), int(row['Volume']),
-                        float(row['Volume'] * row['Close']), 0, 'YFINANCE_DYNAMIC_BACKFILL',
-                        now_iso, 0, 'final_settled', 'EXCHANGE_OFFICIAL', 0, 1, 1, 1
-                    ))
-                if insert_rows:
-                    conn.executemany("""
-                        INSERT OR REPLACE INTO ohlcv_daily (
-                            symbol, trading_date, series, open, high, low, close, ltp, prev_close,
-                            volume, turnover, delivery_qty, source, retrieval_timestamp, trades_count,
-                            data_status, provenance_class, is_synthetic, is_eligible_for_live_analytics,
-                            is_eligible_for_backtest, is_eligible_for_training
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, insert_rows)
-                    conn.commit()
-                    cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'", (sym,))
-                    ohlcv_count = cur.fetchone()[0]
-                    cur.execute(
-                        "SELECT trading_date, open, high, low, close, volume FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ' ORDER BY trading_date DESC LIMIT 1",
-                        (sym,)
-                    )
-                    ohlcv_row = cur.fetchone()
-        except Exception as e:
-            logger.warning(f"On-demand tearsheet history fetch failed for {sym}: {e}")
+    # If history is sparse (< 60 bars), attempt fast on-demand backfill via yfinance (write connection)
+    in_memory_candles: Optional[List[Dict[str, Any]]] = None
+    if ohlcv_count < 60:
+        in_memory_candles = sync_yfinance_history_for_symbol(sym)
+        if in_memory_candles:
+            ohlcv_count = len(in_memory_candles)
+            cur.execute(
+                "SELECT trading_date, open, high, low, close, volume FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ' ORDER BY trading_date DESC LIMIT 1",
+                (sym,)
+            )
+            latest_row = cur.fetchone()
+            if latest_row:
+                ohlcv_row = latest_row
 
     # Fallback to factors_daily if quant_factors_daily is missing
     if not factors_row:
@@ -382,33 +451,36 @@ def get_stock_tearsheet(
         })
 
     # Fetch Historical Daily Candlesticks (for lightweight-charts)
-    cur.execute(
-        """
-        SELECT trading_date as time, open, high, low, close, volume,
-               COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
-               COALESCE(is_synthetic, 0) as is_synthetic
-        FROM ohlcv_daily 
-        WHERE symbol = ? AND series = 'EQ'
-          AND COALESCE(is_synthetic, 0) = 0
-          AND COALESCE(is_eligible_for_live_analytics, 1) = 1
-        ORDER BY trading_date ASC
-        """,
-        (sym,)
-    )
-    chart_rows = cur.fetchall()
-    history = [
-        {
-            "time": r["time"],
-            "open": safe_float(r["open"], 2),
-            "high": safe_float(r["high"], 2),
-            "low": safe_float(r["low"], 2),
-            "close": safe_float(r["close"], 2),
-            "volume": safe_int(r["volume"]) or 0,
-            "provenance_class": r["provenance_class"],
-            "is_synthetic": bool(r["is_synthetic"])
-        }
-        for r in chart_rows
-    ]
+    if in_memory_candles:
+        history = in_memory_candles
+    else:
+        cur.execute(
+            """
+            SELECT trading_date as time, open, high, low, close, volume,
+                   COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
+                   COALESCE(is_synthetic, 0) as is_synthetic
+            FROM ohlcv_daily 
+            WHERE symbol = ? AND series = 'EQ'
+              AND COALESCE(is_synthetic, 0) = 0
+              AND COALESCE(is_eligible_for_live_analytics, 1) = 1
+            ORDER BY trading_date ASC
+            """,
+            (sym,)
+        )
+        chart_rows = cur.fetchall()
+        history = [
+            {
+                "time": r["time"],
+                "open": safe_float(r["open"], 2),
+                "high": safe_float(r["high"], 2),
+                "low": safe_float(r["low"], 2),
+                "close": safe_float(r["close"], 2),
+                "volume": safe_int(r["volume"]) or 0,
+                "provenance_class": r["provenance_class"],
+                "is_synthetic": bool(r["is_synthetic"])
+            }
+            for r in chart_rows
+        ]
 
     payload = {
         "symbol": sym,
@@ -491,53 +563,29 @@ def get_stock_history(
     rows = cur.fetchall()
 
     if len(rows) < 60:
-        try:
-            import yfinance as yf
-            ticker = yf.Ticker(f"{sym}.NS")
-            df = ticker.history(period="1y", auto_adjust=True, timeout=6)
-            if not df.empty:
-                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-                insert_rows = []
-                for idx, row in df.iterrows():
-                    t_date = idx.strftime("%Y-%m-%d")
-                    insert_rows.append((
-                        sym, t_date, 'EQ',
-                        float(row['Open']), float(row['High']), float(row['Low']), float(row['Close']),
-                        float(row['Close']), float(row['Close']), int(row['Volume']),
-                        float(row['Volume'] * row['Close']), 0, 'YFINANCE_DYNAMIC_BACKFILL',
-                        now_iso, 0, 'final_settled', 'EXCHANGE_OFFICIAL', 0, 1, 1, 1
-                    ))
-                if insert_rows:
-                    conn.executemany("""
-                        INSERT OR REPLACE INTO ohlcv_daily (
-                            symbol, trading_date, series, open, high, low, close, ltp, prev_close,
-                            volume, turnover, delivery_qty, source, retrieval_timestamp, trades_count,
-                            data_status, provenance_class, is_synthetic, is_eligible_for_live_analytics,
-                            is_eligible_for_backtest, is_eligible_for_training
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, insert_rows)
-                    conn.commit()
-                    cur.execute(
-                        """
-                        SELECT trading_date as time, open, high, low, close, volume,
-                               COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
-                               COALESCE(is_synthetic, 0) as is_synthetic
-                        FROM (
-                            SELECT trading_date, open, high, low, close, volume, provenance_class, is_synthetic
-                            FROM ohlcv_daily 
-                            WHERE symbol = ? AND series = 'EQ'
-                              AND COALESCE(is_synthetic, 0) = 0
-                              AND COALESCE(is_eligible_for_live_analytics, 1) = 1
-                            ORDER BY trading_date DESC 
-                            LIMIT ?
-                        )
-                        ORDER BY trading_date ASC
-                        """,
-                        (sym, max(1, limit))
-                    )
-                    rows = cur.fetchall()
-        except Exception as e:
-            logger.warning(f"On-demand Yahoo Finance history fetch failed for {sym}: {e}")
+        candles = sync_yfinance_history_for_symbol(sym)
+        if candles:
+            return sanitize_for_json(candles[:max(1, limit)])
+
+        cur.execute(
+            """
+            SELECT trading_date as time, open, high, low, close, volume,
+                   COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
+                   COALESCE(is_synthetic, 0) as is_synthetic
+            FROM (
+                SELECT trading_date, open, high, low, close, volume, provenance_class, is_synthetic
+                FROM ohlcv_daily 
+                WHERE symbol = ? AND series = 'EQ'
+                  AND COALESCE(is_synthetic, 0) = 0
+                  AND COALESCE(is_eligible_for_live_analytics, 1) = 1
+                ORDER BY trading_date DESC 
+                LIMIT ?
+            )
+            ORDER BY trading_date ASC
+            """,
+            (sym, max(1, limit))
+        )
+        rows = cur.fetchall()
 
     if not rows:
         raise HTTPException(status_code=404, detail=f"No price history found for symbol '{sym}'.")
@@ -815,52 +863,136 @@ def run_cloud_safe_ingestion() -> None:
     with garbage collection to maintain memory strictly under 300 MB on 512 MB containers.
     """
     global _CLOUD_INGEST_STATUS
+    import sys
+    import time
+    import math
     import gc
+    import pandas as pd
     from src.storage.hydration import is_cloud_lightweight_mode
     from src.pipeline.universe_ingestion import UniverseIngestionManager
     from src.tasks.catalyst_engine import catalyst_engine
     
-    logger.info("Starting background cloud-safe market ingestion...")
-    _CLOUD_INGEST_STATUS = {
-        "status": "running",
-        "progress": 0,
-        "total": 0,
-        "message": "Initializing cloud market ingestion..."
-    }
+    t0 = time.time()
+    started_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    logger.info("[CLOUD-INGEST] Starting background cloud-safe market ingestion...")
+    sys.stdout.flush()
+
     manager = UniverseIngestionManager(DATABASE_PATH)
     
     try:
         if is_cloud_lightweight_mode():
-            # In cloud lightweight mode: prioritize Watchlist + Portfolio + Top-200 liquid equities
+            # In cloud lightweight mode: prioritize Watchlist + Portfolio + Top 125 liquid equities (~130 total)
             with manager.db.get_connection() as conn:
                 wl_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM user_watchlists").fetchall()]
                 pf_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM portfolio_positions WHERE quantity > 0").fetchall()]
-                top_rows = [r[0] for r in conn.execute("SELECT symbol FROM securities_master WHERE is_active = 1 AND (is_nifty50 = 1 OR tier = 'LARGE' OR tier = 'MID') LIMIT 200").fetchall()]
+                top_rows = [r[0] for r in conn.execute("""
+                    SELECT symbol FROM securities_master 
+                    WHERE is_active = 1 
+                    ORDER BY is_nifty50 DESC, (tier = 'LARGE') DESC, (tier = 'MID') DESC 
+                    LIMIT 125
+                """).fetchall()]
             
             priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + top_rows))
             if not priority_symbols:
-                priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT"]
+                priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT", "FEDERALBNK", "UNIONBANK"]
                 
             total_symbols = len(priority_symbols)
-            _CLOUD_INGEST_STATUS["total"] = total_symbols
-            _CLOUD_INGEST_STATUS["message"] = f"Ingesting {total_symbols} priority equities in batches of 25..."
-            logger.info(f"Cloud Lightweight Ingest: processing {total_symbols} priority symbols in batches of 25...")
+            batch_size = 25
+            total_batches = math.ceil(total_symbols / batch_size)
+
+            _CLOUD_INGEST_STATUS = {
+                "status": "running",
+                "stage": "BATCH_SYNC",
+                "progress": 0,
+                "total": total_symbols,
+                "current_batch": 0,
+                "total_batches": total_batches,
+                "last_symbol": None,
+                "started_at": started_iso,
+                "elapsed_sec": 0.0,
+                "message": f"Ingesting {total_symbols} priority equities across {total_batches} batches..."
+            }
+            logger.info(f"[CLOUD-INGEST] Cloud Lightweight Ingest: processing {total_symbols} symbols in {total_batches} batches of {batch_size}...")
+            sys.stdout.flush()
             
             from src.data.universe_expander import ingest_symbols_parallel
-            for i in range(0, total_symbols, 25):
-                chunk = priority_symbols[i:i + 25]
-                try:
-                    ingest_symbols_parallel(manager.db, chunk, max_workers=1, chunk_size=25, period="5d")
-                except Exception as e:
-                    logger.warning(f"Batch {i//25 + 1} ingest partial: {e}")
-                _CLOUD_INGEST_STATUS["progress"] = min(i + len(chunk), total_symbols)
-                _CLOUD_INGEST_STATUS["message"] = f"Processed {min(i + len(chunk), total_symbols)}/{total_symbols} equities..."
-                gc.collect()
+            for b_idx in range(total_batches):
+                start_i = b_idx * batch_size
+                chunk = priority_symbols[start_i:start_i + batch_size]
+                done_count = min(start_i + len(chunk), total_symbols)
                 
+                logger.info(f"[CLOUD-INGEST] Batch {b_idx + 1}/{total_batches} ({len(chunk)} symbols: {chunk[0]}..{chunk[-1]}) — progress {done_count}/{total_symbols}")
+                sys.stdout.flush()
+
+                try:
+                    ingest_symbols_parallel(manager.db, chunk, max_workers=1, chunk_size=batch_size, period="5d")
+                except Exception as e:
+                    logger.warning(f"[CLOUD-INGEST] Batch {b_idx + 1} partial failure: {e}")
+                    sys.stdout.flush()
+
+                _CLOUD_INGEST_STATUS.update({
+                    "progress": done_count,
+                    "current_batch": b_idx + 1,
+                    "last_symbol": chunk[-1],
+                    "elapsed_sec": round(time.time() - t0, 1),
+                    "message": f"Batch {b_idx + 1}/{total_batches} • Synced {done_count}/{total_symbols} equities ({chunk[-1]})..."
+                })
+                gc.collect()
+
+            # Fast SQL/Pandas calculation over last 250 bars of updated symbols to refresh
+            # ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200 in quant_factors_daily in < 2 seconds
+            _CLOUD_INGEST_STATUS["stage"] = "FACTOR_REFRESH"
+            _CLOUD_INGEST_STATUS["message"] = "Calculating technical factors and 20D returns..."
+            logger.info("[CLOUD-INGEST] Vectorized refresh of 20D returns & SMAs in quant_factors_daily...")
+            sys.stdout.flush()
+
             try:
-                manager.pipeline.calculate_daily_factors(symbols=priority_symbols)
-            except Exception as e:
-                logger.warning(f"Priority factor calculation error: {e}")
+                with manager.db.get_connection() as conn:
+                    df = pd.read_sql_query(f"""
+                        SELECT symbol, trading_date, close
+                        FROM ohlcv_daily
+                        WHERE symbol IN ({','.join(['?']*len(priority_symbols))}) AND series = 'EQ'
+                        ORDER BY symbol, trading_date ASC
+                    """, conn, params=priority_symbols)
+
+                factor_updates = []
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                for sym, group in df.groupby("symbol"):
+                    if len(group) < 2:
+                        continue
+                    group = group.tail(250)
+                    closes = group["close"].values
+                    dates = group["trading_date"].values
+                    ret_1d = (closes[-1] / closes[-2] - 1.0) if len(closes) >= 2 else 0.0
+                    ret_5d = (closes[-1] / closes[-6] - 1.0) if len(closes) >= 6 else None
+                    ret_20d = (closes[-1] / closes[-21] - 1.0) if len(closes) >= 21 else (ret_5d * 4.0 if ret_5d is not None else 0.0)
+                    sma_20 = float(closes[-20:].mean()) if len(closes) >= 20 else None
+                    sma_50 = float(closes[-50:].mean()) if len(closes) >= 50 else None
+                    sma_200 = float(closes[-200:].mean()) if len(closes) >= 200 else None
+                    factor_updates.append((sym, str(dates[-1]), ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, now_iso))
+
+                if factor_updates:
+                    with manager.db.get_connection() as conn:
+                        conn.executemany("""
+                            INSERT INTO quant_factors_daily (
+                                symbol, trading_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200, updated_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(symbol, trading_date) DO UPDATE SET
+                                ret_1d=excluded.ret_1d,
+                                ret_5d=excluded.ret_5d,
+                                ret_20d=excluded.ret_20d,
+                                sma_20=excluded.sma_20,
+                                sma_50=excluded.sma_50,
+                                sma_200=excluded.sma_200,
+                                updated_at=excluded.updated_at
+                        """, factor_updates)
+                        conn.commit()
+                    logger.info(f"[CLOUD-INGEST] Fast vectorized factors refreshed for {len(factor_updates)} symbols.")
+                    sys.stdout.flush()
+            except Exception as fe:
+                logger.warning(f"[CLOUD-INGEST] Fast factor calculation error: {fe}")
+                sys.stdout.flush()
+
         else:
             _CLOUD_INGEST_STATUS["message"] = "Executing full universe ingestion..."
             manager.execute_universe_ingestion()
@@ -878,19 +1010,34 @@ def run_cloud_safe_ingestion() -> None:
         except Exception as e:
             logger.warning(f"Catalyst scan post-ingest error: {e}")
             
+        elapsed = round(time.time() - t0, 1)
         _CLOUD_INGEST_STATUS = {
             "status": "completed",
-            "progress": _CLOUD_INGEST_STATUS.get("total", 100),
-            "total": _CLOUD_INGEST_STATUS.get("total", 100),
-            "message": "Market ingestion completed successfully."
+            "stage": "COMPLETED",
+            "progress": _CLOUD_INGEST_STATUS.get("total", 130),
+            "total": _CLOUD_INGEST_STATUS.get("total", 130),
+            "current_batch": _CLOUD_INGEST_STATUS.get("total_batches", 6),
+            "total_batches": _CLOUD_INGEST_STATUS.get("total_batches", 6),
+            "last_symbol": _CLOUD_INGEST_STATUS.get("last_symbol"),
+            "started_at": started_iso,
+            "elapsed_sec": elapsed,
+            "message": f"Cloud market ingestion completed successfully in {elapsed}s."
         }
-        logger.info("Background market ingestion completed successfully.")
+        logger.info(f"[CLOUD-INGEST] Completed in {elapsed}s across {total_symbols if is_cloud_lightweight_mode() else 'universe'} symbols.")
+        sys.stdout.flush()
     except Exception as e:
-        logger.error(f"Error in background market ingestion: {e}", exc_info=True)
+        logger.error(f"[CLOUD-INGEST] Fatal error in market ingestion: {e}", exc_info=True)
+        sys.stdout.flush()
         _CLOUD_INGEST_STATUS = {
             "status": "error",
+            "stage": "ERROR",
             "progress": 0,
             "total": 0,
+            "current_batch": 0,
+            "total_batches": 0,
+            "last_symbol": None,
+            "started_at": started_iso,
+            "elapsed_sec": round(time.time() - t0, 1),
             "message": f"Ingestion error: {str(e)}"
         }
     finally:
@@ -914,15 +1061,91 @@ def trigger_system_ingest(
 ):
     """
     Executes non-blocking dynamic market ingestion.
-    Returns 202 Accepted in < 100ms and executes sync asynchronously to prevent Render 502 timeouts.
+    Returns 202 Accepted in < 100ms. Guards against duplicate concurrent runs.
     """
+    global _CLOUD_INGEST_STATUS
     from src.storage.hydration import is_cloud_lightweight_mode
+
+    if _CLOUD_INGEST_STATUS.get("status") == "running":
+        return sanitize_for_json({
+            **_CLOUD_INGEST_STATUS,
+            "job_id": "cloud-sync",
+            "message": "Market ingestion job is already running."
+        })
+
     background_tasks.add_task(run_cloud_safe_ingestion)
     return sanitize_for_json({
         "status": "running",
         "job_id": "cloud-sync",
         "message": "Incremental market sync started in background.",
         "mode": "CLOUD_LIGHTWEIGHT_MODE" if is_cloud_lightweight_mode() else "FULL_UNIVERSE"
+    })
+
+
+@router.get("/stocks/{symbol}/bundle")
+@router.get("/api/v1/stocks/{symbol}/bundle")
+def get_stock_bundle(
+    symbol: str,
+    background_tasks: BackgroundTasks,
+    horizon_days: int = Query(20, ge=1, le=60, description="Forecast horizon"),
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """
+    Returns tearsheet, forecast, memo, and news in a single unified JSON payload.
+    Reuses connection and executes on-demand yfinance backfill once if ohlcv_count < 60.
+    """
+    sym = symbol.upper().strip()
+    if not re.match(r"^[A-Z0-9&_\-]{1,20}$", sym):
+        raise HTTPException(status_code=400, detail=f"Invalid symbol format: '{sym}'.")
+
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ'", (sym,))
+    ohlcv_count = cur.fetchone()[0]
+
+    if ohlcv_count < 60:
+        sync_yfinance_history_for_symbol(sym)
+
+    # 1. Tearsheet
+    tearsheet = get_stock_tearsheet(sym, background_tasks, conn)
+    if isinstance(tearsheet, JSONResponse):
+        tearsheet_data = json.loads(tearsheet.body.decode("utf-8"))
+    else:
+        tearsheet_data = tearsheet
+
+    # 2. Forecast
+    forecast_data = None
+    try:
+        from src.quant.forecasting import EconometricForecaster
+        forecaster = EconometricForecaster(DatabaseManager(DATABASE_PATH))
+        forecast_data = forecaster.generate_forecast(sym, horizon_days=horizon_days)
+    except Exception as e:
+        logger.warning(f"Bundle forecast generation non-fatal error for {sym}: {e}")
+        forecast_data = {"error": str(e), "cones": None}
+
+    # 3. Investment Memo
+    memo_data = None
+    try:
+        from src.explanation.decision_engine import InvestmentDecisionEngine
+        engine = InvestmentDecisionEngine(DatabaseManager(DATABASE_PATH))
+        memo_data = engine.generate_memo(sym)
+    except Exception as e:
+        logger.warning(f"Bundle memo generation non-fatal error for {sym}: {e}")
+        memo_data = {"error": str(e), "memo": "Investment memo generation pending sufficient history."}
+
+    # 4. News
+    news_data = []
+    try:
+        news_data = get_stock_news(sym, limit=5, force_refresh=False, conn=conn)
+    except Exception as e:
+        logger.warning(f"Bundle news retrieval non-fatal error for {sym}: {e}")
+        news_data = []
+
+    return sanitize_for_json({
+        "symbol": sym,
+        "tearsheet": tearsheet_data,
+        "forecast": forecast_data,
+        "memo": memo_data,
+        "news": news_data
     })
 
 
@@ -934,6 +1157,7 @@ __all__ = [
     "get_stock_history",
     "get_stock_forecast",
     "get_stock_news",
+    "get_stock_bundle",
     "run_backtest_endpoint",
     "get_latest_backtest",
     "get_investment_memo",

@@ -124,7 +124,12 @@ export default function WatchlistPanel({ items, loading }: WatchlistPanelProps) 
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
                 {/* Subtle radial glow corner */}
-                <div className="absolute -top-12 -left-12 w-24 h-24 bg-cyan-500/10 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                <div
+                  className="absolute -top-12 -left-12 w-24 h-24 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                  style={{
+                    background: "radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, transparent 70%)",
+                  }}
+                />
 
                 {/* Left Column: Ticker, Sector, and Price */}
                 <div className="flex flex-col justify-between h-full z-10 min-w-0 pr-2">

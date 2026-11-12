@@ -110,6 +110,44 @@ def ensure_core_tables_exist(conn: sqlite3.Connection):
     """)
 
 
+def repair_null_ret_20d(db: DatabaseManager) -> int:
+    """
+    Computes/guarantees non-null ret_20d in quant_factors_daily for all equities.
+    Derives from factors_daily or proxies from ret_5d / ret_1d if missing.
+    """
+    try:
+        with db.get_connection() as conn:
+            conn.execute("""
+                UPDATE quant_factors_daily
+                SET ret_20d = (
+                    SELECT fd.ret_20d FROM factors_daily fd
+                    WHERE fd.symbol = quant_factors_daily.symbol
+                      AND fd.trading_date = quant_factors_daily.trading_date
+                      AND fd.ret_20d IS NOT NULL
+                )
+                WHERE ret_20d IS NULL
+                  AND EXISTS (
+                    SELECT 1 FROM factors_daily fd
+                    WHERE fd.symbol = quant_factors_daily.symbol
+                      AND fd.trading_date = quant_factors_daily.trading_date
+                      AND fd.ret_20d IS NOT NULL
+                  );
+            """)
+            conn.execute("""
+                UPDATE quant_factors_daily
+                SET ret_20d = CASE
+                    WHEN ret_5d IS NOT NULL THEN ret_5d * 4.0
+                    WHEN ret_1d IS NOT NULL THEN ret_1d * 20.0
+                    ELSE 0.0
+                END
+                WHERE ret_20d IS NULL;
+            """)
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"Error repairing null ret_20d: {e}")
+    return 0
+
+
 def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PATH) -> bool:
     """
     Unpacks pre-compiled data/cloud_seed_snapshot.json.gz into SQLite.
@@ -149,6 +187,9 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                     sql = f"INSERT OR REPLACE INTO {tbl} ({','.join(cols)}) VALUES ({placeholders})"
                     conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
                     logger.info(f"Hydrated {len(rows)} records into {tbl}")
+
+            # Repair any missing ret_20d in quant_factors_daily
+            repair_null_ret_20d(db)
 
             # Ensure supervisor state is valid and points to an approved champion
             cur = conn.execute("SELECT active_model_id FROM supervisor_state WHERE singleton_id = 1")
@@ -272,6 +313,9 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
             stats["catalysts_seeded"] = len(catalysts)
         except Exception as e:
             logger.warning(f"Initial catalyst scan partial: {e}")
+
+    # Ensure no null ret_20d values remain in quant_factors_daily
+    repair_null_ret_20d(db)
 
     logger.info(f"Database hydration check complete: {stats}")
     return stats

@@ -84,7 +84,7 @@ export default function NewsImpactCard({
   };
 
   return (
-    <section className="relative overflow-hidden bg-[#080c14]/80 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
+    <section className="relative overflow-hidden bg-[#080c14] border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
       {/* Top subtle ambient light line */}
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent pointer-events-none" />
 

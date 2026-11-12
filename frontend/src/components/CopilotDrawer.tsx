@@ -496,7 +496,7 @@ export default function CopilotDrawer({
         <button
           onClick={handleToggle}
           title="Open Quant Copilot Multi-Agent Drawer (⌘J / Ctrl+J)"
-          className="fixed bottom-4 right-4 z-40 flex items-center space-x-2.5 px-3.5 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-100 border border-cyan-500/30 hover:border-cyan-400 shadow-[0_4px_24px_rgba(6,182,212,0.18)] backdrop-blur-md transition-all font-mono text-xs group"
+          className="fixed bottom-4 right-4 z-40 flex items-center space-x-2.5 px-3.5 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-100 border border-cyan-500/30 hover:border-cyan-400 shadow-[0_4px_24px_rgba(6,182,212,0.18)] transition-all font-mono text-xs group"
         >
           <div className="relative flex items-center justify-center">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping absolute" />
@@ -522,7 +522,7 @@ export default function CopilotDrawer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={handleClose}
-              className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-50 lg:bg-black/40"
+              className="fixed inset-0 bg-black/60 z-50 lg:bg-black/40"
             />
 
             {/* Slide-in Drawer Container */}
@@ -531,12 +531,12 @@ export default function CopilotDrawer({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#06090f]/95 border-l border-white/[0.1] shadow-[-20px_0_60px_rgba(0,0,0,0.85)] backdrop-blur-3xl ${
+              className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#06090f] border-l border-white/[0.1] shadow-[-20px_0_60px_rgba(0,0,0,0.85)] ${
                 isExpanded ? "w-full md:w-[720px]" : "w-full sm:w-[480px] lg:w-[520px]"
               }`}
             >
               {/* Header Bar */}
-              <div className="h-14 px-5 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-[#080c14]/90 backdrop-blur-2xl">
+              <div className="h-14 px-5 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-[#080c14]">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
                     <BrainCircuit className="w-4 h-4" />
@@ -644,7 +644,7 @@ export default function CopilotDrawer({
                 {/* MACHINE LEARNING ALPHA FORECAST CARD                         */}
                 {/* ───────────────────────────────────────────────────────────── */}
                 {mlForecast && !mlForecast.error && (
-                  <div className="border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/70 to-slate-950/90 rounded-xl overflow-hidden shadow-lg backdrop-blur-sm">
+                  <div className="border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/70 to-slate-950/90 rounded-xl overflow-hidden shadow-lg">
                     <button
                       onClick={() => setMlExpanded(prev => !prev)}
                       className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-indigo-950/40 transition-colors font-mono text-xs border-b border-indigo-500/20"

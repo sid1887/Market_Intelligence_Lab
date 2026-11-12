@@ -114,12 +114,6 @@ export default function BacktestPage() {
 
   return (
     <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans relative selection:bg-cyan-500/20 selection:text-cyan-200">
-      {/* Ambient background lighting */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-0 right-1/4 w-[600px] h-[400px] bg-cyan-500/[0.03] rounded-full blur-[140px]" />
-        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-emerald-500/[0.025] rounded-full blur-[160px]" />
-      </div>
-
       <Navbar />
 
       <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8 space-y-6">
@@ -174,7 +168,7 @@ export default function BacktestPage() {
         ) : (
           <>
         {/* Control Bar */}
-        <div className="p-5 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
+        <div className="p-5 rounded-2xl bg-[#080c14] border border-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5 text-xs">
             {/* Strategy Mode */}
             <div className="lg:col-span-2 space-y-1.5">
@@ -348,7 +342,7 @@ export default function BacktestPage() {
 
         {/* Dual Lightweight Charts (Equity Curve + Underwater Drawdown) */}
         {result?.equity_curve && result.equity_curve.length > 0 && (
-          <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-3">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-3">
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-2">
               <div className="flex items-center space-x-2.5">
                 <Activity className="w-4 h-4 text-cyan-400" />
@@ -378,7 +372,7 @@ export default function BacktestPage() {
 
         {/* Empty State when no run performed yet */}
         {!result && !loading && (
-          <div className="bg-[#080c14]/70 border border-white/[0.08] rounded-2xl p-12 text-center space-y-4 backdrop-blur-xl">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-12 text-center space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/[0.08] text-cyan-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(6,182,212,0.15)]">
               <Activity className="w-6 h-6" />
             </div>
@@ -391,7 +385,7 @@ export default function BacktestPage() {
 
         {/* Rebalance Audit Log Table */}
         {result?.rebalance_log && result.rebalance_log.length > 0 && (
-          <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
             <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
               <div className="flex items-center space-x-2.5">
                 <Clock className="w-4 h-4 text-amber-400" />

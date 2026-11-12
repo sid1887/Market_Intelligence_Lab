@@ -487,19 +487,26 @@ class CausalCatalystEngine:
 
     @staticmethod
     def get_live_catalysts(limit: int = 20) -> List[Dict[str, Any]]:
-        """Fetches recent catalysts from SQLite for frontend pulse feeds."""
+        """Fetches recent catalysts from SQLite for frontend pulse feeds, deduplicated by symbol."""
         init_catalyst_tables()
         with _get_db() as conn:
+            # Query up to 4x limit to ensure unique symbols after deduplication
             rows = conn.execute("""
                 SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
                        pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
                        causal_headline, causal_bullets, triggered_at
                 FROM market_catalysts
                 ORDER BY triggered_at DESC LIMIT ?
-            """, (limit,)).fetchall()
+            """, (limit * 4,)).fetchall()
 
             out = []
+            seen_symbols = set()
             for r in rows:
+                sym = r["symbol"]
+                if sym in seen_symbols:
+                    continue
+                seen_symbols.add(sym)
+
                 item = dict(r)
                 try:
                     item["causal_bullets"] = json.loads(item["causal_bullets"])
@@ -513,6 +520,8 @@ class CausalCatalystEngine:
                 except Exception:
                     pass
                 out.append(item)
+                if len(out) >= limit:
+                    break
             return out
 
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { motion } from "framer-motion";
@@ -11,17 +11,12 @@ import {
   Search,
   LineChart,
   Briefcase,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  Zap,
   BrainCircuit,
   Bell,
   BellRing,
 } from "lucide-react";
-import { submitJob, clearMemoryCache } from "@/lib/api";
-import { useJobStream } from "@/hooks/useJobStream";
 import { cn } from "@/lib/utils";
+import IngestStatusButton from "./IngestStatusButton";
 import PushNotificationModal from "./PushNotificationModal";
 import { checkPushSubscription } from "@/lib/pushNotifications";
 
@@ -35,8 +30,6 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
 
@@ -45,26 +38,6 @@ export default function Navbar() {
       setIsPushSubscribed(res.isSubscribed);
     });
   }, []);
-
-  const handleJobComplete = useCallback(() => {
-    clearMemoryCache();
-    router.refresh();
-    setTimeout(() => {
-      setActiveJobId(null);
-    }, 4000);
-  }, [router]);
-
-  const handleJobError = useCallback(() => {
-    setTimeout(() => {
-      setActiveJobId(null);
-    }, 6000);
-  }, []);
-
-  const { status, progress } = useJobStream(activeJobId, {
-    onComplete: handleJobComplete,
-    onError: handleJobError,
-    autoCloseOnTerminal: true,
-  });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,29 +48,8 @@ export default function Navbar() {
     }
   };
 
-  const handleIngest = async () => {
-    if (isSubmitting || (activeJobId && (status === "RUNNING" || status === "QUEUED"))) {
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const idempotencyKey = `universe-eod-${todayIso}-${Date.now()}`;
-      const res = await submitJob({
-        job_type: "UNIVERSE_EOD",
-        payload: { date: todayIso, run_factors: true },
-        idempotency_key: idempotencyKey,
-      });
-      setActiveJobId(res.job_id);
-    } catch (err) {
-      console.error("Failed to enqueue ingestion job:", err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#040609]/85 backdrop-blur-2xl transition-all">
+    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#040609] transition-all">
       <div className="max-w-[1600px] mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3 sm:gap-4">
         {/* Brand Terminal Identity */}
         <div className="flex items-center space-x-3 shrink-0">
@@ -136,7 +88,7 @@ export default function Navbar() {
         </form>
 
         {/* Navigation Tabs with Framer Motion Spring Layout Indicator (Desktop) */}
-        <nav className="hidden md:flex items-center space-x-1 sm:space-x-1.5 bg-white/[0.02] border border-white/[0.06] p-1 rounded-xl backdrop-blur-md">
+        <nav className="hidden md:flex items-center space-x-1 sm:space-x-1.5 bg-[#080c14] border border-white/[0.06] p-1 rounded-xl">
           {NAV_LINKS.map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href;
             return (
@@ -217,54 +169,8 @@ export default function Navbar() {
             </span>
           </button>
 
-          {/* Real-time Durable Job Engine Status / Action Button */}
-          <button
-            onClick={handleIngest}
-            disabled={isSubmitting || (activeJobId !== null && (status === "RUNNING" || status === "QUEUED"))}
-            title={
-              activeJobId
-                ? `Job ${activeJobId}: ${status} (${progress}%)`
-                : "Execute Universal Dynamic Ingestion via V8 Durable Asynchronous Engine"
-            }
-            className={cn(
-              "flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-medium transition-all border",
-              status === "SUCCEEDED"
-                ? "bg-emerald-950/60 border-emerald-500/60 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                : status === "FAILED"
-                ? "bg-rose-950/60 border-rose-500/60 text-rose-300 shadow-[0_0_15px_rgba(244,63,94,0.2)]"
-                : activeJobId && (status === "RUNNING" || status === "QUEUED")
-                ? "bg-cyan-950/60 border-cyan-500/60 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
-                : "bg-white/[0.04] hover:bg-emerald-950/30 text-emerald-300 hover:text-emerald-200 border-white/[0.08] hover:border-emerald-500/40"
-            )}
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
-                <span className="hidden sm:inline">Dispatching...</span>
-              </>
-            ) : status === "SUCCEEDED" ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Settled 100%</span>
-              </>
-            ) : status === "FAILED" ? (
-              <>
-                <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
-                <span>Failed</span>
-              </>
-            ) : activeJobId && (status === "RUNNING" || status === "QUEUED") ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
-                <span>{progress}%</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden sm:inline">Dynamic Ingest</span>
-                <span className="sm:hidden">Ingest</span>
-              </>
-            )}
-          </button>
+          {/* Real-time Durable Job Engine Status / Action Button (Isolated) */}
+          <IngestStatusButton />
         </div>
       </div>
 
@@ -276,7 +182,7 @@ export default function Navbar() {
       />
 
       {/* ──────────────── FIXED MOBILE BOTTOM NAVIGATION BAR (< 768px) ──────────────── */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609] border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {NAV_LINKS.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href;
           return (
@@ -297,23 +203,7 @@ export default function Navbar() {
         })}
 
         {/* Dynamic Ingest Quick Action in Bottom Bar */}
-        <button
-          onClick={handleIngest}
-          disabled={isSubmitting || (activeJobId !== null && (status === "RUNNING" || status === "QUEUED"))}
-          className={cn(
-            "flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono transition-colors",
-            activeJobId && (status === "RUNNING" || status === "QUEUED")
-              ? "text-cyan-300 font-bold"
-              : "text-emerald-400 hover:text-emerald-300"
-          )}
-        >
-          {isSubmitting || (activeJobId && (status === "RUNNING" || status === "QUEUED")) ? (
-            <Loader2 className="w-4 h-4 mb-0.5 animate-spin text-cyan-400" />
-          ) : (
-            <Zap className="w-4 h-4 mb-0.5 text-emerald-400" />
-          )}
-          <span>{activeJobId ? `${progress}%` : "Ingest"}</span>
-        </button>
+        <IngestStatusButton compact />
       </nav>
     </header>
   );

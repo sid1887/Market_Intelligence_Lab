@@ -91,7 +91,7 @@ export function AnimatedTabs<T extends string = string>({
   return (
     <div
       className={cn(
-        "flex space-x-1 p-1 bg-[#06090f]/85 rounded-xl border border-white/[0.08] backdrop-blur-xl w-fit shadow-lg",
+        "flex space-x-1 p-1 bg-[#06090f] rounded-xl border border-white/[0.08] w-fit shadow-lg",
         className
       )}
     >

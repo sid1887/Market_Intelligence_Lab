@@ -85,24 +85,26 @@ DEFAULT_MACRO_OBSERVATIONS = [
 
 class MacroClient:
     @staticmethod
-    def get_macro_telemetry(force_refresh: bool = False) -> Dict[str, Any]:
+    def get_macro_telemetry(force_refresh: bool = False, read_cache_only: bool = False) -> Dict[str, Any]:
         """Returns verified macro telemetry with real observed timestamps and cache TTL enforcement."""
-        if not force_refresh and os.path.exists(CACHE_FILE):
+        if os.path.exists(CACHE_FILE):
             try:
                 with open(CACHE_FILE, "r") as f:
                     data = json.load(f)
+                    if read_cache_only:
+                        return data
                     retrieved_str = data.get("retrieval_timestamp")
                     if retrieved_str:
                         retrieved_dt = datetime.fromisoformat(retrieved_str)
                         age = (datetime.now(timezone.utc) - retrieved_dt).total_seconds()
-                        if age < CACHE_TTL_SECONDS:
+                        if not force_refresh and age < CACHE_TTL_SECONDS:
                             return data
             except Exception:
                 pass
 
-        if yf is None:
+        if read_cache_only or yf is None:
             return {
-                "status": "unavailable",
+                "status": "cached_baseline" if read_cache_only else "unavailable",
                 "as_of_session": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "retrieval_timestamp": datetime.now(timezone.utc).isoformat(),
                 "indicators": DEFAULT_MACRO_OBSERVATIONS

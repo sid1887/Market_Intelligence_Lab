@@ -12,6 +12,7 @@ concurrency-safe read-only WAL connection endpoints:
 """
 
 import os
+import sys
 import re
 import gc
 import json
@@ -20,6 +21,17 @@ import datetime
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True,
+)
+for _uvicorn_logger in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    logging.getLogger(_uvicorn_logger).setLevel(logging.INFO)
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -46,6 +58,7 @@ from src.api.routes_market import (
     get_stock_history,
     get_stock_forecast,
     get_stock_news,
+    get_stock_bundle,
     run_backtest_endpoint,
     get_latest_backtest,
     get_investment_memo,
@@ -349,9 +362,21 @@ def get_screener(
                 "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
                 "roe_pct": safe_float(row.get("roe_pct"), 2),
                 "opm_pct": safe_float(row.get("opm_pct"), 2),
-                "excess_ret_20d": safe_float(row.get("excess_ret_20d"), 4),
-                "ret_20d": safe_float(row.get("ret_20d"), 4),
-                "return_20d": safe_float(row.get("ret_20d"), 4),
+                "excess_ret_20d": (
+                    safe_float(row.get("excess_ret_20d"), 4)
+                    if row.get("excess_ret_20d") is not None
+                    else (safe_float(row.get("ret_20d"), 4) or 0.0)
+                ),
+                "ret_20d": (
+                    safe_float(row.get("ret_20d"), 4)
+                    if row.get("ret_20d") is not None
+                    else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
+                ),
+                "return_20d": (
+                    safe_float(row.get("ret_20d"), 4)
+                    if row.get("ret_20d") is not None
+                    else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
+                ),
                 "composite_score": safe_float(row.get("composite_score"), 2),
                 "blended_score": b_score,
                 "target_allocation_pct": target_alloc,

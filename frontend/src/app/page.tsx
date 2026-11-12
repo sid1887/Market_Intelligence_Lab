@@ -19,7 +19,6 @@ import {
 import dynamic from "next/dynamic";
 import {
   apiFetch,
-  prefetchStockBundle,
   ScreenerCandidate,
   ScreenerResponse,
   WatchlistResponse,
@@ -88,8 +87,6 @@ export default function CockpitPage() {
           setAsOfDate(scrRes.value.as_of_date);
         }
         setSelectedSymbol((prev) => prev || (results.length > 0 ? results[0].symbol : null));
-        // Prefetch first 6 stocks for instant switching
-        results.slice(0, 6).forEach((c) => prefetchStockBundle(c.symbol));
       }
 
       if (wlRes.status === "fulfilled") {
@@ -107,6 +104,12 @@ export default function CockpitPage() {
     checkPushSubscription().then((res) => {
       setIsPushSubscribed(res.isSubscribed);
     });
+
+    const handleRefresh = () => {
+      void loadPageData(true);
+    };
+    window.addEventListener("mil:screener-refresh", handleRefresh);
+    return () => window.removeEventListener("mil:screener-refresh", handleRefresh);
   }, [loadPageData]);
 
   // Active Candidate lookup
@@ -244,15 +247,11 @@ export default function CockpitPage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] bg-grid-pattern relative select-none text-slate-100 font-sans">
-      {/* Immersive 3D Topographic WebGL Wave Canvas */}
+      {/* Immersive 3D Topographic Canvas */}
       <TopographicBackground className="fixed inset-0 pointer-events-none z-0 overflow-hidden opacity-70" />
 
-      {/* Ambient Radial Neon Bleeds */}
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[128px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[128px] pointer-events-none" />
-
       {/* ──────────────── 1. TOP HEADER NAVIGATION ──────────────── */}
-      <header className="h-12 shrink-0 border-b border-white/[0.06] flex items-center justify-between px-3 sm:px-4 bg-[#030508]/95 backdrop-blur-md z-30">
+      <header className="h-12 shrink-0 border-b border-white/[0.06] flex items-center justify-between px-3 sm:px-4 bg-[#030508] z-30">
         {/* Left: Brand + Navigation Tabs (Desktop) */}
         <div className="flex items-center gap-3 sm:gap-4">
           <Link href="/" className="flex items-center gap-1.5 shrink-0 group">
@@ -405,7 +404,7 @@ export default function CockpitPage() {
         <div
           className={`${
             isInspectorCollapsed ? "w-full" : "w-full lg:w-[54%]"
-          } flex flex-col h-full overflow-hidden shrink-0 min-h-0 backdrop-blur-md bg-slate-950/75 border-r border-slate-800/80 transition-all duration-300 ease-in-out`}
+          } flex flex-col h-full overflow-hidden shrink-0 min-h-0 bg-[#040609] border-r border-slate-800/80 transition-all duration-300 ease-in-out`}
         >
           <ScreenerWorkspace
             candidates={candidates}
@@ -424,7 +423,7 @@ export default function CockpitPage() {
 
         {/* Desktop Detail: Stock Deep Inspector (>= 1024px) */}
         {!isInspectorCollapsed && (
-          <div className="hidden lg:flex flex-1 flex-col h-full overflow-hidden min-w-0 min-h-0 backdrop-blur-md bg-slate-950/75 transition-all duration-300 ease-in-out">
+          <div className="hidden lg:flex flex-1 flex-col h-full overflow-hidden min-w-0 min-h-0 bg-[#040609] transition-all duration-300 ease-in-out">
             <StockInspector
               symbol={selectedSymbol}
               activeCandidate={activeCandidate}
@@ -443,7 +442,7 @@ export default function CockpitPage() {
       {isMobileInspectorOpen && selectedSymbol && (
         <div className="fixed inset-0 z-50 bg-[#040609] overflow-y-auto lg:hidden flex flex-col animate-in slide-in-from-bottom duration-200">
           {/* Sticky Mobile Back Header */}
-          <div className="sticky top-0 z-50 flex items-center justify-between px-3.5 py-2.5 bg-[#060911]/95 backdrop-blur-xl border-b border-white/10 shrink-0">
+          <div className="sticky top-0 z-50 flex items-center justify-between px-3.5 py-2.5 bg-[#060911] border-b border-white/10 shrink-0">
             <button
               onClick={() => setIsMobileInspectorOpen(false)}
               className="flex items-center gap-1.5 text-xs font-mono text-cyan-400 hover:text-cyan-300 font-semibold px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-800/50"
@@ -480,7 +479,7 @@ export default function CockpitPage() {
       )}
 
       {/* ──────────────── 5. FIXED MOBILE BOTTOM NAVIGATION BAR (< 768px) ──────────────── */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609] border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <Link
           href="/"
           className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-cyan-300 font-bold bg-cyan-950/40"

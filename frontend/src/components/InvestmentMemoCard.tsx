@@ -124,7 +124,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
 
   if (loading) {
     return (
-      <div className="bg-[#06090f]/85 border border-white/[0.08] rounded-2xl p-8 shadow-2xl backdrop-blur-2xl flex items-center justify-center space-x-3 py-14 font-mono text-xs text-slate-400">
+      <div className="bg-[#06090f] border border-white/[0.08] rounded-2xl p-8 shadow-2xl flex items-center justify-center space-x-3 py-14 font-mono text-xs text-slate-400">
         <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
         <span className="tracking-wide">Synthesizing Institutional Investment Decision Memo for {symbol}...</span>
       </div>
@@ -133,7 +133,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
 
   if (error || !memo) {
     return (
-      <div className="bg-[#06090f]/85 border border-white/[0.08] rounded-2xl p-6 text-center font-mono text-xs text-slate-400 backdrop-blur-2xl">
+      <div className="bg-[#06090f] border border-white/[0.08] rounded-2xl p-6 text-center font-mono text-xs text-slate-400">
         <p className="text-amber-400 font-bold mb-1.5 flex items-center justify-center gap-1.5">
           <AlertTriangle className="w-4 h-4 text-amber-400" />
           <span>Investment Decision Memo Deferred</span>
@@ -179,7 +179,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
   const score = memo.institutional_conviction_score;
 
   return (
-    <div className={`relative bg-[#06090f]/85 border rounded-2xl p-6 shadow-2xl backdrop-blur-2xl space-y-6 overflow-hidden ${verdictConfig.glow}`}>
+    <div className={`relative bg-[#06090f] border rounded-2xl p-6 shadow-2xl space-y-6 overflow-hidden ${verdictConfig.glow}`}>
       {/* Top specular highlight edge */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
 
@@ -285,7 +285,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
             return (
               <div
                 key={diag.id}
-                className={`p-3.5 rounded-xl border ${borderCol} font-mono space-y-1.5 flex flex-col justify-between backdrop-blur-md`}
+                className={`p-3.5 rounded-xl border ${borderCol} font-mono space-y-1.5 flex flex-col justify-between`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
@@ -311,7 +311,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
       {/* 4. Two-Column Synthesis: Bull Case vs Bear Risks */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 font-mono">
         {/* Bull Case */}
-        <div className="bg-emerald-950/15 border-l-4 border-l-emerald-500 border border-emerald-500/20 rounded-xl p-4.5 space-y-3 backdrop-blur-md">
+        <div className="bg-emerald-950/20 border-l-4 border-l-emerald-500 border border-emerald-500/20 rounded-xl p-4.5 space-y-3">
           <div className="flex items-center space-x-2 text-emerald-400 font-bold text-xs pb-2 border-b border-emerald-500/20">
             <TrendingUp className="w-4 h-4" />
             <span>Bull Case: Quantified Growth Catalysts</span>
@@ -342,7 +342,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
         </div>
 
         {/* Bear Case */}
-        <div className="bg-rose-950/15 border-l-4 border-l-rose-500 border border-rose-500/20 rounded-xl p-4.5 space-y-3 backdrop-blur-md">
+        <div className="bg-rose-950/20 border-l-4 border-l-rose-500 border border-rose-500/20 rounded-xl p-4.5 space-y-3">
           <div className="flex items-center space-x-2 text-rose-400 font-bold text-xs pb-2 border-b border-rose-500/20">
             <TrendingDown className="w-4 h-4" />
             <span>Bear Case: Structural Headwinds &amp; Tail Risks</span>

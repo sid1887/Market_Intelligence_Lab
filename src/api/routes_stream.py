@@ -85,13 +85,14 @@ def fetch_events_slice(db: DatabaseManager, cursor: int, job_id: Optional[str]) 
 
 
 def fetch_macro_telemetry_snapshot(db: DatabaseManager) -> Dict[str, Any]:
-    """Fetches latest macro tick and supervisor status instantly and closes connection."""
+    """Fetches latest macro tick and supervisor status instantly from cache and closes connection."""
     try:
         from src.client.macro_client import MacroClient
         from src.supervisor.state_machine import SupervisorStateMachine
         from src.api.utils import sanitize_for_json
 
-        macro = MacroClient.get_macro_telemetry(force_refresh=False)
+        # read_cache_only=True guarantees zero blocking yfinance network calls inside the SSE async loop
+        macro = MacroClient.get_macro_telemetry(force_refresh=False, read_cache_only=True)
         supervisor = SupervisorStateMachine(db).get_current_state()
 
         last_ingestion = None
@@ -158,8 +159,8 @@ async def stream_platform_events(
                 await asyncio.sleep(0.05)
             else:
                 tick_counter += 1
-                # Broadcast TELEMETRY_TICK every 5 seconds (5 * 1.0s sleep iterations)
-                if tick_counter >= 5:
+                # Broadcast TELEMETRY_TICK every 30 seconds (30 * 1.0s sleep iterations)
+                if tick_counter >= 30:
                     tick_counter = 0
                     if job_id is None:
                         telemetry = fetch_macro_telemetry_snapshot(db)

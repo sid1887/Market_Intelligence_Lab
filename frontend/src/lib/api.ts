@@ -250,11 +250,9 @@ export async function apiFetch<T>(
  * Prefetch lightweight stock data on row hover or arrow navigation.
  * CQRS & UI Honesty: Does NOT prefetch expensive /memo or /forecast endpoints on hover.
  */
-export function prefetchStockBundle(symbol: string) {
-  if (!symbol) return;
-  const sym = symbol.toUpperCase().trim();
-  // Only lightweight history cache prefetch
-  void apiFetch(`/stocks/${sym}/history`).catch(() => {});
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function prefetchStockBundle(_symbol?: string) {
+  // Intentional no-op to eliminate multi-stock history request storms
 }
 
 // ─── Shared Type Definitions ──────────────────────────────────────────────────
@@ -269,6 +267,7 @@ export interface ScreenerCandidate {
   debt_to_equity: number | null;
   roe_pct: number | null;
   opm_pct: number | null;
+  ret_20d: number | null;
   excess_ret_20d: number | null;
   composite_score: number | null;
   blended_score?: number | null;
@@ -539,6 +538,34 @@ export async function fetchDisclosures<T = unknown>(
   return apiFetch<T[]>(`/stocks/${symbol.toUpperCase()}/disclosures`, options);
 }
 
+export interface StockBundleResponse {
+  symbol: string;
+  tearsheet: {
+    symbol?: string;
+    company_name?: string;
+    sector?: string;
+    latest_ohlcv?: {
+      close?: number;
+      trading_date?: string;
+      [key: string]: unknown;
+    };
+    factors?: Record<string, unknown>;
+    history?: CandleData[];
+    [key: string]: unknown;
+  };
+  forecast?: ForecastData | null;
+  memo?: InvestmentMemo | null;
+  news?: NewsArticle[] | NewsResponse | null;
+}
+
+export async function fetchStockBundle(
+  symbol: string,
+  options: ApiFetchOptions = {}
+): Promise<StockBundleResponse> {
+  const sym = symbol.toUpperCase().trim();
+  return apiFetch<StockBundleResponse>(`/stocks/${sym}/bundle`, options);
+}
+
 export async function fetchScreener(
   limit = 1000,
   options: ApiFetchOptions = {}
@@ -560,8 +587,14 @@ export interface IngestResponse {
 
 export interface IngestStatusResponse {
   status: "idle" | "running" | "completed" | "error";
+  stage?: string;
   progress: number;
   total: number;
+  current_batch?: number;
+  total_batches?: number;
+  last_symbol?: string | null;
+  started_at?: string | null;
+  elapsed_sec?: number;
   message: string;
 }
 

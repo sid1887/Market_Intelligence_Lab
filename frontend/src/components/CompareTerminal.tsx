@@ -141,7 +141,7 @@ export default function CompareTerminal() {
   return (
     <div className="flex flex-col space-y-6">
       {/* Control Banner */}
-      <div className="p-6 rounded-2xl bg-[#080c14]/90 border border-white/[0.08] backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
+      <div className="p-6 rounded-2xl bg-[#080c14] border border-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
         {/* Top row: Symbol Chips + Input */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -303,7 +303,7 @@ export default function CompareTerminal() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/[0.08] bg-[#080c14]/85 backdrop-blur-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
             <BacktestCompareChart
               normalizedSeries={result.normalized_series}
               symbols={result.symbols}
@@ -323,7 +323,7 @@ export default function CompareTerminal() {
             </h3>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#080c14]/85 backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+          <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#080c14] shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
             <table className="w-full text-left text-xs font-mono border-collapse">
               <thead>
                 <tr className="border-b border-white/[0.08] bg-[#050810]/80 text-slate-400 text-[11px] uppercase tracking-wider">
@@ -413,7 +413,7 @@ export default function CompareTerminal() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 1. Correlation Matrix Heatmap */}
           {result.correlation_matrix && (
-            <div className="p-6 rounded-2xl bg-[#080c14]/90 border border-white/[0.08] backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
+            <div className="p-6 rounded-2xl bg-[#080c14] border border-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
                 <div className="flex items-center gap-2.5">
                   <Activity className="w-4 h-4 text-cyan-400" />
@@ -466,7 +466,7 @@ export default function CompareTerminal() {
 
           {/* 2. Factor Radar Breakdown */}
           {result.radar_scores && (
-            <div className="p-6 rounded-2xl bg-[#080c14]/90 border border-white/[0.08] backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
+            <div className="p-6 rounded-2xl bg-[#080c14] border border-white/[0.08] shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
                 <div className="flex items-center gap-2.5">
                   <Percent className="w-4 h-4 text-emerald-400" />

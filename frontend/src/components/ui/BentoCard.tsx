@@ -85,7 +85,7 @@ export function BentoCard({
       onMouseLeave={() => setIsHovered(false)}
       onClick={onClick}
       className={cn(
-        "relative group overflow-hidden rounded-2xl border border-white/[0.08] bg-[#080c14]/80 p-5 sm:p-6 backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1",
+        "relative group overflow-hidden rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 sm:p-6 transition-all duration-300 hover:-translate-y-1",
         semanticTheme.hoverBorder,
         semanticTheme.hoverShadow,
         onClick && "cursor-pointer",

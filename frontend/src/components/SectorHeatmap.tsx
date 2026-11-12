@@ -74,7 +74,7 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
         return (
           <div
             key={sector}
-            className="rounded-2xl border border-white/[0.08] bg-[#070b12]/60 p-4 space-y-3 backdrop-blur-xl shadow-lg"
+            className="rounded-2xl border border-white/[0.08] bg-[#070b12] p-4 space-y-3 shadow-lg"
           >
             {/* Sector Header with Breadth Telemetry */}
             <div className="flex items-center justify-between text-xs font-mono pb-2 border-b border-white/[0.06]">
@@ -158,7 +158,7 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
                       if (onHover) onHover(stock.symbol);
                     }}
                     className={cn(
-                      "cursor-pointer rounded-xl border p-2.5 flex flex-col justify-between transition-all duration-150 min-h-[64px] backdrop-blur-md",
+                      "cursor-pointer rounded-xl border p-2.5 flex flex-col justify-between transition-all duration-150 min-h-[64px]",
                       colorClasses
                     )}
                   >

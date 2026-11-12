@@ -300,7 +300,7 @@ export default function StockTearsheetPage() {
       <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300 relative">
         <Navbar />
         <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
-          <div className="max-w-2xl w-full p-8 rounded-3xl bg-[#080c14]/95 border border-white/[0.12] shadow-[0_25px_70px_rgba(0,0,0,0.9)] space-y-8 backdrop-blur-3xl">
+          <div className="max-w-2xl w-full p-8 rounded-3xl bg-[#080c14] border border-white/[0.12] shadow-[0_25px_70px_rgba(0,0,0,0.9)] space-y-8">
             <div className="text-center space-y-2">
               <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-400 text-xs font-mono shadow-[0_0_12px_rgba(6,182,212,0.2)]">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
@@ -402,7 +402,7 @@ export default function StockTearsheetPage() {
       <div className="min-h-screen bg-[#030508] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300">
         <Navbar />
         <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex items-center justify-center">
-          <div className="p-8 rounded-2xl bg-slate-900/90 border border-rose-900/40 text-center space-y-4 max-w-lg w-full shadow-2xl backdrop-blur-md">
+          <div className="p-8 rounded-2xl bg-slate-900 border border-rose-900/40 text-center space-y-4 max-w-lg w-full shadow-2xl">
             <div className="w-14 h-14 rounded-full bg-rose-950/60 border border-rose-800/60 flex items-center justify-center mx-auto text-rose-400">
               <SearchX className="w-7 h-7" />
             </div>
@@ -472,12 +472,6 @@ export default function StockTearsheetPage() {
 
   return (
     <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300 relative">
-      {/* Ambient background lighting */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-0 right-1/4 w-[600px] h-[400px] bg-cyan-500/[0.03] rounded-full blur-[140px]" />
-        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-emerald-500/[0.025] rounded-full blur-[160px]" />
-      </div>
-
       <Navbar />
       <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-24">
         {/* Back Link & Navigation Bar */}
@@ -496,7 +490,7 @@ export default function StockTearsheetPage() {
         </div>
 
       {/* Hero Header Card */}
-      <div className="bg-[#080c14]/90 border border-white/[0.08] rounded-2xl p-4 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl">
+      <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -578,7 +572,7 @@ export default function StockTearsheetPage() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Candlestick Chart */}
         <section className={forecast && forecast.projections && forecast.projections.length > 0 ? "xl:col-span-8" : "xl:col-span-12"}>
-          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
             <StockChart
               symbol={data.symbol}
               data={data.history}
@@ -590,7 +584,7 @@ export default function StockTearsheetPage() {
 
         {/* Milestone B7.0: 20-Day Econometric Forecast & Tail Risk Card */}
         {forecast && forecast.projections && forecast.projections.length > 0 && (
-          <section className="xl:col-span-4 bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl flex flex-col justify-between">
+          <section className="xl:col-span-4 bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col justify-between">
             <div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
                 <div className="flex items-center space-x-2.5">
@@ -711,7 +705,7 @@ export default function StockTearsheetPage() {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Debt-to-Equity */}
-          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Debt-to-Equity (D/E)</span>
             <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.fundamentals.debt_to_equity !== null ? data.fundamentals.debt_to_equity.toFixed(4) : "N/A"}
@@ -732,7 +726,7 @@ export default function StockTearsheetPage() {
           </div>
 
           {/* Card 2: Return on Equity (ROE %) */}
-          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Return on Equity (ROE)</span>
             <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.fundamentals.roe_pct !== null ? `${data.fundamentals.roe_pct.toFixed(2)}%` : "N/A"}
@@ -750,7 +744,7 @@ export default function StockTearsheetPage() {
           </div>
 
           {/* Card 3: 60-Day Rolling Beta vs Nifty 50 */}
-          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">60D Rolling Beta (vs Nifty 50)</span>
             <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.technicals.beta_60d_nifty !== null ? data.technicals.beta_60d_nifty.toFixed(2) : "N/A"}
@@ -763,7 +757,7 @@ export default function StockTearsheetPage() {
           </div>
 
           {/* Card 4: Distance from 200-day SMA */}
-          <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Distance from 200 SMA</span>
             <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
               {data.technicals.dist_sma200_pct !== null ? `${data.technicals.dist_sma200_pct >= 0 ? "+" : ""}${data.technicals.dist_sma200_pct.toFixed(2)}%` : "N/A"}
@@ -825,7 +819,7 @@ export default function StockTearsheetPage() {
       {/* 2-Column Responsive Grid: Corporate Disclosures (Left) + Real-Time News (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Section: Recent Corporate Filings & Disclosures Timeline */}
-        <section className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-2xl space-y-4">
+        <section className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
           <div className="flex items-center justify-between pb-3.5 border-b border-white/[0.06]">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">

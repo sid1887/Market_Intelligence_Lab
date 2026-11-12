@@ -9,6 +9,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.0
+      - key: PYTHONUNBUFFERED
+        value: "1"
       - key: RENDER
         value: "true"
       - key: CLOUD_LIGHTWEIGHT_MODE

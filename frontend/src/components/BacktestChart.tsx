@@ -255,7 +255,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
   return (
     <div className="space-y-4">
       {/* Telemetry Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-[#050810]/90 backdrop-blur-2xl rounded-2xl border border-white/[0.08] text-xs font-mono shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-[#050810] rounded-2xl border border-white/[0.08] text-xs font-mono shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
         <div className="flex items-center space-x-2">
           <span className="text-slate-400">Date:</span>
           <span className="font-semibold text-white tabular-nums">{currentDate}</span>

@@ -324,7 +324,7 @@ export default function StockChart({
   const changePct = latest && latest.open > 0 ? (changeVal / latest.open) * 100 : 0;
 
   return (
-    <div className={`bg-[#050811] border border-white/[0.05] rounded-xl shadow-xl backdrop-blur-sm overflow-hidden ${compact ? "p-3" : "p-4"}`}>
+    <div className={`bg-[#050811] border border-white/[0.05] rounded-xl shadow-xl overflow-hidden ${compact ? "p-3" : "p-4"}`}>
       {/* Top Header: Telemetry & Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-white/[0.05]">
         {/* Left: Telemetry Readout */}

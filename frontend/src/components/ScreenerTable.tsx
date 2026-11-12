@@ -110,7 +110,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
 
   return (
     <>
-      <div className="relative bg-[#06090f]/85 border border-white/[0.08] rounded-xl p-4 shadow-2xl backdrop-blur-2xl space-y-3.5 overflow-hidden">
+      <div className="relative bg-[#06090f] border border-white/[0.08] rounded-xl p-4 shadow-2xl space-y-3.5 overflow-hidden">
         {/* Top specular highlight edge */}
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent" />
 

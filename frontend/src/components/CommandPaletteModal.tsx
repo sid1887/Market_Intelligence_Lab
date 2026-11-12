@@ -86,7 +86,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-start justify-center pt-[12vh] px-4"
+        className="fixed inset-0 z-50 bg-black/85 flex items-start justify-center pt-[12vh] px-4"
         onClick={onClose}
       >
         {/* Spotlight Modal Box */}
@@ -96,7 +96,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
           exit={{ opacity: 0, scale: 0.96, y: -10 }}
           transition={{ type: "spring", stiffness: 450, damping: 32 }}
           onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-[580px] rounded-2xl overflow-hidden backdrop-blur-3xl bg-[#080c14]/92 border border-white/[0.12] shadow-[0_25px_70px_-15px_rgba(0,0,0,0.9)]"
+          className="w-full max-w-[580px] rounded-2xl overflow-hidden bg-[#080c14] border border-white/[0.12] shadow-[0_25px_70px_-15px_rgba(0,0,0,0.9)]"
         >
           {/* Search bar */}
           <div className="flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.08] bg-white/[0.02]">

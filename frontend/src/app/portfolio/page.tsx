@@ -333,12 +333,6 @@ export default function PortfolioPage() {
 
   return (
     <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans relative selection:bg-cyan-500/20 selection:text-cyan-200">
-      {/* Ambient background lighting */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-0 left-1/4 w-[600px] h-[400px] bg-cyan-500/[0.03] rounded-full blur-[140px]" />
-        <div className="absolute top-1/3 right-1/4 w-[500px] h-[500px] bg-emerald-500/[0.025] rounded-full blur-[160px]" />
-      </div>
-
       <Navbar />
 
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8 space-y-6">
@@ -435,7 +429,7 @@ export default function PortfolioPage() {
 
         {/* System & ML Telemetry Bento Card (Collapsible) */}
         {showSystemTelemetry && (
-          <div className="p-6 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-indigo-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
+          <div className="p-6 rounded-2xl bg-[#080c14] border border-indigo-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.08]">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
@@ -597,7 +591,7 @@ export default function PortfolioPage() {
 
         {/* FrontPage Discretionary Trade Ticket (Active for paper_manual_1) */}
         {activeAccount === "paper_manual_1" && (
-          <div className="p-6 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
+          <div className="p-6 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.08]">
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
@@ -819,7 +813,7 @@ export default function PortfolioPage() {
 
         {/* Pending Rebalance Proposal Banner (Active for Systematic Accounts) */}
         {activeAccount !== "paper_manual_1" && proposal && (
-          <div className="p-5 rounded-2xl bg-[#080c14]/90 backdrop-blur-2xl border border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="p-5 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center space-x-3.5">
               <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
                 <Layers className="w-4 h-4" />
@@ -854,7 +848,7 @@ export default function PortfolioPage() {
         )}
 
         {/* Active Holdings Table */}
-        <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+        <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
           <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
               <FileText className="w-4 h-4 text-cyan-400" />
@@ -976,7 +970,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Execution Blotter / Orders History */}
-        <div className="bg-[#080c14]/85 backdrop-blur-2xl border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+        <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
           <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
               <Clock className="w-4 h-4 text-amber-400" />
@@ -1060,7 +1054,7 @@ export default function PortfolioPage() {
 
       {/* Capital Management Modal */}
       {showCapitalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
           <div className="bg-[#080c14]/95 border border-white/[0.12] rounded-3xl max-w-md w-full p-6 space-y-5 shadow-[0_25px_70px_rgba(0,0,0,0.9)]">
             <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
               <div className="flex items-center gap-2.5">

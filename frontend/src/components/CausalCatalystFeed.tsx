@@ -71,7 +71,7 @@ export default function CausalCatalystFeed({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/[0.08] bg-[#06090f]/90 backdrop-blur-2xl font-mono text-xs relative overflow-hidden",
+        "rounded-2xl border border-white/[0.08] bg-[#06090f] font-mono text-xs relative overflow-hidden",
         compact ? "p-3.5 space-y-3" : "p-5 shadow-2xl space-y-4",
         className
       )}

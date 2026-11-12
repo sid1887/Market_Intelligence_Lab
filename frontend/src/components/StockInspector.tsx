@@ -15,7 +15,7 @@ import dynamic from "next/dynamic";
 import CausalCatalystFeed from "./CausalCatalystFeed";
 import {
   apiFetch,
-  requestLifecycle,
+  fetchStockBundle,
   ScreenerCandidate,
   CandleData,
   ForecastData,
@@ -88,7 +88,7 @@ export default function StockInspector({
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [inspectorTab, setInspectorTab] = useState<"thesis" | "catalysts" | "news">("thesis");
 
-  // Load bundle with monotonic lifecycle cancellation
+  // Load bundle with 150ms debounce and AbortController
   useEffect(() => {
     if (!symbol) {
       setCandles([]);
@@ -99,28 +99,47 @@ export default function StockInspector({
       return;
     }
 
-    const { signal, generation } = requestLifecycle.prepareRequest(`inspector-${symbol}`);
     setIsSyncing(true);
+    const controller = new AbortController();
 
-    Promise.allSettled([
-      apiFetch<CandleData[]>(`/stocks/${symbol}/history`, { signal, useCache: true }),
-      apiFetch<ForecastData>(`/stocks/${symbol}/forecast`, { signal, useCache: true }),
-      apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal, useCache: true }),
-      apiFetch<NewsResponse>(`/stocks/${symbol}/news`, { signal, useCache: true }),
-    ]).then(([candlesRes, forecastRes, memoRes, newsRes]) => {
-      if (!requestLifecycle.isLatest(`inspector-${symbol}`, generation)) {
-        return; // Stale request, discarded
+    const timer = setTimeout(async () => {
+      try {
+        const bundle = await fetchStockBundle(symbol, { signal: controller.signal, useCache: true });
+        if (!controller.signal.aborted) {
+          setCandles(bundle.tearsheet?.history || []);
+          setForecast(bundle.forecast || null);
+          setMemo(bundle.memo || null);
+          const rawNews = bundle.news;
+          const newsList = Array.isArray(rawNews)
+            ? rawNews
+            : rawNews && typeof rawNews === "object" && "articles" in rawNews
+            ? (rawNews.articles as NewsArticle[])
+            : [];
+          setNews(newsList);
+          setIsSyncing(false);
+        }
+      } catch {
+        if (controller.signal.aborted) return;
+        // Fallback to parallel fetch if bundle endpoint fails
+        Promise.allSettled([
+          apiFetch<CandleData[]>(`/stocks/${symbol}/history`, { signal: controller.signal, useCache: true }),
+          apiFetch<ForecastData>(`/stocks/${symbol}/forecast`, { signal: controller.signal, useCache: true }),
+          apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal: controller.signal, useCache: true }),
+          apiFetch<NewsResponse>(`/stocks/${symbol}/news`, { signal: controller.signal, useCache: true }),
+        ]).then(([candlesRes, forecastRes, memoRes, newsRes]) => {
+          if (controller.signal.aborted) return;
+          setCandles(candlesRes.status === "fulfilled" ? candlesRes.value : []);
+          setForecast(forecastRes.status === "fulfilled" ? forecastRes.value : null);
+          setMemo(memoRes.status === "fulfilled" ? memoRes.value : null);
+          setNews(newsRes.status === "fulfilled" ? newsRes.value.articles || [] : []);
+          setIsSyncing(false);
+        });
       }
-
-      setCandles(candlesRes.status === "fulfilled" ? candlesRes.value : []);
-      setForecast(forecastRes.status === "fulfilled" ? forecastRes.value : null);
-      setMemo(memoRes.status === "fulfilled" ? memoRes.value : null);
-      setNews(newsRes.status === "fulfilled" ? newsRes.value.articles || [] : []);
-      setIsSyncing(false);
-    });
+    }, 150);
 
     return () => {
-      requestLifecycle.cleanup(`inspector-${symbol}`);
+      clearTimeout(timer);
+      controller.abort();
     };
   }, [symbol]);
 
@@ -184,132 +203,124 @@ export default function StockInspector({
   );
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#040609]/95 backdrop-blur-3xl border-l border-white/[0.08] text-slate-100 select-none">
-      {/* 1. Header Toolbar */}
-      <div className="shrink-0 border-b border-white/[0.08] px-5 py-3.5 flex items-center justify-between gap-4 bg-[#060a12]/90 backdrop-blur-2xl">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-lg font-bold font-mono tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.2)]">
-                {symbol}
-              </h2>
-              {isSyncing && (
-                <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
-              )}
-              {activeCandidate?.sector && (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium bg-white/[0.04] border border-white/[0.08] text-slate-300">
-                  {activeCandidate.sector}
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#040609] border-l border-white/[0.08] text-slate-100 select-none">
+      {/* 1. Responsive Header (Zero-Overlap Dual Row) */}
+      <div className="shrink-0 border-b border-white/[0.08] px-4 sm:px-5 py-3 bg-[#060a12] space-y-2">
+        {/* Top Row: Symbol + Sector + Verdict on Left | Spot + SMA Dist + Close on Right */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <h2 className="text-lg lg:text-xl font-bold font-mono tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.2)]">
+              {symbol}
+            </h2>
+            {isSyncing && (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400 shrink-0" />
+            )}
+            {activeCandidate?.sector && (
+              <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono truncate max-w-[140px]">
+                {activeCandidate.sector}
+              </span>
+            )}
+            <span
+              className={`px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-wider shrink-0 ${verdictCfg.badge}`}
+            >
+              {verdictCfg.label}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0 text-right">
+            <div>
+              <span className="text-xs font-mono font-semibold text-slate-100">
+                ₹{currentPrice ? currentPrice.toFixed(2) : "—"}
+              </span>
+              {smaDist !== null && (
+                <span className={`ml-2 text-[10px] font-mono ${smaDist >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                  {smaDist >= 0 ? "+" : ""}{smaDist.toFixed(1)}% vs 200 SMA
                 </span>
               )}
             </div>
-            <div className="text-xs text-slate-400 truncate max-w-sm mt-0.5">
-              {activeCandidate?.company_name || memo?.company_name || symbol}
-            </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+                title="Collapse Inspector"
+              >
+                <PanelRightClose className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Right Actions */}
-        <div className="flex items-center gap-2.5 shrink-0">
-          {/* Verdict Badge */}
-          <span
-            className={`px-3 py-1 rounded-full border text-[10px] font-mono font-bold tracking-wider ${verdictCfg.badge}`}
-          >
-            {verdictCfg.label}
+        {/* Second Row: Company Name on Left | Copilot + Tearsheet Link on Right */}
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <span className="text-xs text-slate-400 truncate max-w-[200px] sm:max-w-none">
+            {activeCandidate?.company_name || memo?.company_name || symbol}
           </span>
 
-          {/* Copilot Committee Trigger */}
-          {onOpenCopilot && (
-            <button
-              onClick={() => onOpenCopilot(symbol)}
-              title="Launch Quant Copilot Committee"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 hover:border-cyan-400/80 rounded-xl transition-all shadow-[0_0_15px_rgba(6,182,212,0.15)] hover:shadow-[0_0_20px_rgba(6,182,212,0.3)]"
-            >
-              <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline font-semibold">Copilot</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {onOpenCopilot && (
+              <button
+                onClick={() => onOpenCopilot(symbol)}
+                title="Launch Quant Copilot Committee (⌘J)"
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 hover:border-cyan-400/80 rounded-lg transition-all"
+              >
+                <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="hidden sm:inline font-semibold">Copilot</span>
+              </button>
+            )}
 
-          {/* Full Tearsheet Link */}
-          <Link
-            href={`/stocks/${symbol}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono text-slate-200 bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/40 rounded-xl transition-all"
-            title="Open Deep Institutional Tearsheet"
-          >
-            <span>Tearsheet</span>
-            <ExternalLink className="w-3 h-3 text-cyan-400" />
-          </Link>
-
-          {/* Close Panel Button */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
-              title="Collapse Inspector"
+            <Link
+              href={`/stocks/${symbol}`}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-slate-200 bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/40 rounded-lg transition-all"
+              title="Open Deep Institutional Tearsheet"
             >
-              <PanelRightClose className="w-4 h-4" />
-            </button>
-          )}
+              <span>Tearsheet</span>
+              <ExternalLink className="w-3 h-3 text-cyan-400" />
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* 2. Secondary Tab Switcher */}
-      <div className="shrink-0 border-b border-white/[0.06] px-5 py-2 flex items-center justify-between bg-[#04070e]/80 backdrop-blur-xl">
-        <div className="flex items-center gap-2">
+      {/* 2. Responsive 3-Tab Bar (100% Mobile Viewport Fit) */}
+      <div className="shrink-0 border-b border-white/[0.06] p-2 bg-[#04070e]">
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#060a12] rounded-xl border border-white/[0.07] w-full">
           <button
             onClick={() => setInspectorTab("thesis")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all duration-200 ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg text-xs font-mono transition-all duration-200 truncate ${
               inspectorTab === "thesis"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Thesis & Valuation</span>
+            <FileText className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline truncate">Thesis &amp; Valuation</span>
+            <span className="inline sm:hidden truncate">Thesis</span>
           </button>
 
           <button
             onClick={() => setInspectorTab("catalysts")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all duration-200 ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg text-xs font-mono transition-all duration-200 truncate ${
               inspectorTab === "catalysts"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Radio className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Market Pulse &amp; Catalysts</span>
+            <Radio className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="hidden sm:inline truncate">Market Pulse &amp; Catalysts</span>
+            <span className="inline sm:hidden truncate">Catalysts</span>
           </button>
 
           <button
             onClick={() => setInspectorTab("news")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all duration-200 ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg text-xs font-mono transition-all duration-200 truncate ${
               inspectorTab === "news"
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Newspaper className="w-3.5 h-3.5" />
-            <span>News Wire &amp; Disclosures ({news.length})</span>
+            <Newspaper className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline truncate">News Wire &amp; Disclosures ({news.length})</span>
+            <span className="inline sm:hidden truncate">News ({news.length})</span>
           </button>
-        </div>
-
-        {/* Current Price Banner */}
-        <div className="flex items-center gap-2.5 text-xs font-mono">
-          <span className="text-slate-400">Spot:</span>
-          <strong className="text-white text-sm font-semibold tabular-nums">
-            {currentPrice ? `₹${currentPrice.toFixed(2)}` : "—"}
-          </strong>
-          {smaDist !== null && (
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded-md font-medium tabular-nums ${
-                smaDist >= 0
-                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                  : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
-              }`}
-            >
-              {smaDist >= 0 ? "+" : ""}
-              {smaDist.toFixed(1)}% vs 200 SMA
-            </span>
-          )}
         </div>
       </div>
 
@@ -320,7 +331,7 @@ export default function StockInspector({
             {/* Above-the-Fold 2-Column Bento Grid: Chart (60%) + Multi-Horizon Consensus (40%) */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
               {/* Left Column (xl:col-span-7): Price Chart */}
-              <div className="xl:col-span-7 rounded-2xl border border-white/[0.08] bg-[#080c14]/80 backdrop-blur-2xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between">
+              <div className="xl:col-span-7 rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/[0.06]">
                   <span className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
                     Historical Price & 20D Forecast Cone
@@ -340,7 +351,7 @@ export default function StockInspector({
               </div>
 
               {/* Right Column (xl:col-span-5): Multi-Horizon Factor Consensus & Rebalance Attribution */}
-              <div className="xl:col-span-5 rounded-2xl border border-white/[0.08] bg-[#080c14]/80 backdrop-blur-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-4">
+              <div className="xl:col-span-5 rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-4">
                 <div>
                   <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                     <div className="flex items-center gap-2">
@@ -464,7 +475,7 @@ export default function StockInspector({
             {/* Row 2: Factor Radar & Risk/Reward Gauge */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Factor Radar Card */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14]/80 backdrop-blur-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center">
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center">
                 <span className="text-xs font-mono font-semibold text-slate-200 mb-2 self-start uppercase tracking-wider">
                   Quantitative Factor Pentagon
                 </span>
@@ -478,7 +489,7 @@ export default function StockInspector({
               </div>
 
               {/* Conviction Gauge and Risk/Reward Vector Card */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14]/80 backdrop-blur-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between">
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/[0.06]">
                     <span className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
@@ -515,7 +526,7 @@ export default function StockInspector({
             </div>
 
             {/* Row 3: Investment Memo Component */}
-            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14]/80 backdrop-blur-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
               <InvestmentMemoCard symbol={symbol} initialMemo={memo} />
             </div>
           </>
