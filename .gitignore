@@ -27,6 +27,7 @@ data/*.db*
 data/market_lab.db*
 *.db-shm
 *.db-wal
+!data/cloud_seed_snapshot.json.gz
 backups/
 data/raw/
 *.log

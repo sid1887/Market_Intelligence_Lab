@@ -341,7 +341,7 @@ export default function PortfolioPage() {
 
       <Navbar />
 
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8 space-y-6">
         {/* Account Selector Tabs & Top Actions */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-white/[0.08]">
           <div>
@@ -530,7 +530,7 @@ export default function PortfolioPage() {
 
         {/* Summary Bento Metric Cards */}
         {loading && !summary ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
             {[...Array(5)].map((_, i) => (
               <div
                 key={i}
@@ -549,7 +549,7 @@ export default function PortfolioPage() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
             <BentoCard
               title="Total NAV"
               value={formatINR(totalNav)}
@@ -881,7 +881,7 @@ export default function PortfolioPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[700px] text-left text-xs">
                 <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
                   <tr>
                     <th className="py-3.5 px-5">Symbol</th>
@@ -995,7 +995,7 @@ export default function PortfolioPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[700px] text-left text-xs">
                 <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-5">Timestamp</th>

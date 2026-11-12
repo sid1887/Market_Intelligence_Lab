@@ -172,51 +172,73 @@ export async function apiFetch<T>(
   };
 
   const fetchPromise = (async () => {
-    try {
-      const res = await fetch(url, {
-        ...options,
-        headers,
-      });
+    let retries = 0;
+    const maxRetries = 3;
 
-      if (!res.ok) {
-        let errorPayload: ApiErrorPayload;
-        try {
-          const json = await res.json();
-          errorPayload = json.error || {
-            code: `HTTP_${res.status}`,
-            message: json.detail || json.message || res.statusText,
-            retryable: res.status >= 500,
-          };
-        } catch {
-          errorPayload = {
-            code: `HTTP_${res.status}`,
-            message: res.statusText || `HTTP error ${res.status}`,
-            retryable: res.status >= 500,
-          };
+    while (true) {
+      try {
+        const res = await fetch(url, {
+          ...options,
+          headers,
+        });
+
+        // Detect Render Cold-Start (502 Bad Gateway / 503 Service Unavailable / 504 Gateway Timeout)
+        if ((res.status === 502 || res.status === 503 || res.status === 504) && retries < maxRetries) {
+          retries++;
+          console.warn(`[MIL Cloud Client] Backend cold-start waking (${res.status}). Retrying ${retries}/${maxRetries} in 3.5s...`);
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("cloud-engine-waking", { detail: { retry: retries, status: res.status } })
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 3500));
+          continue;
         }
-        throw new ApiError(res.status, errorPayload);
-      }
 
-      const data = (await res.json()) as T;
-      if (useCache) {
-        memoryCache.set(url, { data, timestamp: Date.now() });
+        if (retries > 0 && res.ok && typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("cloud-engine-ready"));
+        }
+
+        if (!res.ok) {
+          let errorPayload: ApiErrorPayload;
+          try {
+            const json = await res.json();
+            errorPayload = json.error || {
+              code: `HTTP_${res.status}`,
+              message: json.detail || json.message || res.statusText,
+              retryable: res.status >= 500,
+            };
+          } catch {
+            errorPayload = {
+              code: `HTTP_${res.status}`,
+              message: res.statusText || `HTTP error ${res.status}`,
+              retryable: res.status >= 500,
+            };
+          }
+          throw new ApiError(res.status, errorPayload);
+        }
+
+        const data = (await res.json()) as T;
+        if (useCache) {
+          memoryCache.set(url, { data, timestamp: Date.now() });
+        }
+        return data;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
+          throw err; // Re-throw aborts for caller-level handling
+        }
+        if (err instanceof ApiError) {
+          throw err;
+        }
+        const message = err instanceof Error ? err.message : "Network transport failure";
+        throw new ApiError(0, {
+          code: "NETWORK_FAILURE",
+          message,
+          retryable: true,
+        });
+      } finally {
+        inFlightRequests.delete(url);
       }
-      return data;
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") {
-        throw err; // Re-throw aborts for caller-level handling
-      }
-      if (err instanceof ApiError) {
-        throw err;
-      }
-      const message = err instanceof Error ? err.message : "Network transport failure";
-      throw new ApiError(0, {
-        code: "NETWORK_FAILURE",
-        message,
-        retryable: true,
-      });
-    } finally {
-      inFlightRequests.delete(url);
     }
   })();
 
@@ -626,7 +648,7 @@ export async function triggerSystemIngest(): Promise<IngestResponse> {
     headers: DEFAULT_HEADERS,
     cache: "no-store",
   });
-  if (!res.ok) {
+  if (!res.ok && res.status !== 202) {
     throw new Error(`Ingest failed: HTTP ${res.status}`);
   }
   const data = (await res.json()) as IngestResponse;

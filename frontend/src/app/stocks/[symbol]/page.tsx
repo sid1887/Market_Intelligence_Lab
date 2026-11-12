@@ -435,7 +435,7 @@ export default function StockTearsheetPage() {
           <div className="h-8 w-48 bg-slate-900 rounded" />
           <div className="h-28 bg-slate-900/80 rounded-xl" />
           <div className="h-96 bg-slate-900/80 rounded-xl" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="h-32 bg-slate-900/80 rounded-xl" />
             ))}
@@ -709,7 +709,7 @@ export default function StockTearsheetPage() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Debt-to-Equity */}
           <div className="bg-[#080c14]/85 border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
             <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Debt-to-Equity (D/E)</span>

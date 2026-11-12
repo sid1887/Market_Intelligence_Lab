@@ -402,8 +402,8 @@ export default function ScreenerWorkspace({
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0 h-full">
-          {/* Table Header */}
-          <div className="shrink-0 grid grid-cols-12 gap-2 px-3 py-2 border-b border-white/[0.08] bg-[#050811]/80 backdrop-blur-md text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
+          {/* Table Header: Desktop 12-Col vs Mobile Streamlined */}
+          <div className="hidden md:grid shrink-0 grid-cols-12 gap-2 px-3 py-2 border-b border-white/[0.08] bg-[#050811]/80 backdrop-blur-md text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
             <div
               className="col-span-1 cursor-pointer flex items-center gap-1 hover:text-slate-200"
               onClick={() => handleSort("rank")}
@@ -466,6 +466,12 @@ export default function ScreenerWorkspace({
             </div>
           </div>
 
+          {/* Mobile Table Header (< 768px) */}
+          <div className="flex md:hidden items-center justify-between px-3.5 py-1.5 text-[10px] font-mono text-slate-400 border-b border-white/[0.06] bg-[#020406]/90 shrink-0 sticky top-0 z-10">
+            <span>RANK · INSTRUMENT</span>
+            <span>PRICE · SCORE · 20D</span>
+          </div>
+
           {/* Table Body (Virtual Windowed Chunk Rendering for 60 FPS) */}
           <div
             ref={tableBodyRef}
@@ -523,7 +529,7 @@ export default function ScreenerWorkspace({
                           prefetchStockBundle(cand.symbol);
                         }}
                         className={cn(
-                          "h-[64px] w-full relative group grid grid-cols-12 gap-2 px-3.5 py-2 cursor-pointer items-center text-xs font-mono transition-all duration-150 hover:bg-white/[0.04] active:bg-white/[0.08] border-b border-white/[0.04]",
+                          "h-[64px] w-full relative group flex md:grid md:grid-cols-12 md:gap-2 px-3.5 py-2 cursor-pointer items-center text-xs font-mono transition-all duration-150 hover:bg-white/[0.04] active:bg-white/[0.08] border-b border-white/[0.04]",
                           isSelected
                             ? "bg-cyan-950/40 text-white font-medium shadow-[inset_0_0_20px_rgba(6,182,212,0.12)]"
                             : "text-slate-300 hover:text-white"
@@ -536,116 +542,180 @@ export default function ScreenerWorkspace({
                           />
                         )}
 
-                      {/* Rank */}
-                      <div className="col-span-1 text-slate-500 text-[11px] tabular-nums pl-1">
-                        {cand.rank || idx + 1}
-                      </div>
-
-                      {/* Ticker & Name */}
-                      <div className="col-span-3 min-w-0">
-                        <div className="flex items-center flex-wrap gap-1.5">
-                          <span className="font-bold tracking-tight text-slate-100">
-                            {cand.symbol}
-                          </span>
-                          {Boolean(cand.is_watchlist) && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" title="Watchlist" />
-                          )}
-                          {/* Target Rebalance Allocation Pill */}
-                          {Boolean(cand.target_allocation_pct && cand.target_allocation_pct > 0) && (
-                            <span
-                              className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.35)] animate-pulse"
-                              title={`Recommended Target Allocation: ${cand.target_allocation_pct!.toFixed(2)}%`}
-                            >
-                              Alloc: {cand.target_allocation_pct!.toFixed(2)}%
+                        {/* Mobile Streamlined View (< 768px) */}
+                        <div className="flex md:hidden items-center justify-between w-full h-full gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-slate-500 text-[11px] tabular-nums font-mono w-6 shrink-0">
+                              #{cand.rank || idx + 1}
                             </span>
-                          )}
-                          {/* Horizon Drivers Badges */}
-                          {Boolean(cand.horizon_drivers && cand.horizon_drivers.length > 0) && (
-                            <div className="flex items-center gap-1">
-                              {cand.horizon_drivers!.includes("20D") && (
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold tracking-tight text-slate-100 text-xs">
+                                  {cand.symbol}
+                                </span>
+                                {Boolean(cand.is_watchlist) && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" title="Watchlist" />
+                                )}
+                                {Boolean(cand.target_allocation_pct && cand.target_allocation_pct > 0) && (
+                                  <span
+                                    className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/50"
+                                    title={`Target: ${cand.target_allocation_pct!.toFixed(2)}%`}
+                                  >
+                                    {cand.target_allocation_pct!.toFixed(1)}%
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate max-w-[150px]">
+                                {cand.company_name || cand.sector || "Equity"}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0 text-right">
+                            <div>
+                              <div className={`font-semibold text-xs text-slate-200 ${isPositiveRet ? "animate-tick-up" : isNegativeRet ? "animate-tick-down" : ""}`}>
+                                {cand.close !== null ? `₹${cand.close.toFixed(1)}` : "—"}
+                              </div>
+                              <div className="text-[10px] font-medium">
+                                {excessRet !== null && excessRet !== undefined ? (
+                                  <span className={isPositiveRet ? "text-emerald-400" : isNegativeRet ? "text-rose-400" : "text-slate-500"}>
+                                    {isPositiveRet ? "+" : ""}{(excessRet * 100).toFixed(1)}%
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-600">—</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="w-12 flex justify-end">
+                              {(() => {
+                                const score = (cand.blended_score !== null && cand.blended_score !== undefined && cand.blended_score > 0)
+                                  ? cand.blended_score
+                                  : ((cand.composite_score !== null && cand.composite_score !== undefined && cand.composite_score > 0)
+                                      ? cand.composite_score
+                                      : null);
+                                return score !== null ? (
+                                  <ScreenerScoreCell score={score} />
+                                ) : (
+                                  <span className="text-slate-600 text-xs">—</span>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Desktop 12-Column Grid (>= 768px) */}
+                        <div className="hidden md:contents">
+                          {/* Rank */}
+                          <div className="col-span-1 text-slate-500 text-[11px] tabular-nums pl-1">
+                            {cand.rank || idx + 1}
+                          </div>
+
+                          {/* Ticker & Name */}
+                          <div className="col-span-3 min-w-0">
+                            <div className="flex items-center flex-wrap gap-1.5">
+                              <span className="font-bold tracking-tight text-slate-100">
+                                {cand.symbol}
+                              </span>
+                              {Boolean(cand.is_watchlist) && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" title="Watchlist" />
+                              )}
+                              {/* Target Rebalance Allocation Pill */}
+                              {Boolean(cand.target_allocation_pct && cand.target_allocation_pct > 0) && (
                                 <span
-                                  className="px-1 py-0.2 rounded text-[8px] font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold"
-                                  title="20-Day Tactical Horizon Contributor (62.5% weight)"
+                                  className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.35)] animate-pulse"
+                                  title={`Recommended Target Allocation: ${cand.target_allocation_pct!.toFixed(2)}%`}
                                 >
-                                  20D
+                                  Alloc: {cand.target_allocation_pct!.toFixed(2)}%
                                 </span>
                               )}
-                              {cand.horizon_drivers!.includes("60D") && (
+                              {/* Horizon Drivers Badges */}
+                              {Boolean(cand.horizon_drivers && cand.horizon_drivers.length > 0) && (
+                                <div className="flex items-center gap-1">
+                                  {cand.horizon_drivers!.includes("20D") && (
+                                    <span
+                                      className="px-1 py-0.2 rounded text-[8px] font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold"
+                                      title="20-Day Tactical Horizon Contributor (62.5% weight)"
+                                    >
+                                      20D
+                                    </span>
+                                  )}
+                                  {cand.horizon_drivers!.includes("60D") && (
+                                    <span
+                                      className="px-1 py-0.2 rounded text-[8px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-semibold"
+                                      title="60-Day Trend Drift Horizon Contributor (37.5% weight)"
+                                    >
+                                      60D
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {Boolean(cand.price_above_sma200) && (
                                 <span
-                                  className="px-1 py-0.2 rounded text-[8px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-semibold"
-                                  title="60-Day Trend Drift Horizon Contributor (37.5% weight)"
+                                  className="text-[9px] px-1 rounded bg-slate-900 text-slate-400 border border-white/[0.08]"
+                                  title="Price above 200-day SMA"
                                 >
-                                  60D
+                                  SMA
                                 </span>
                               )}
                             </div>
-                          )}
-                          {Boolean(cand.price_above_sma200) && (
-                            <span
-                              className="text-[9px] px-1 rounded bg-slate-900 text-slate-400 border border-white/[0.08]"
-                              title="Price above 200-day SMA"
-                            >
-                              SMA
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                          {cand.company_name}
-                        </div>
-                      </div>
-
-                      {/* Close Price */}
-                      <div className="col-span-2 text-right tabular-nums">
-                        <div className={`font-semibold text-slate-200 transition-colors ${isPositiveRet ? "animate-tick-up" : isNegativeRet ? "animate-tick-down" : ""}`}>
-                          {cand.close !== null ? `₹${cand.close.toFixed(2)}` : "—"}
-                        </div>
-                        {cand.sma_200 !== null && (
-                          <div className="text-[10px] text-slate-500">
-                            SMA: ₹{cand.sma_200.toFixed(0)}
+                            <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                              {cand.company_name}
+                            </div>
                           </div>
-                        )}
-                      </div>
 
-                      {/* Blended / Composite Score */}
-                      <div className="col-span-2 flex justify-end">
-                        {(() => {
-                          const score = (cand.blended_score !== null && cand.blended_score !== undefined && cand.blended_score > 0)
-                            ? cand.blended_score
-                            : ((cand.composite_score !== null && cand.composite_score !== undefined && cand.composite_score > 0)
-                                ? cand.composite_score
-                                : null);
-                          return score !== null ? (
-                            <ScreenerScoreCell score={score} />
-                          ) : (
-                            <span className="text-slate-600">—</span>
-                          );
-                        })()}
-                      </div>
+                          {/* Close Price */}
+                          <div className="col-span-2 text-right tabular-nums">
+                            <div className={`font-semibold text-slate-200 transition-colors ${isPositiveRet ? "animate-tick-up" : isNegativeRet ? "animate-tick-down" : ""}`}>
+                              {cand.close !== null ? `₹${cand.close.toFixed(2)}` : "—"}
+                            </div>
+                            {cand.sma_200 !== null && (
+                              <div className="text-[10px] text-slate-500">
+                                SMA: ₹{cand.sma_200.toFixed(0)}
+                              </div>
+                            )}
+                          </div>
 
-                      {/* ROE */}
-                      <div className="col-span-2 text-right tabular-nums text-slate-300">
-                        {cand.roe_pct !== null ? `${cand.roe_pct.toFixed(1)}%` : "—"}
-                      </div>
+                          {/* Blended / Composite Score */}
+                          <div className="col-span-2 flex justify-end">
+                            {(() => {
+                              const score = (cand.blended_score !== null && cand.blended_score !== undefined && cand.blended_score > 0)
+                                ? cand.blended_score
+                                : ((cand.composite_score !== null && cand.composite_score !== undefined && cand.composite_score > 0)
+                                    ? cand.composite_score
+                                    : null);
+                              return score !== null ? (
+                                <ScreenerScoreCell score={score} />
+                              ) : (
+                                <span className="text-slate-600">—</span>
+                              );
+                            })()}
+                          </div>
 
-                      {/* 20D Excess Return */}
-                      <div className="col-span-2 text-right tabular-nums font-semibold">
-                        {excessRet !== null && excessRet !== undefined ? (
-                          <span
-                            className={`inline-flex items-center justify-end px-1 py-0.5 rounded ${
-                              isPositiveRet
-                                ? "text-emerald-400 animate-tick-up"
-                                : isNegativeRet
-                                ? "text-rose-400 animate-tick-down"
-                                : "text-slate-400"
-                            }`}
-                          >
-                            {isPositiveRet ? "+" : ""}
-                            {(excessRet * 100).toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span className="text-slate-600">—</span>
-                        )}
-                      </div>
+                          {/* ROE */}
+                          <div className="col-span-2 text-right tabular-nums text-slate-300">
+                            {cand.roe_pct !== null ? `${cand.roe_pct.toFixed(1)}%` : "—"}
+                          </div>
+
+                          {/* 20D Excess Return */}
+                          <div className="col-span-2 text-right tabular-nums font-semibold">
+                            {excessRet !== null && excessRet !== undefined ? (
+                              <span
+                                className={`inline-flex items-center justify-end px-1 py-0.5 rounded ${
+                                  isPositiveRet
+                                    ? "text-emerald-400 animate-tick-up"
+                                    : isNegativeRet
+                                    ? "text-rose-400 animate-tick-down"
+                                    : "text-slate-400"
+                                }`}
+                              >
+                                {isPositiveRet ? "+" : ""}
+                                {(excessRet * 100).toFixed(1)}%
+                              </span>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </div>
+                        </div>
                     </motion.div>
                   </div>
                 );

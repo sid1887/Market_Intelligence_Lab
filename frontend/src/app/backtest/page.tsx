@@ -122,7 +122,7 @@ export default function BacktestPage() {
 
       <Navbar />
 
-      <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-white/[0.08]">
           <div>
@@ -275,7 +275,7 @@ export default function BacktestPage() {
 
         {/* KPI Tearsheet Grid (Standardized Bento Cards) */}
         {metrics && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
             <BentoCard
               title="Final Portfolio NAV"
               value={formatINR(metrics.final_nav)}
@@ -405,7 +405,7 @@ export default function BacktestPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[700px] text-left text-xs">
                 <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-5">Cycle Date</th>

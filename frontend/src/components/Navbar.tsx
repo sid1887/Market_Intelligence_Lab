@@ -135,8 +135,8 @@ export default function Navbar() {
           </div>
         </form>
 
-        {/* Navigation Tabs with Framer Motion Spring Layout Indicator */}
-        <nav className="flex items-center space-x-1 sm:space-x-1.5 bg-white/[0.02] border border-white/[0.06] p-1 rounded-xl backdrop-blur-md">
+        {/* Navigation Tabs with Framer Motion Spring Layout Indicator (Desktop) */}
+        <nav className="hidden md:flex items-center space-x-1 sm:space-x-1.5 bg-white/[0.02] border border-white/[0.06] p-1 rounded-xl backdrop-blur-md">
           {NAV_LINKS.map(({ href, label, icon: Icon }) => {
             const isActive = pathname === href;
             return (
@@ -274,6 +274,47 @@ export default function Navbar() {
         onClose={() => setIsPushModalOpen(false)}
         onSubscriptionChange={(sub) => setIsPushSubscribed(sub)}
       />
+
+      {/* ──────────────── FIXED MOBILE BOTTOM NAVIGATION BAR (< 768px) ──────────────── */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+          const isActive = pathname === href;
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono transition-colors",
+                isActive
+                  ? "text-cyan-300 font-bold bg-cyan-950/40"
+                  : "text-slate-400 hover:text-slate-200"
+              )}
+            >
+              <Icon className={cn("w-4 h-4 mb-0.5", isActive ? "text-cyan-400" : "text-slate-400")} />
+              <span>{label}</span>
+            </Link>
+          );
+        })}
+
+        {/* Dynamic Ingest Quick Action in Bottom Bar */}
+        <button
+          onClick={handleIngest}
+          disabled={isSubmitting || (activeJobId !== null && (status === "RUNNING" || status === "QUEUED"))}
+          className={cn(
+            "flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono transition-colors",
+            activeJobId && (status === "RUNNING" || status === "QUEUED")
+              ? "text-cyan-300 font-bold"
+              : "text-emerald-400 hover:text-emerald-300"
+          )}
+        >
+          {isSubmitting || (activeJobId && (status === "RUNNING" || status === "QUEUED")) ? (
+            <Loader2 className="w-4 h-4 mb-0.5 animate-spin text-cyan-400" />
+          ) : (
+            <Zap className="w-4 h-4 mb-0.5 text-emerald-400" />
+          )}
+          <span>{activeJobId ? `${progress}%` : "Ingest"}</span>
+        </button>
+      </nav>
     </header>
   );
 }

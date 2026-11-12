@@ -12,6 +12,9 @@ import {
   LayoutDashboard,
   Briefcase,
   LineChart,
+  X,
+  Bell,
+  BellRing,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import {
@@ -24,6 +27,8 @@ import {
   clearMemoryCache,
 } from "@/lib/api";
 import { usePlatformEvents } from "@/hooks/usePlatformEvents";
+import { checkPushSubscription } from "@/lib/pushNotifications";
+import PushNotificationModal from "@/components/PushNotificationModal";
 import MacroRibbon from "@/components/MacroRibbon";
 import IngestionProgressBanner from "@/components/IngestionProgressBanner";
 import ScreenerWorkspace from "@/components/ScreenerWorkspace";
@@ -44,8 +49,11 @@ export default function CockpitPage() {
   const [viewMode, setViewMode] = useState<"table" | "heatmap">("table");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
+  const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [isPushModalOpen, setIsPushModalOpen] = useState(false);
+  const [isPushSubscribed, setIsPushSubscribed] = useState(false);
 
   // 1. Unified Real-Time Event Hub
   const {
@@ -95,6 +103,9 @@ export default function CockpitPage() {
 
   useEffect(() => {
     void loadPageData();
+    checkPushSubscription().then((res) => {
+      setIsPushSubscribed(res.isSubscribed);
+    });
   }, [loadPageData]);
 
   // Active Candidate lookup
@@ -212,20 +223,20 @@ export default function CockpitPage() {
 
       {/* ──────────────── 1. TOP HEADER NAVIGATION ──────────────── */}
       <header className="h-12 shrink-0 border-b border-white/[0.06] flex items-center justify-between px-3 sm:px-4 bg-[#030508]/95 backdrop-blur-md z-30">
-        {/* Left: Brand + Navigation Tabs */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="w-2 h-2 rounded-sm bg-cyan-400 shadow-[0_0_6px_#06b6d4]" />
+        {/* Left: Brand + Navigation Tabs (Desktop) */}
+        <div className="flex items-center gap-3 sm:gap-4">
+          <Link href="/" className="flex items-center gap-1.5 shrink-0 group">
+            <span className="w-2 h-2 rounded-sm bg-cyan-400 shadow-[0_0_6px_#06b6d4] group-hover:scale-125 transition-transform" />
             <span className="text-sm font-mono font-bold text-white tracking-tight">
-              MIL<span className="hidden xl:inline"> — MARKET INTELLIGENCE LAB</span>
+              MIL<span className="hidden sm:inline">.QUANT</span>
             </span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 hidden sm:inline">
+            <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 hidden md:inline">
               PRO
             </span>
-          </div>
+          </Link>
 
-          {/* Navigation Links */}
-          <nav className="flex items-center gap-1">
+          {/* Desktop Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1">
             <Link
               href="/"
               className="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-cyan-950/70 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 transition-colors"
@@ -253,7 +264,7 @@ export default function CockpitPage() {
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={() => void loadPageData(true)}
             disabled={pageLoading || isIngesting}
@@ -265,7 +276,7 @@ export default function CockpitPage() {
 
           <button
             onClick={() => setShowCommandPalette(true)}
-            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2 sm:px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
           >
             <Command className="w-3.5 h-3.5 text-cyan-400" />
             <span className="hidden md:inline">Search</span>
@@ -273,10 +284,50 @@ export default function CockpitPage() {
           </button>
 
           <button
+            onClick={() => {
+              window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }));
+            }}
+            title="Open Quant Copilot Committee (⌘J)"
+            className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2 sm:px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/50 hover:border-cyan-400 transition-colors whitespace-nowrap"
+          >
+            <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Copilot</span>
+            <kbd className="text-[10px] text-cyan-400/80 bg-slate-900 px-1 rounded border border-cyan-500/30">⌘J</kbd>
+          </button>
+
+          {/* Web Push Notification Bell */}
+          <button
+            onClick={() => setIsPushModalOpen(true)}
+            title={
+              isPushSubscribed
+                ? "Mobile Web Push Connected (Causal Radar Active)"
+                : "Enable Mobile Web Push & Causal Catalyst Alerts"
+            }
+            className="relative flex items-center justify-center p-1.5 sm:p-2 rounded-lg bg-white/[0.04] hover:bg-cyan-950/40 border border-white/[0.08] hover:border-cyan-500/40 text-slate-300 hover:text-cyan-300 transition-all shadow-sm"
+          >
+            {isPushSubscribed ? (
+              <BellRing className="w-3.5 h-3.5 text-cyan-400" />
+            ) : (
+              <Bell className="w-3.5 h-3.5 text-slate-400" />
+            )}
+            <span className="absolute top-1 right-1 flex h-1.5 w-1.5">
+              {isPushSubscribed ? (
+                <>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </>
+              ) : (
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400/60" />
+              )}
+            </span>
+          </button>
+
+          {/* Dynamic Ingest (Desktop) */}
+          <button
             onClick={handleUniversalIngest}
             disabled={isIngesting || pageLoading}
             title="Execute Dynamic Ingestion for live NSE settlement"
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-600/40 hover:border-emerald-500 text-xs font-mono font-medium transition-all shadow-sm disabled:opacity-60 whitespace-nowrap"
+            className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-600/40 hover:border-emerald-500 text-xs font-mono font-medium transition-all shadow-sm disabled:opacity-60 whitespace-nowrap"
           >
             {isIngesting ? (
               <>
@@ -286,32 +337,19 @@ export default function CockpitPage() {
             ) : (
               <>
                 <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden sm:inline">Dynamic Ingest</span>
-                <span className="sm:hidden">Ingest</span>
+                <span>Dynamic Ingest</span>
               </>
             )}
-          </button>
-
-          <button
-            onClick={() => {
-              window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }));
-            }}
-            title="Open Quant Copilot Committee (⌘J)"
-            className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/50 hover:border-cyan-400 transition-colors whitespace-nowrap"
-          >
-            <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Copilot</span>
-            <kbd className="text-[10px] text-cyan-400/80 bg-slate-900 px-1 rounded border border-cyan-500/30">⌘J</kbd>
           </button>
 
           {isInspectorCollapsed && (
             <button
               onClick={() => setIsInspectorCollapsed(false)}
               title="Expand Details Inspector"
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800/60 rounded-lg transition-colors"
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800/60 rounded-lg transition-colors"
             >
               <PanelRightOpen className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden lg:inline">Inspect {selectedSymbol || "Stock"}</span>
+              <span>Inspect {selectedSymbol || "Stock"}</span>
             </button>
           )}
         </div>
@@ -331,12 +369,12 @@ export default function CockpitPage() {
       {/* ──────────────── 2. REAL-TIME INGESTION BANNER ──────────────── */}
       <IngestionProgressBanner activeJob={activeJob} onDismiss={dismissActiveJob} />
 
-      {/* ──────────────── 3. SPLIT-PANE WORKBENCH ──────────────── */}
-      <div className="flex flex-1 overflow-hidden relative z-10 min-h-0 h-full">
-        {/* Left: Screener Workspace */}
+      {/* ──────────────── 3. RESPONSIVE MASTER-DETAIL SPLIT-PANE ──────────────── */}
+      <div className="flex flex-1 overflow-hidden relative z-10 min-h-0 h-full pb-14 md:pb-0">
+        {/* Master: Screener Workspace (Always full-width on mobile, 54% or 100% on desktop) */}
         <div
           className={`${
-            isInspectorCollapsed ? "w-full" : "hidden lg:flex w-full lg:w-[54%]"
+            isInspectorCollapsed ? "w-full" : "w-full lg:w-[54%]"
           } flex flex-col h-full overflow-hidden shrink-0 min-h-0 backdrop-blur-md bg-slate-950/75 border-r border-slate-800/80 transition-all duration-300 ease-in-out`}
         >
           <ScreenerWorkspace
@@ -345,6 +383,7 @@ export default function CockpitPage() {
             onSelectSymbol={(sym) => {
               setSelectedSymbol(sym);
               setIsInspectorCollapsed(false);
+              setIsMobileInspectorOpen(true);
             }}
             asOfDate={asOfDate}
             loading={pageLoading}
@@ -353,9 +392,9 @@ export default function CockpitPage() {
           />
         </div>
 
-        {/* Right: Stock Deep Inspector */}
+        {/* Desktop Detail: Stock Deep Inspector (>= 1024px) */}
         {!isInspectorCollapsed && (
-          <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0 min-h-0 backdrop-blur-md bg-slate-950/75 transition-all duration-300 ease-in-out">
+          <div className="hidden lg:flex flex-1 flex-col h-full overflow-hidden min-w-0 min-h-0 backdrop-blur-md bg-slate-950/75 transition-all duration-300 ease-in-out">
             <StockInspector
               symbol={selectedSymbol}
               activeCandidate={activeCandidate}
@@ -370,12 +409,95 @@ export default function CockpitPage() {
         )}
       </div>
 
-      {/* ──────────────── 4. MODALS & COCKPIT DRAWERS ──────────────── */}
+      {/* ──────────────── 4. MOBILE DETAIL SLIDE-OVER DRAWER (< 1024px) ──────────────── */}
+      {isMobileInspectorOpen && selectedSymbol && (
+        <div className="fixed inset-0 z-50 bg-[#040609] overflow-y-auto lg:hidden flex flex-col animate-in slide-in-from-bottom duration-200">
+          {/* Sticky Mobile Back Header */}
+          <div className="sticky top-0 z-50 flex items-center justify-between px-3.5 py-2.5 bg-[#060911]/95 backdrop-blur-xl border-b border-white/10 shrink-0">
+            <button
+              onClick={() => setIsMobileInspectorOpen(false)}
+              className="flex items-center gap-1.5 text-xs font-mono text-cyan-400 hover:text-cyan-300 font-semibold px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-800/50"
+            >
+              <span>← Back to Screener</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-bold text-white tracking-wider">
+                {selectedSymbol}
+              </span>
+              <button
+                onClick={() => setIsMobileInspectorOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Inspector Viewport */}
+          <div className="flex-1 overflow-y-auto min-h-0 pb-20">
+            <StockInspector
+              symbol={selectedSymbol}
+              activeCandidate={activeCandidate}
+              onClose={() => setIsMobileInspectorOpen(false)}
+              onOpenCopilot={() => {
+                window.dispatchEvent(
+                  new KeyboardEvent("keydown", { key: "j", metaKey: true })
+                );
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── 5. FIXED MOBILE BOTTOM NAVIGATION BAR (< 768px) ──────────────── */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609]/95 backdrop-blur-2xl border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <Link
+          href="/"
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-cyan-300 font-bold bg-cyan-950/40"
+        >
+          <LayoutDashboard className="w-4 h-4 mb-0.5 text-cyan-400" />
+          <span>Screener</span>
+        </Link>
+        <Link
+          href="/portfolio"
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
+        >
+          <Briefcase className="w-4 h-4 mb-0.5 text-slate-400" />
+          <span>Portfolio</span>
+        </Link>
+        <Link
+          href="/backtest"
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
+        >
+          <LineChart className="w-4 h-4 mb-0.5 text-slate-400" />
+          <span>Backtest</span>
+        </Link>
+        <button
+          onClick={handleUniversalIngest}
+          disabled={isIngesting || pageLoading}
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-emerald-400 hover:text-emerald-300"
+        >
+          {isIngesting ? (
+            <Loader2 className="w-4 h-4 mb-0.5 animate-spin text-emerald-400" />
+          ) : (
+            <Zap className="w-4 h-4 mb-0.5 text-emerald-400" />
+          )}
+          <span>{isIngesting ? "Syncing..." : "Ingest"}</span>
+        </button>
+      </nav>
+
+      {/* ──────────────── 6. MODALS & COCKPIT DRAWERS ──────────────── */}
       <CopilotDrawer
         activeSymbol={selectedSymbol || "RELIANCE"}
         activePrice={activeCandidate?.close ?? undefined}
         activeVerdict={activeCandidate?.composite_score ? (activeCandidate.composite_score >= 75 ? "STRONG_BUY_COMPOUNDER" : "HOLD_FAIRLY_VALUED") : undefined}
         showFloatingTrigger={false}
+      />
+
+      <PushNotificationModal
+        isOpen={isPushModalOpen}
+        onClose={() => setIsPushModalOpen(false)}
+        onSubscriptionChange={(sub) => setIsPushSubscribed(sub)}
       />
 
       {showCommandPalette && (
@@ -385,6 +507,7 @@ export default function CockpitPage() {
           onSelect={(sym) => {
             setSelectedSymbol(sym);
             setIsInspectorCollapsed(false);
+            setIsMobileInspectorOpen(true);
             setShowCommandPalette(false);
           }}
           onClose={() => setShowCommandPalette(false)}

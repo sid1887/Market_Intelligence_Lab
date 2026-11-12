@@ -700,37 +700,90 @@ def get_system_accuracy():
 
 
 
-@router.post("/system/ingest")
-@router.post("/api/v1/system/ingest")
-def trigger_system_ingest(
-    background_tasks: BackgroundTasks,
-    background: bool = Query(False, description="Run ingestion in background asynchronously"),
-):
+def run_cloud_safe_ingestion() -> None:
     """
-    Executes Universal Dynamic Ingestion across the active equity universe.
-    Fetches latest settlement quotes from exchange feeds, updates ohlcv_daily and index_daily,
-    recalculates quantitative factors, updates macro telemetry, and advances settled session.
+    Background worker for asynchronous market ingestion.
+    In cloud lightweight mode, processes symbols in small batches (batch_size=40, max_workers=2)
+    with garbage collection to maintain memory strictly under 320 MB on 512 MB containers.
     """
+    import gc
+    from src.storage.hydration import is_cloud_lightweight_mode
+    from src.pipeline.universe_ingestion import UniverseIngestionManager
+    from src.tasks.catalyst_engine import catalyst_engine
+    
+    logger.info("Starting background cloud-safe market ingestion...")
+    manager = UniverseIngestionManager(DATABASE_PATH)
+    
     try:
-        from src.pipeline.universe_ingestion import UniverseIngestionManager
-        manager = UniverseIngestionManager(DATABASE_PATH)
-        if background:
-            background_tasks.add_task(manager.execute_universe_ingestion)
-            return sanitize_for_json({
-                "status": "QUEUED",
-                "message": "Universal dynamic ingestion running in background."
-            })
-
-        res = manager.execute_universe_ingestion()
+        if is_cloud_lightweight_mode():
+            # In cloud lightweight mode: prioritize Watchlist + Portfolio + Top-200 liquid equities
+            with manager.db.get_connection() as conn:
+                wl_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM user_watchlists").fetchall()]
+                pf_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM portfolio_positions WHERE quantity > 0").fetchall()]
+                top_rows = [r[0] for r in conn.execute("SELECT symbol FROM securities_master WHERE is_active = 1 AND (is_nifty50 = 1 OR tier = 'LARGE' OR tier = 'MID') LIMIT 200").fetchall()]
+            
+            priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + top_rows))
+            if not priority_symbols:
+                priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT"]
+                
+            logger.info(f"Cloud Lightweight Ingest: processing {len(priority_symbols)} priority symbols in batches of 40...")
+            
+            from src.data.universe_expander import ingest_symbols_parallel
+            for i in range(0, len(priority_symbols), 40):
+                chunk = priority_symbols[i:i + 40]
+                try:
+                    ingest_symbols_parallel(manager.db, chunk, max_workers=2, chunk_size=20, period="5d")
+                except Exception as e:
+                    logger.warning(f"Batch {i//40 + 1} ingest partial: {e}")
+                gc.collect()
+                
+            try:
+                manager.pipeline.calculate_daily_factors(symbols=priority_symbols)
+            except Exception as e:
+                logger.warning(f"Priority factor calculation error: {e}")
+        else:
+            # Full universe ingestion on local machine
+            manager.execute_universe_ingestion()
+            
+        # Invalidate in-memory screener cache
         try:
             from src.api.main import invalidate_screener_cache
             invalidate_screener_cache()
         except Exception:
             pass
-        return sanitize_for_json(res)
+            
+        # Scan for real-time catalysts and dispatch push
+        try:
+            catalyst_engine.run_intraday_scan()
+        except Exception as e:
+            logger.warning(f"Catalyst scan post-ingest error: {e}")
+            
+        logger.info("Background market ingestion completed successfully.")
     except Exception as e:
-        logger.error(f"Universal dynamic ingestion error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Universal dynamic ingestion failed: {str(e)}")
+        logger.error(f"Error in background market ingestion: {e}", exc_info=True)
+    finally:
+        gc.collect()
+
+
+@router.post("/system/ingest", status_code=202)
+@router.post("/api/v1/system/ingest", status_code=202)
+@router.post("/ingest", status_code=202)
+@router.post("/api/v1/ingest", status_code=202)
+def trigger_system_ingest(
+    background_tasks: BackgroundTasks,
+    background: bool = Query(True, description="Run ingestion in background asynchronously"),
+):
+    """
+    Executes non-blocking dynamic market ingestion.
+    Returns 202 Accepted in < 100ms and executes sync asynchronously to prevent Render 502 timeouts.
+    """
+    from src.storage.hydration import is_cloud_lightweight_mode
+    background_tasks.add_task(run_cloud_safe_ingestion)
+    return sanitize_for_json({
+        "status": "accepted",
+        "message": "Incremental market sync started in background.",
+        "mode": "CLOUD_LIGHTWEIGHT_MODE" if is_cloud_lightweight_mode() else "FULL_UNIVERSE"
+    })
 
 
 __all__ = [
