@@ -110,41 +110,54 @@ def ensure_core_tables_exist(conn: sqlite3.Connection):
     """)
 
 
-def repair_null_ret_20d(db: DatabaseManager) -> int:
+def repair_null_ret_20d(target: Any) -> int:
     """
     Computes/guarantees non-null ret_20d in quant_factors_daily for all equities.
     Derives from factors_daily or proxies from ret_5d / ret_1d if missing.
+    Accepts either an active sqlite3.Connection or a DatabaseManager instance.
     """
+    if isinstance(target, sqlite3.Connection):
+        conn = target
+        should_close = False
+    elif hasattr(target, "get_connection"):
+        conn = target.get_connection()
+        should_close = True
+    else:
+        return 0
+
     try:
-        with db.get_connection() as conn:
-            conn.execute("""
-                UPDATE quant_factors_daily
-                SET ret_20d = (
-                    SELECT fd.ret_20d FROM factors_daily fd
-                    WHERE fd.symbol = quant_factors_daily.symbol
-                      AND fd.trading_date = quant_factors_daily.trading_date
-                      AND fd.ret_20d IS NOT NULL
-                )
-                WHERE ret_20d IS NULL
-                  AND EXISTS (
-                    SELECT 1 FROM factors_daily fd
-                    WHERE fd.symbol = quant_factors_daily.symbol
-                      AND fd.trading_date = quant_factors_daily.trading_date
-                      AND fd.ret_20d IS NOT NULL
-                  );
-            """)
-            conn.execute("""
-                UPDATE quant_factors_daily
-                SET ret_20d = CASE
-                    WHEN ret_5d IS NOT NULL THEN ret_5d * 4.0
-                    WHEN ret_1d IS NOT NULL THEN ret_1d * 20.0
-                    ELSE 0.0
-                END
-                WHERE ret_20d IS NULL;
-            """)
+        conn.execute("""
+            UPDATE quant_factors_daily
+            SET ret_20d = (
+                SELECT fd.ret_20d FROM factors_daily fd
+                WHERE fd.symbol = quant_factors_daily.symbol
+                  AND fd.trading_date = quant_factors_daily.trading_date
+                  AND fd.ret_20d IS NOT NULL
+            )
+            WHERE ret_20d IS NULL
+              AND EXISTS (
+                SELECT 1 FROM factors_daily fd
+                WHERE fd.symbol = quant_factors_daily.symbol
+                  AND fd.trading_date = quant_factors_daily.trading_date
+                  AND fd.ret_20d IS NOT NULL
+              );
+        """)
+        conn.execute("""
+            UPDATE quant_factors_daily
+            SET ret_20d = CASE
+                WHEN ret_5d IS NOT NULL THEN ret_5d * 4.0
+                WHEN ret_1d IS NOT NULL THEN ret_1d * 20.0
+                ELSE 0.0
+            END
+            WHERE ret_20d IS NULL;
+        """)
+        if should_close:
             conn.commit()
     except Exception as e:
         logger.warning(f"Error repairing null ret_20d: {e}")
+    finally:
+        if should_close:
+            conn.close()
     return 0
 
 
@@ -189,7 +202,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                     logger.info(f"Hydrated {len(rows)} records into {tbl}")
 
             # Repair any missing ret_20d in quant_factors_daily
-            repair_null_ret_20d(db)
+            repair_null_ret_20d(conn)
 
             # Ensure supervisor state is valid and points to an approved champion
             cur = conn.execute("SELECT active_model_id FROM supervisor_state WHERE singleton_id = 1")

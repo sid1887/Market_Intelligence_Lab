@@ -88,8 +88,22 @@ def test_push_dispatch(payload: Optional[PushTestRequest] = None):
         url=req.url or "/",
         tag="test-push-verification"
     )
+    if result["total"] == 0:
+        return {
+            "status": "warning",
+            "message": "No active push subscriptions registered on server. Tap 'Enable Mobile Push Notifications' to register this device.",
+            "result": result
+        }
+    if result["sent"] == 0:
+        err_msg = "; ".join(result.get("errors", [])) or "Push delivery failed for all registered endpoints."
+        return {
+            "status": "error",
+            "message": f"Push delivery failed: {err_msg}",
+            "result": result
+        }
     return {
         "status": "dispatched",
+        "message": f"Successfully delivered test alert to {result['sent']} of {result['total']} device(s).",
         "result": result
     }
 

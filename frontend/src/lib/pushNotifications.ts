@@ -144,12 +144,81 @@ export async function subscribeToWebPush(): Promise<{
   }
 }
 
+/**
+ * Silently synchronizes the device's push subscription with the backend if
+ * permission is already granted in the browser. Ensures Render's SQLite store
+ * has this device registered even after cold restarts without prompting the user.
+ */
+export async function autoSyncPushSubscription(): Promise<{
+  isSubscribed: boolean;
+  permission: PushPermissionStatus;
+}> {
+  if (!isPushNotificationSupported()) {
+    return { isSubscribed: false, permission: "unsupported" };
+  }
+
+  const permission = Notification.permission as PushPermissionStatus;
+  if (permission !== "granted") {
+    return { isSubscribed: false, permission };
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    await navigator.serviceWorker.ready;
+
+    let subscription = await registration.pushManager.getSubscription();
+
+    const vapidRes = await apiFetch<{ public_key: string }>("/push/vapid-public-key");
+    if (!vapidRes?.public_key) {
+      return { isSubscribed: subscription !== null, permission };
+    }
+
+    if (!subscription) {
+      const applicationServerKey = urlBase64ToUint8Array(vapidRes.public_key);
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: applicationServerKey as unknown as BufferSource,
+      });
+    }
+
+    if (subscription) {
+      const rawKey = subscription.getKey("p256dh");
+      const rawAuth = subscription.getKey("auth");
+      if (rawKey && rawAuth) {
+        const p256dh = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(rawKey))));
+        const auth = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(rawAuth))));
+
+        await apiFetch("/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpoint: subscription.endpoint,
+            keys: { p256dh, auth },
+            user_agent: navigator.userAgent,
+          }),
+        });
+        return { isSubscribed: true, permission };
+      }
+    }
+  } catch (err) {
+    console.warn("Background push auto-sync failed:", err);
+  }
+
+  return { isSubscribed: false, permission };
+}
+
 export async function sendTestPushAlert(): Promise<{
   success: boolean;
   message?: string;
+  total?: number;
+  sent?: number;
 }> {
   try {
-    const res = await apiFetch<{ status: string; result: { sent?: number; total?: number; failed?: number } }>("/push/test", {
+    const res = await apiFetch<{
+      status: string;
+      message?: string;
+      result?: { sent?: number; total?: number; failed?: number; errors?: string[] };
+    }>("/push/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -158,9 +227,36 @@ export async function sendTestPushAlert(): Promise<{
         url: "/",
       }),
     });
+
+    const total = res.result?.total ?? 0;
+    const sent = res.result?.sent ?? 0;
+
+    if (res.status === "warning" || total === 0) {
+      return {
+        success: false,
+        total,
+        sent,
+        message:
+          res.message ||
+          "No active push subscriptions registered on server. Tap 'Enable Mobile Push Notifications' to register this device.",
+      };
+    }
+
+    if (res.status === "error" || sent === 0) {
+      const errDetail = res.result?.errors?.join("; ") || res.message || "Failed to deliver push notification.";
+      return {
+        success: false,
+        total,
+        sent,
+        message: errDetail,
+      };
+    }
+
     return {
       success: true,
-      message: `Delivered test alert to ${res.result?.sent ?? 1} device(s).`,
+      total,
+      sent,
+      message: res.message || `Delivered test alert to ${sent} of ${total} device(s).`,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

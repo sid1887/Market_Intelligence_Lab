@@ -18,7 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import IngestStatusButton from "./IngestStatusButton";
 import PushNotificationModal from "./PushNotificationModal";
-import { checkPushSubscription } from "@/lib/pushNotifications";
+import { checkPushSubscription, autoSyncPushSubscription } from "@/lib/pushNotifications";
 
 const NAV_LINKS = [
   { href: "/", label: "Screener", icon: LayoutDashboard },
@@ -34,9 +34,15 @@ export default function Navbar() {
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
 
   React.useEffect(() => {
-    checkPushSubscription().then((res) => {
-      setIsPushSubscribed(res.isSubscribed);
-    });
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      autoSyncPushSubscription().then((res) => {
+        setIsPushSubscribed(res.isSubscribed);
+      });
+    } else {
+      checkPushSubscription().then((res) => {
+        setIsPushSubscribed(res.isSubscribed);
+      });
+    }
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {

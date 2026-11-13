@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   checkPushSubscription,
+  autoSyncPushSubscription,
   subscribeToWebPush,
   sendTestPushAlert,
   PushPermissionStatus,
@@ -42,13 +43,22 @@ export default function PushNotificationModal({
 
   useEffect(() => {
     if (isOpen) {
-      checkPushSubscription().then((res) => {
-        setSupported(res.supported);
-        setPermission(res.permission);
-        setIsSubscribed(res.isSubscribed);
-      });
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        autoSyncPushSubscription().then((res) => {
+          setSupported(true);
+          setPermission(res.permission);
+          setIsSubscribed(res.isSubscribed);
+          onSubscriptionChange?.(res.isSubscribed);
+        });
+      } else {
+        checkPushSubscription().then((res) => {
+          setSupported(res.supported);
+          setPermission(res.permission);
+          setIsSubscribed(res.isSubscribed);
+        });
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, onSubscriptionChange]);
 
   const handleSubscribe = async () => {
     setLoading(true);

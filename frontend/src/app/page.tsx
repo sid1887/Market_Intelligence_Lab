@@ -22,7 +22,7 @@ import {
   clearMemoryCache,
 } from "@/lib/api";
 import { usePlatformEvents } from "@/hooks/usePlatformEvents";
-import { checkPushSubscription } from "@/lib/pushNotifications";
+import { checkPushSubscription, autoSyncPushSubscription } from "@/lib/pushNotifications";
 import PushNotificationModal from "@/components/PushNotificationModal";
 import MacroRibbon from "@/components/MacroRibbon";
 import IngestionProgressBanner from "@/components/IngestionProgressBanner";
@@ -90,9 +90,15 @@ export default function CockpitPage() {
   // 3. Initial Load, Push Subscription & URL Query Parameter Initialization
   useEffect(() => {
     void loadPageData();
-    checkPushSubscription().then((res) => {
-      setIsPushSubscribed(res.isSubscribed);
-    });
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      autoSyncPushSubscription().then((res) => {
+        setIsPushSubscribed(res.isSubscribed);
+      });
+    } else {
+      checkPushSubscription().then((res) => {
+        setIsPushSubscribed(res.isSubscribed);
+      });
+    }
 
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);

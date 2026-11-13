@@ -1,9 +1,9 @@
-name: Render Backend Keep-Alive (NSE Trading Hours)
+name: Render Backend Keep-Alive (24/7 Zero Spin-Down)
 
 on:
   schedule:
-    # Every 10 minutes between 03:00 and 10:59 UTC (08:30 AM - 04:30 PM IST), Monday through Friday
-    - cron: "*/10 3-10 * * 1-5"
+    # Every 10 minutes, 24/7/365 to prevent Render free instance spin-down (< 750 free hours/month)
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:

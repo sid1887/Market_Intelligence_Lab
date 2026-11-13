@@ -893,7 +893,7 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
                 top_rows = [r[0] for r in conn.execute("""
                     SELECT symbol FROM securities_master 
                     WHERE is_active = 1 
-                    ORDER BY is_nifty50 DESC, (tier = 'LARGE') DESC, (tier = 'MID') DESC 
+                    ORDER BY is_nifty50 DESC, symbol ASC 
                     LIMIT 125
                 """).fetchall()]
             
@@ -907,7 +907,7 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
                 top_rows = [r[0] for r in conn.execute("""
                     SELECT symbol FROM securities_master 
                     WHERE is_active = 1 
-                    ORDER BY is_nifty50 DESC, (tier = 'LARGE') DESC, (tier = 'MID') DESC 
+                    ORDER BY is_nifty50 DESC, symbol ASC 
                     LIMIT 200
                 """).fetchall()]
             priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + top_rows))

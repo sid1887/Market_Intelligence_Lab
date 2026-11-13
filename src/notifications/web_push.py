@@ -60,7 +60,8 @@ def get_or_create_vapid_keys() -> Dict[str, str]:
     env_priv = os.getenv("VAPID_PRIVATE_KEY")
     if env_pub and env_priv:
         cleaned_pub = env_pub.strip().strip('"').strip("'")
-        cleaned_priv = env_priv.strip().strip('"').strip("'").replace("\\n", "\n")
+        raw_priv = env_priv.strip().strip('"').strip("'")
+        cleaned_priv = raw_priv.replace("\\n", "\n")
         # Ensure newline at end of PEM
         if not cleaned_priv.endswith("\n"):
             cleaned_priv += "\n"
@@ -195,7 +196,8 @@ def send_push_notification(
     url: str = "/",
     tag: Optional[str] = None,
     badge: str = "/icons/icon-192x192.png",
-    icon: str = "/icons/icon-192x192.png"
+    icon: str = "/icons/icon-192x192.png",
+    error_collector: Optional[List[str]] = None,
 ) -> bool:
     """
     Delivers an encrypted Web Push message to a single subscription.
@@ -238,13 +240,19 @@ def send_push_notification(
         return True
     except WebPushException as ex:
         status_code = getattr(ex.response, "status_code", None) if hasattr(ex, "response") else None
-        logger.warning(f"WebPushException (HTTP {status_code}) on {subscription['endpoint'][:30]}: {ex}")
+        err_msg = f"WebPushException (HTTP {status_code}): {ex}"
+        logger.warning(f"{err_msg} on {subscription['endpoint'][:30]}")
+        if error_collector is not None:
+            error_collector.append(err_msg)
         if status_code in (404, 410):
-            logger.info(f"Endpoint is gone or unregistered. Cleaning up.")
+            logger.info("Endpoint is gone or unregistered. Cleaning up.")
             remove_subscription(subscription["endpoint"])
         return False
     except Exception as ex:
-        logger.error(f"Unexpected error sending web push: {ex}")
+        err_msg = f"Unexpected push error: {ex}"
+        logger.error(err_msg)
+        if error_collector is not None:
+            error_collector.append(err_msg)
         return False
 
 
@@ -256,27 +264,33 @@ def broadcast_push(
 ) -> Dict[str, Any]:
     """
     Broadcasts a push notification to all subscribed mobile/desktop clients.
-    Returns delivery statistics.
+    Returns delivery statistics and any encountered errors.
     """
     subs = get_all_subscriptions()
     if not subs:
         logger.info("No active push subscriptions registered.")
-        return {"total": 0, "sent": 0, "failed": 0}
+        return {"total": 0, "sent": 0, "failed": 0, "errors": []}
 
     sent_count = 0
     fail_count = 0
+    errors: List[str] = []
 
     for sub in subs:
+        err_list: List[str] = []
         ok = send_push_notification(
             subscription=sub,
             title=title,
             body=body,
             url=url,
-            tag=tag
+            tag=tag,
+            error_collector=err_list,
         )
         if ok:
             sent_count += 1
         else:
             fail_count += 1
+            for e in err_list:
+                if e not in errors:
+                    errors.append(e)
 
-    return {"total": len(subs), "sent": sent_count, "failed": fail_count}
+    return {"total": len(subs), "sent": sent_count, "failed": fail_count, "errors": errors}
