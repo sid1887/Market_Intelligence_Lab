@@ -143,17 +143,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Cloud database hydration error: {e}", exc_info=True)
 
-    # 2. Start autonomous platform daemon
-    daemon_task = asyncio.create_task(run_autonomous_platform_daemon())
-
-    # 3. Start embedded intraday catalyst & push loop if enabled (default True on Render)
+    daemon_task = None
     embedded_task = None
-    enable_embedded = (
-        os.getenv("ENABLE_EMBEDDED_SCHEDULER", "").lower() in ("true", "1") or
-        os.getenv("RENDER", "").lower() in ("true", "1")
-    )
-    if enable_embedded:
-        embedded_task = asyncio.create_task(embedded_intraday_catalyst_loop())
+
+    # Check if running in lightweight cloud container (e.g. Render 512MB RAM)
+    is_cloud = is_cloud_lightweight_mode() or (os.getenv("RENDER", "").lower() in ("true", "1"))
+
+    if is_cloud:
+        logger.info("CLOUD_LIGHTWEIGHT_MODE active: Autonomous EOD & Catalyst daemons delegated to GitHub Actions 7GB worker.")
+    else:
+        # 2. Start autonomous platform daemon (Local / dedicated server only)
+        daemon_task = asyncio.create_task(run_autonomous_platform_daemon())
+
+        # 3. Start embedded intraday catalyst & push loop if explicitly enabled
+        enable_embedded = os.getenv("ENABLE_EMBEDDED_SCHEDULER", "").lower() in ("true", "1")
+        if enable_embedded:
+            embedded_task = asyncio.create_task(embedded_intraday_catalyst_loop())
 
     try:
         yield
@@ -164,12 +169,13 @@ async def lifespan(app: FastAPI):
                 await embedded_task
             except asyncio.CancelledError:
                 pass
-        platform_daemon.stop()
-        daemon_task.cancel()
-        try:
-            await daemon_task
-        except asyncio.CancelledError:
-            pass
+        if daemon_task:
+            platform_daemon.stop()
+            daemon_task.cancel()
+            try:
+                await daemon_task
+            except asyncio.CancelledError:
+                pass
 
 app = FastAPI(
     title="Market Intelligence Lab API",

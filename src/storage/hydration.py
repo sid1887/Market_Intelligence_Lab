@@ -8,6 +8,7 @@ Unpacks pre-packaged data/cloud_seed_snapshot.json.gz in < 1 second on cold boot
 """
 
 import os
+import gc
 import json
 import gzip
 import logging
@@ -193,13 +194,23 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
             ]
 
             for tbl in table_order:
-                rows = snap.get(tbl, [])
+                rows = snap.pop(tbl, [])
                 if rows:
                     cols = list(rows[0].keys())
                     placeholders = ",".join("?" for _ in cols)
                     sql = f"INSERT OR REPLACE INTO {tbl} ({','.join(cols)}) VALUES ({placeholders})"
-                    conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
+                    chunk_size = 10000
+                    if len(rows) > chunk_size:
+                        for i in range(0, len(rows), chunk_size):
+                            chunk = rows[i : i + chunk_size]
+                            conn.executemany(sql, [[r.get(c) for c in cols] for r in chunk])
+                            conn.commit()
+                    else:
+                        conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
+                        conn.commit()
                     logger.info(f"Hydrated {len(rows)} records into {tbl}")
+                    del rows
+                    gc.collect()
 
             # Repair any missing ret_20d in quant_factors_daily
             repair_null_ret_20d(conn)
@@ -222,7 +233,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
 
         # Dynamically generate runtime telemetry artifacts on the server filesystem
         # so cloud containers (Render) have them ready without needing local git files.
-        tourney_summary = snap.get("tournament_summary")
+        tourney_summary = snap.pop("tournament_summary", None)
         if tourney_summary:
             tourney_path = os.path.join(ROOT_DIR, "data", "models", "tournament_summary.json")
             if not os.path.exists(tourney_path):
@@ -231,7 +242,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                     json.dump(tourney_summary, f, indent=2)
                 logger.info("Generated data/models/tournament_summary.json on server from snapshot.")
 
-        macro_telemetry = snap.get("macro_telemetry")
+        macro_telemetry = snap.pop("macro_telemetry", None)
         if macro_telemetry:
             macro_path = os.path.join(ROOT_DIR, "data", "macro_telemetry.json")
             if not os.path.exists(macro_path):
@@ -239,6 +250,9 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                 with open(macro_path, "w", encoding="utf-8") as f:
                     json.dump(macro_telemetry, f, indent=2)
                 logger.info("Generated data/macro_telemetry.json on server from snapshot.")
+
+        del snap
+        gc.collect()
 
         elapsed = (datetime.now() - t0).total_seconds()
         logger.info(f"Instant cloud database hydration complete from snapshot in {elapsed:.3f}s.")
@@ -320,15 +334,19 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
         cat_count = cur.fetchone()[0]
 
     if cat_count == 0:
-        logger.info("Synthesizing initial intraday causal catalysts...")
-        try:
-            catalysts = catalyst_engine.run_intraday_scan()
-            stats["catalysts_seeded"] = len(catalysts)
-        except Exception as e:
-            logger.warning(f"Initial catalyst scan partial: {e}")
+        if is_cloud_lightweight_mode():
+            logger.info("CLOUD_LIGHTWEIGHT_MODE active: Skipping initial catalyst scan on boot.")
+        else:
+            logger.info("Synthesizing initial intraday causal catalysts...")
+            try:
+                catalysts = catalyst_engine.run_intraday_scan()
+                stats["catalysts_seeded"] = len(catalysts)
+            except Exception as e:
+                logger.warning(f"Initial catalyst scan partial: {e}")
 
     # Ensure no null ret_20d values remain in quant_factors_daily
     repair_null_ret_20d(db)
 
+    gc.collect()
     logger.info(f"Database hydration check complete: {stats}")
     return stats

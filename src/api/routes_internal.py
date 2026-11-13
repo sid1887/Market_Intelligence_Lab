@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from src.storage.database import DatabaseManager
 from src.api.utils import DATABASE_PATH, get_db_connection, sanitize_for_json
-from src.notifications.web_push import broadcast_push
+from src.notifications.web_push import broadcast_push, get_all_subscriptions, save_subscription
 from src.quant.ml_trainer import update_precomputed_forecasts
 
 logger = logging.getLogger("MIL.InternalSync")
@@ -159,6 +159,7 @@ def export_state_endpoint(
         "priority_symbols": priority_symbols,
         "latest_ohlcv_date": latest_ohlcv_date,
         "recent_ohlcv": recent_ohlcv,
+        "push_subscriptions": get_all_subscriptions(),
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     })
 
@@ -171,6 +172,7 @@ class InternalSyncPayload(BaseModel):
     news_articles: Optional[List[Dict[str, Any]]] = Field(None, description="Processed news articles for equity_news_feed")
     catalysts: Optional[List[Dict[str, Any]]] = Field(None, description="Detected causal catalysts for market_catalysts")
     dispatch_push: Optional[bool] = Field(True, description="Whether to broadcast push notifications for new catalysts")
+    push_subscriptions: Optional[List[Dict[str, Any]]] = Field(None, description="Active Web Push client subscriptions to restore/persist")
     tournament_summary: Optional[Dict[str, Any]] = Field(None, description="ML tournament summary JSON payload")
     ml_forecasts: Optional[Dict[str, Dict[str, Any]]] = Field(None, description="Precomputed multi-horizon ML forecasts")
     ohlcv_bars: Optional[List[Dict[str, Any]]] = Field(None, description="Optional daily OHLCV candlestick rows")
@@ -188,6 +190,7 @@ def sync_internal_state_endpoint(
     """
     db = DatabaseManager(DATABASE_PATH)
     counts = {
+        "push_subscriptions_restored": 0,
         "news_articles": 0,
         "catalysts": 0,
         "catalysts_push_sent": 0,
@@ -196,6 +199,20 @@ def sync_internal_state_endpoint(
         "ohlcv_bars": 0,
         "factor_updates": 0,
     }
+
+    # 0. Push Subscriptions Sync -> push_subscriptions (Restore if wiped by cold restart)
+    if payload.push_subscriptions:
+        restored = 0
+        for sub in payload.push_subscriptions:
+            ep = sub.get("endpoint")
+            p256dh = sub.get("p256dh")
+            auth = sub.get("auth")
+            ua = sub.get("user_agent")
+            if ep and p256dh and auth:
+                if save_subscription(ep, p256dh, auth, ua):
+                    restored += 1
+        counts["push_subscriptions_restored"] = restored
+        logger.info(f"[INTERNAL-SYNC] Restored/verified {restored} push subscriptions in SQLite.")
 
     # 1. News Articles Sync -> equity_news_feed
     if payload.news_articles:

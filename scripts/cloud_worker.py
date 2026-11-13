@@ -114,6 +114,7 @@ def bootstrap_worker_db(
                 state["portfolio_symbols"] = payload.get("portfolio_symbols", [])
                 state["priority_symbols"] = payload.get("priority_symbols", [])
                 state["latest_ohlcv_date"] = payload.get("latest_ohlcv_date")
+                state["push_subscriptions"] = payload.get("push_subscriptions", [])
                 recent_ohlcv = payload.get("recent_ohlcv", [])
 
                 logger.info(
@@ -121,6 +122,7 @@ def bootstrap_worker_db(
                     f"{len(state['watchlist'])} watchlist, "
                     f"{len(state['portfolio_symbols'])} portfolio, "
                     f"{len(state['priority_symbols'])} priority, "
+                    f"{len(state.get('push_subscriptions', []))} push subscriptions, "
                     f"{len(recent_ohlcv)} recent OHLCV bars."
                 )
 
@@ -293,7 +295,8 @@ def run_parallel_news_pipeline(
     payload = {
         "news_articles": all_articles,
         "catalysts": detected_catalysts,
-        "dispatch_push": True if has_catalysts else False
+        "dispatch_push": True if has_catalysts else False,
+        "push_subscriptions": state.get("push_subscriptions", [])
     }
 
     elapsed = round(time.time() - t0, 1)
@@ -471,7 +474,8 @@ def run_ml_tournament_pipeline(
         payload = {
             "tournament_summary": tournament_summary,
             "ml_forecasts": ml_forecasts,
-            "factor_updates": factor_updates
+            "factor_updates": factor_updates,
+            "push_subscriptions": state.get("push_subscriptions", [])
         }
         logger.info(f"Syncing tournament & precomputed forecasts to backend: {sync_url}...")
         try:

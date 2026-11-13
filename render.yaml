@@ -16,7 +16,7 @@ services:
       - key: CLOUD_LIGHTWEIGHT_MODE
         value: "true"
       - key: ENABLE_EMBEDDED_SCHEDULER
-        value: "true"
+        value: "false"
       - key: VAPID_CLAIMS_EMAIL
         value: mailto:support@marketintelligencelab.com
       - key: VAPID_PUBLIC_KEY
