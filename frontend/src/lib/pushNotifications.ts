@@ -109,6 +109,16 @@ export async function subscribeToWebPush(): Promise<{
 
     const applicationServerKey = urlBase64ToUint8Array(vapidRes.public_key);
 
+    // Unsubscribe existing stale subscription if any to ensure fresh alignment with backend VAPID key
+    try {
+      const existingSub = await registration.pushManager.getSubscription();
+      if (existingSub) {
+        await existingSub.unsubscribe();
+      }
+    } catch {
+      // Continue even if unsubscribe fails
+    }
+
     // 4. Subscribe with PushManager
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,

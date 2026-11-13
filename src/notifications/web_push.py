@@ -6,6 +6,7 @@ and encrypted Web Push delivery via pywebpush with RFC 8292 compliance.
 """
 
 import os
+import re
 import json
 import base64
 import logging
@@ -16,6 +17,8 @@ from typing import Optional, Dict, Any, List
 from py_vapid import Vapid
 from pywebpush import webpush, WebPushException
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_der_private_key
+from cryptography.hazmat.primitives.asymmetric import ec
 
 logger = logging.getLogger("notifications.web_push")
 
@@ -25,6 +28,9 @@ DB_PATH = os.path.join(DATA_DIR, "market_lab.db")
 VAPID_FILE = os.path.join(DATA_DIR, "vapid.json")
 VAPID_PEM_PATH = os.path.join(DATA_DIR, "vapid_private.pem")
 DEFAULT_CLAIMS_EMAIL = "mailto:support@marketintelligencelab.com"
+
+_CACHED_VAPID: Optional[Vapid] = None
+_CACHED_KEYS: Optional[Dict[str, str]] = None
 
 
 def _get_db() -> sqlite3.Connection:
@@ -50,47 +56,141 @@ def init_push_tables():
         conn.commit()
 
 
+def load_vapid_instance(raw_input: Optional[str]) -> Optional[Vapid]:
+    """
+    Robust multi-format VAPID private key loader.
+    Parses any valid format without throwing unhandled deserialization or ASN.1 errors:
+    1. PEM with headers (-----BEGIN [EC ]PRIVATE KEY-----) containing \n, literal \\n, or spaces
+    2. Base64 DER PKCS#8 or SEC1 binary bytes
+    3. 32-byte raw private key scalar (base64 or base64url encoded)
+    Returns a valid Vapid instance, or None if invalid/corrupt.
+    """
+    if not raw_input:
+        return None
+    s = raw_input.strip().strip('"').strip("'")
+    s = s.replace("\\n", "\n")
+
+    # 1. Direct PEM if BEGIN in string
+    if "-----BEGIN" in s:
+        header_match = re.search(r"-----BEGIN [A-Z0-9 ]+-----", s)
+        footer_match = re.search(r"-----END [A-Z0-9 ]+-----", s)
+        if header_match and footer_match:
+            header = header_match.group(0)
+            footer = footer_match.group(0)
+            body = (
+                s[header_match.end() : footer_match.start()]
+                .strip()
+                .replace(" ", "")
+                .replace("\n", "")
+                .replace("\r", "")
+            )
+            clean_pem = f"{header}\n{body}\n{footer}\n"
+            try:
+                return Vapid.from_pem(clean_pem.encode("utf-8"))
+            except Exception as e:
+                logger.debug(f"Failed loading parsed PEM: {e}")
+
+    # 2. Try raw base64 / base64url decode
+    clean_b64 = re.sub(r"[^A-Za-z0-9+/=_-]", "", s)
+    if clean_b64:
+        pad = "=" * ((4 - len(clean_b64) % 4) % 4)
+        raw_bytes = None
+        try:
+            raw_bytes = base64.urlsafe_b64decode(clean_b64 + pad)
+        except Exception:
+            try:
+                raw_bytes = base64.b64decode(clean_b64 + pad)
+            except Exception:
+                pass
+
+        if raw_bytes:
+            # 32-byte raw EC scalar
+            if len(raw_bytes) == 32:
+                try:
+                    priv_num = int.from_bytes(raw_bytes, "big")
+                    ec_key = ec.derive_private_key(priv_num, ec.SECP256R1())
+                    return Vapid(ec_key)
+                except Exception as e:
+                    logger.debug(f"Failed deriving EC private key from 32-byte scalar: {e}")
+            # DER bytes
+            try:
+                return Vapid(load_der_private_key(raw_bytes, password=None))
+            except Exception as e:
+                logger.debug(f"Failed loading DER private key: {e}")
+
+    return None
+
+
 def get_or_create_vapid_keys() -> Dict[str, str]:
     """
     Retrieves persistent VAPID keys from environment or data/vapid.json.
-    Generates and persists a fresh EC P-256 keypair if none exist.
+    Generates and persists a fresh EC P-256 keypair if none exist or if existing is corrupt.
+    Guarantees in-memory caching and valid PEM persistence.
     """
+    global _CACHED_VAPID, _CACHED_KEYS
+
+    if _CACHED_KEYS is not None and _CACHED_VAPID is not None:
+        return _CACHED_KEYS
+
+    claims_email = os.getenv("VAPID_CLAIMS_EMAIL", DEFAULT_CLAIMS_EMAIL).strip()
+
     # 1. Check environment variables first (deterministic cloud deployments)
     env_pub = os.getenv("VAPID_PUBLIC_KEY")
     env_priv = os.getenv("VAPID_PRIVATE_KEY")
-    if env_pub and env_priv:
-        cleaned_pub = env_pub.strip().strip('"').strip("'")
-        raw_priv = env_priv.strip().strip('"').strip("'")
-        cleaned_priv = raw_priv.replace("\\n", "\n")
-        # Ensure newline at end of PEM
-        if not cleaned_priv.endswith("\n"):
-            cleaned_priv += "\n"
-        claims_email = os.getenv("VAPID_CLAIMS_EMAIL", DEFAULT_CLAIMS_EMAIL).strip()
+    if env_priv:
+        v_obj = load_vapid_instance(env_priv)
+        if v_obj is not None:
+            clean_pem = v_obj.private_pem().decode("utf-8")
+            raw_pub = v_obj.public_key.public_bytes(
+                encoding=serialization.Encoding.X962,
+                format=serialization.PublicFormat.UncompressedPoint
+            )
+            derived_pub_b64 = base64.urlsafe_b64encode(raw_pub).rstrip(b"=").decode("utf-8")
+            pub_key = env_pub.strip().strip('"').strip("'") if env_pub else derived_pub_b64
 
-        # Cache to VAPID_PEM_PATH for pywebpush / py_vapid file deserialization
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            with open(VAPID_PEM_PATH, "w", encoding="utf-8") as pf:
-                pf.write(cleaned_priv)
-        except Exception as e:
-            logger.warning(f"Could not write VAPID_PEM_PATH from environment: {e}")
+            # Ensure valid PEM on disk
+            try:
+                os.makedirs(DATA_DIR, exist_ok=True)
+                with open(VAPID_PEM_PATH, "w", encoding="utf-8") as pf:
+                    pf.write(clean_pem)
+            except Exception as e:
+                logger.warning(f"Could not cache VAPID_PEM_PATH: {e}")
 
-        return {
-            "public_key": cleaned_pub,
-            "private_pem": cleaned_priv,
-            "claims_email": claims_email,
-        }
+            _CACHED_VAPID = v_obj
+            _CACHED_KEYS = {
+                "public_key": pub_key,
+                "private_pem": clean_pem,
+                "claims_email": claims_email,
+            }
+            logger.info("Loaded and verified VAPID keys from environment.")
+            return _CACHED_KEYS
+        else:
+            logger.warning("VAPID_PRIVATE_KEY from environment could not be parsed. Checking persistent store...")
 
     # 2. Check local data/vapid.json
     if os.path.exists(VAPID_FILE):
         try:
             with open(VAPID_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if data.get("public_key") and data.get("private_pem"):
-                    if not os.path.exists(VAPID_PEM_PATH):
-                        with open(VAPID_PEM_PATH, "w", encoding="utf-8") as pf:
-                            pf.write(data["private_pem"])
-                    return data
+                if data.get("private_pem"):
+                    v_obj = load_vapid_instance(data["private_pem"])
+                    if v_obj is not None:
+                        clean_pem = v_obj.private_pem().decode("utf-8")
+                        if not os.path.exists(VAPID_PEM_PATH):
+                            with open(VAPID_PEM_PATH, "w", encoding="utf-8") as pf:
+                                pf.write(clean_pem)
+                        _CACHED_VAPID = v_obj
+                        _CACHED_KEYS = {
+                            "public_key": data.get("public_key") or base64.urlsafe_b64encode(
+                                v_obj.public_key.public_bytes(
+                                    encoding=serialization.Encoding.X962,
+                                    format=serialization.PublicFormat.UncompressedPoint
+                                )
+                            ).rstrip(b"=").decode("utf-8"),
+                            "private_pem": clean_pem,
+                            "claims_email": data.get("claims_email", DEFAULT_CLAIMS_EMAIL),
+                        }
+                        return _CACHED_KEYS
         except Exception as e:
             logger.warning(f"Error reading existing vapid.json: {e}")
 
@@ -100,7 +200,6 @@ def get_or_create_vapid_keys() -> Dict[str, str]:
     vapid.generate_keys()
 
     priv_pem = vapid.private_pem().decode("utf-8")
-
     raw_pub = vapid.public_key.public_bytes(
         encoding=serialization.Encoding.X962,
         format=serialization.PublicFormat.UncompressedPoint
@@ -110,31 +209,30 @@ def get_or_create_vapid_keys() -> Dict[str, str]:
     keys = {
         "public_key": pub_b64,
         "private_pem": priv_pem,
-        "claims_email": DEFAULT_CLAIMS_EMAIL,
+        "claims_email": claims_email,
     }
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(VAPID_FILE, "w", encoding="utf-8") as f:
-        json.dump(keys, f, indent=2)
-
-    with open(VAPID_PEM_PATH, "w", encoding="utf-8") as pf:
-        pf.write(priv_pem)
-
-    # Also append to root .env if present or create it
-    env_path = os.path.join(ROOT_DIR, ".env")
     try:
-        env_lines = []
-        if os.path.exists(env_path):
-            with open(env_path, "r", encoding="utf-8") as ef:
-                env_lines = [l for l in ef.readlines() if not l.startswith("VAPID_")]
-        env_lines.append(f"VAPID_PUBLIC_KEY={pub_b64}\n")
-        env_lines.append(f"VAPID_CLAIMS_EMAIL={DEFAULT_CLAIMS_EMAIL}\n")
-        with open(env_path, "w", encoding="utf-8") as ef:
-            ef.writelines(env_lines)
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(VAPID_FILE, "w", encoding="utf-8") as f:
+            json.dump(keys, f, indent=2)
+        with open(VAPID_PEM_PATH, "w", encoding="utf-8") as pf:
+            pf.write(priv_pem)
     except Exception as e:
-        logger.warning(f"Could not update .env with VAPID keys: {e}")
+        logger.warning(f"Could not persist fresh VAPID keys: {e}")
 
+    _CACHED_VAPID = vapid
+    _CACHED_KEYS = keys
     return keys
+
+
+def get_vapid_instance() -> Vapid:
+    """Returns a verified in-memory Vapid instance. Initializes keys if not cached."""
+    global _CACHED_VAPID
+    if _CACHED_VAPID is not None:
+        return _CACHED_VAPID
+    get_or_create_vapid_keys()
+    return _CACHED_VAPID
 
 
 def get_vapid_public_key() -> str:
@@ -204,6 +302,7 @@ def send_push_notification(
     Handles automatic cleanup if endpoint has expired (HTTP 404/410).
     """
     keys = get_or_create_vapid_keys()
+    vapid_instance = get_vapid_instance()
     sub_info = {
         "endpoint": subscription["endpoint"],
         "keys": {
@@ -226,13 +325,11 @@ def send_push_notification(
         "sub": keys.get("claims_email", DEFAULT_CLAIMS_EMAIL),
     }
 
-    private_key_param = VAPID_PEM_PATH if os.path.exists(VAPID_PEM_PATH) else keys["private_pem"]
-
     try:
         webpush(
             subscription_info=sub_info,
             data=json.dumps(payload),
-            vapid_private_key=private_key_param,
+            vapid_private_key=vapid_instance,
             vapid_claims=claims,
             ttl=86400  # 24 hours
         )
