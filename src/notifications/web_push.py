@@ -24,7 +24,7 @@ DATA_DIR = os.path.join(ROOT_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "market_lab.db")
 VAPID_FILE = os.path.join(DATA_DIR, "vapid.json")
 VAPID_PEM_PATH = os.path.join(DATA_DIR, "vapid_private.pem")
-DEFAULT_CLAIMS_EMAIL = "mailto:quant@marketintelligencelab.local"
+DEFAULT_CLAIMS_EMAIL = "mailto:support@marketintelligencelab.com"
 
 
 def _get_db() -> sqlite3.Connection:

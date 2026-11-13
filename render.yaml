@@ -18,7 +18,7 @@ services:
       - key: ENABLE_EMBEDDED_SCHEDULER
         value: "true"
       - key: VAPID_CLAIMS_EMAIL
-        value: mailto:quant@marketintelligencelab.local
+        value: mailto:support@marketintelligencelab.com
       - key: VAPID_PUBLIC_KEY
         sync: false
       - key: VAPID_PRIVATE_KEY
