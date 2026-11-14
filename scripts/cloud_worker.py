@@ -149,24 +149,25 @@ def bootstrap_worker_db(
 
                     # 2. Recent OHLCV bars
                     if recent_ohlcv:
+                        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
                         bar_tuples = [
                             (
                                 b["symbol"],
-                                "EQ",
                                 b["trading_date"],
+                                "EQ",
                                 b["open"],
                                 b["high"],
                                 b["low"],
                                 b["close"],
-                                b["close"],
-                                b["volume"],
-                                b["close"] * b["volume"],
+                                b.get("volume", 0),
+                                "EXPORT_STATE",
+                                now_iso,
                             )
                             for b in recent_ohlcv
                         ]
                         conn.executemany("""
-                            INSERT OR REPLACE INTO ohlcv_daily (
-                                symbol, series, trading_date, open, high, low, close, prev_close, volume, value
+                            INSERT OR IGNORE INTO ohlcv_daily (
+                                symbol, trading_date, series, open, high, low, close, volume, source, retrieval_timestamp
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, bar_tuples)
 

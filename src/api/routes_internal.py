@@ -477,24 +477,26 @@ def sync_internal_state_endpoint(
     if payload.ohlcv_bars:
         try:
             with db.get_connection() as conn:
+                now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
                 bar_tuples = []
                 for b in payload.ohlcv_bars:
                     bar_tuples.append((
                         b["symbol"],
-                        b.get("series", "EQ"),
                         b["trading_date"],
+                        b.get("series", "EQ"),
                         b.get("open"),
                         b.get("high"),
                         b.get("low"),
                         b["close"],
                         b.get("prev_close"),
                         b.get("volume", 0),
-                        b.get("value", 0.0),
+                        "INTERNAL_SYNC",
+                        now_iso,
                     ))
                 conn.executemany("""
                     INSERT OR REPLACE INTO ohlcv_daily (
-                        symbol, series, trading_date, open, high, low, close, prev_close, volume, value
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        symbol, trading_date, series, open, high, low, close, prev_close, volume, source, retrieval_timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, bar_tuples)
                 conn.commit()
                 counts["ohlcv_bars"] = len(bar_tuples)
