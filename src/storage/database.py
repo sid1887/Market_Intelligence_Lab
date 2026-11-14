@@ -4,6 +4,7 @@ import re
 import json
 import math
 import uuid
+import hashlib
 import datetime
 import logging
 from typing import List, Dict, Any, Optional
@@ -1575,15 +1576,22 @@ class DatabaseManager:
             if isinstance(impact_drivers, list):
                 impact_drivers = json.dumps(impact_drivers)
             
+            a_title = a.get("title") or a.get("headline", "")
+            a_sym = str(a.get("symbol", "")).strip().upper()
+            a_pub = a.get("published_at") or datetime.datetime.now(datetime.timezone.utc).isoformat()
+            a_url = a.get("article_url") or a.get("url", "")
+            a_id = a.get("id") or a.get("article_id") or hashlib.md5(f"{a_sym}:{a_title}:{a_pub}".encode()).hexdigest()
+            a_impact = a.get("impact_direction") or a.get("impact", "NEUTRAL")
+
             normalized.append({
-                "id": a["id"],
-                "symbol": a["symbol"].upper(),
-                "title": a["title"],
+                "id": a_id,
+                "symbol": a_sym,
+                "title": a_title,
                 "source": a.get("source", "Financial Media"),
-                "published_at": a["published_at"],
-                "article_url": a["article_url"],
+                "published_at": a_pub,
+                "article_url": a_url,
                 "summary_bullets": summary_bullets,
-                "impact_direction": a.get("impact_direction", "NEUTRAL"),
+                "impact_direction": a_impact,
                 "impact_horizon": a.get("impact_horizon", "SHORT_TERM"),
                 "impact_drivers": impact_drivers,
                 "impact_rationale": a.get("impact_rationale", ""),

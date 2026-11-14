@@ -4,6 +4,8 @@ from .web_push import (
     get_all_subscriptions,
     send_push_notification,
     broadcast_push,
+    is_alert_dispatched,
+    record_dispatched_alert,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "get_all_subscriptions",
     "send_push_notification",
     "broadcast_push",
+    "is_alert_dispatched",
+    "record_dispatched_alert",
 ]

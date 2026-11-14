@@ -20,6 +20,10 @@ export const metadata: Metadata = {
   description:
     "High-performance quantitative market research and equity attribution terminal. Local-first SQLite, multi-factor quality-momentum, GARCH forecasting.",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icons/icon-192x192.png",
+    apple: "/icons/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

@@ -37,7 +37,7 @@ self.addEventListener("push", (event) => {
   const url = payload.url || "/";
   const tag = payload.tag || `catalyst-${Date.now()}`;
   const icon = payload.icon || "/icons/icon-192x192.png";
-  const badge = payload.badge || "/icons/icon-192x192.png";
+  const badge = payload.badge || "/icons/badge-96x96.png";
 
   const options = {
     body: body,

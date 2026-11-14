@@ -24,7 +24,13 @@ from pydantic import BaseModel, Field
 
 from src.storage.database import DatabaseManager
 from src.api.utils import DATABASE_PATH, get_db_connection, sanitize_for_json
-from src.notifications.web_push import broadcast_push, get_all_subscriptions, save_subscription
+from src.notifications.web_push import (
+    broadcast_push,
+    get_all_subscriptions,
+    save_subscription,
+    is_alert_dispatched,
+    record_dispatched_alert,
+)
 from src.quant.ml_trainer import update_precomputed_forecasts
 
 logger = logging.getLogger("MIL.InternalSync")
@@ -134,7 +140,7 @@ def export_state_endpoint(
         query = f"""
             SELECT symbol, trading_date, open, high, low, close, volume
             FROM ohlcv_daily
-            WHERE symbol IN ({placeholders}) AND series = 'EQ'
+            WHERE symbol IN ({placeholders}) AND (series = 'EQ' OR series IS NULL)
             ORDER BY symbol ASC, trading_date ASC
         """
         df = pd.read_sql_query(query, conn, params=target_symbols)
@@ -194,6 +200,7 @@ def sync_internal_state_endpoint(
         "news_articles": 0,
         "catalysts": 0,
         "catalysts_push_sent": 0,
+        "news_push_sent": 0,
         "tournament_summary": 0,
         "ml_forecasts": 0,
         "ohlcv_bars": 0,
@@ -223,7 +230,8 @@ def sync_internal_state_endpoint(
         except Exception as e:
             logger.error(f"[INTERNAL-SYNC] Error upserting news articles: {e}", exc_info=True)
 
-    # 2. Causal Catalysts Sync -> market_catalysts (with deduplication & push dispatch)
+    # 2. Causal Catalysts Sync -> market_catalysts (with deduplication)
+    new_catalyst_records = []
     if payload.catalysts:
         try:
             with db.get_connection() as conn:
@@ -234,7 +242,6 @@ def sync_internal_state_endpoint(
                     """).fetchall()
                 )
 
-                new_catalyst_records = []
                 now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
                 for cat in payload.catalysts:
@@ -282,33 +289,166 @@ def sync_internal_state_endpoint(
                 conn.commit()
                 counts["catalysts"] = len(new_catalyst_records)
                 logger.info(f"[INTERNAL-SYNC] Inserted {len(new_catalyst_records)} new unique catalysts.")
-
-                # Dispatch push notifications on Render server if requested
-                if payload.dispatch_push and new_catalyst_records:
-                    from src.notifications.web_push import broadcast_push
-                    for c in new_catalyst_records:
-                        headline = c.get("causal_headline", f"Catalyst Alert: {c.get('symbol')}")
-                        bullets = c.get("causal_bullets", [])
-                        if isinstance(bullets, list) and bullets:
-                            body_text = bullets[0][:140] + "..."
-                        else:
-                            body_text = headline
-
-                        try:
-                            push_stats = broadcast_push(
-                                title=headline,
-                                body=body_text,
-                                url=f"/stocks/{c.get('symbol')}",
-                                tag=f"catalyst-{c.get('symbol')}-{int(time.time())}",
-                            )
-                            if isinstance(push_stats, dict) and push_stats.get("sent", 0) > 0:
-                                counts["catalysts_push_sent"] += push_stats["sent"]
-                            logger.info(f"[INTERNAL-SYNC] Web push dispatch for {c.get('symbol')}: {push_stats}")
-                        except Exception as pe:
-                            logger.warning(f"[INTERNAL-SYNC] Web push dispatch warning for {c.get('symbol')}: {pe}")
-
         except Exception as e:
             logger.error(f"[INTERNAL-SYNC] Error syncing catalysts: {e}", exc_info=True)
+
+    # 2.1 Multi-Source Smart Burst-Throttled Web Push Dispatch
+    if payload.dispatch_push:
+        try:
+            # Load active watchlist and portfolio symbols to prioritize alerts
+            watchlist_symbols_set = set()
+            portfolio_symbols_set = set()
+            try:
+                with db.get_connection() as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT DISTINCT symbol FROM user_watchlists")
+                    watchlist_symbols_set = {r[0].upper() for r in cur.fetchall() if r[0]}
+                    cur.execute("SELECT DISTINCT symbol FROM portfolio_positions WHERE quantity > 0")
+                    portfolio_symbols_set = {r[0].upper() for r in cur.fetchall() if r[0]}
+            except Exception as e:
+                logger.warning(f"[INTERNAL-SYNC] Could not fetch watchlist/portfolio symbols for push dispatch: {e}")
+
+            raw_candidates = []
+
+            # A. Catalysts (Highest priority)
+            for c in new_catalyst_records:
+                sym = c.get("symbol", "").strip().upper()
+                headline = c.get("causal_headline", f"Catalyst Alert: {sym}").strip()
+                bullets = c.get("causal_bullets", [])
+                if isinstance(bullets, list) and bullets:
+                    body_text = bullets[0][:140] + "..." if len(bullets[0]) > 140 else bullets[0]
+                else:
+                    body_text = headline
+                trig_at = c.get("triggered_at", "")
+                trig_date = trig_at[:10] if trig_at else datetime.date.today().isoformat()
+                alert_key = f"catalyst:{sym}:{trig_date}:{headline[:40]}"
+                raw_candidates.append({
+                    "type": "catalyst",
+                    "key": alert_key,
+                    "sym": sym,
+                    "title": headline,
+                    "body": body_text,
+                    "url": f"/stocks/{sym}" if sym else "/",
+                    "priority": 100,
+                })
+
+            # B. News Articles & BSE Corporate Filings
+            if payload.news_articles:
+                for art in payload.news_articles:
+                    sym = str(art.get("symbol", "")).strip().upper()
+                    source = str(art.get("source", ""))
+                    impact = str(art.get("impact", "NEUTRAL")).upper()
+                    is_user_asset = bool(sym and (sym in watchlist_symbols_set or sym in portfolio_symbols_set))
+                    is_bse_filing = "BSE Filing" in source and impact in ("BULLISH", "BEARISH")
+                    is_high_impact = impact in ("BULLISH", "BEARISH")
+
+                    if not (is_bse_filing or (is_user_asset and is_high_impact)):
+                        continue
+
+                    headline = str(art.get("headline", "")).strip()
+                    summary = str(art.get("summary", "")).strip()
+                    body_text = summary[:140] + "..." if len(summary) > 140 else (summary or headline)
+                    art_id = art.get("article_id") or art.get("url") or f"{sym}:{headline[:40]}"
+                    alert_key = f"news:{art_id}"
+
+                    # Priority ranking: BSE filings first (90), then user asset news (80)
+                    prio = 90 if is_bse_filing else 80
+
+                    raw_candidates.append({
+                        "type": "news",
+                        "key": alert_key,
+                        "sym": sym,
+                        "title": headline,
+                        "body": body_text,
+                        "url": f"/stocks/{sym}" if sym else "/",
+                        "priority": prio,
+                    })
+
+            # Deduplicate across candidates and filter through ledger
+            push_candidates = []
+            seen_keys = set()
+            for cand in raw_candidates:
+                k = cand["key"]
+                if k in seen_keys or is_alert_dispatched(k):
+                    continue
+                seen_keys.add(k)
+                push_candidates.append(cand)
+
+            # Sort by priority descending
+            push_candidates.sort(key=lambda x: x["priority"], reverse=True)
+
+            if push_candidates:
+                logger.info(f"[INTERNAL-SYNC] Dispatching push notifications for {len(push_candidates)} eligible alerts.")
+
+                if len(push_candidates) <= 3:
+                    for alert in push_candidates:
+                        try:
+                            push_stats = broadcast_push(
+                                title=alert["title"],
+                                body=alert["body"],
+                                url=alert["url"],
+                                tag=f"alert-{alert['sym']}-{int(time.time() * 1000)}",
+                            )
+                            record_dispatched_alert(alert["key"])
+                            if isinstance(push_stats, dict) and push_stats.get("sent", 0) > 0:
+                                if alert["type"] == "catalyst":
+                                    counts["catalysts_push_sent"] += push_stats["sent"]
+                                else:
+                                    counts["news_push_sent"] += push_stats["sent"]
+                            logger.info(f"[INTERNAL-SYNC] Web push dispatch for {alert['key']}: {push_stats}")
+                        except Exception as pe:
+                            logger.warning(f"[INTERNAL-SYNC] Push dispatch error for {alert['key']}: {pe}")
+                        time.sleep(1.0)
+                else:
+                    # Smart Burst Throttling: Top 3 individual + 1 consolidated digest
+                    top3 = push_candidates[:3]
+                    overflow = push_candidates[3:]
+
+                    for alert in top3:
+                        try:
+                            push_stats = broadcast_push(
+                                title=alert["title"],
+                                body=alert["body"],
+                                url=alert["url"],
+                                tag=f"alert-{alert['sym']}-{int(time.time() * 1000)}",
+                            )
+                            record_dispatched_alert(alert["key"])
+                            if isinstance(push_stats, dict) and push_stats.get("sent", 0) > 0:
+                                if alert["type"] == "catalyst":
+                                    counts["catalysts_push_sent"] += push_stats["sent"]
+                                else:
+                                    counts["news_push_sent"] += push_stats["sent"]
+                            logger.info(f"[INTERNAL-SYNC] Web push dispatch for {alert['key']}: {push_stats}")
+                        except Exception as pe:
+                            logger.warning(f"[INTERNAL-SYNC] Push dispatch error for {alert['key']}: {pe}")
+                        time.sleep(1.0)
+
+                    # Record all overflow alerts in ledger so they won't repeat
+                    for alert in overflow:
+                        record_dispatched_alert(alert["key"])
+
+                    # Consolidated digest notification
+                    overflow_symbols = list(dict.fromkeys([a["sym"] for a in overflow if a["sym"]]))
+                    sym_str = ", ".join(overflow_symbols[:4])
+                    if len(overflow_symbols) > 4:
+                        sym_str += f" +{len(overflow_symbols) - 4} more"
+                    digest_title = f"MIL Quant · +{len(overflow)} More Market Alerts"
+                    digest_body = f"High-impact updates for {sym_str}" if sym_str else f"{len(overflow)} new regulatory filings & breaking news alerts."
+                    try:
+                        push_stats = broadcast_push(
+                            title=digest_title,
+                            body=digest_body,
+                            url="/",
+                            tag=f"digest-{int(time.time() * 1000)}",
+                        )
+                        if isinstance(push_stats, dict) and push_stats.get("sent", 0) > 0:
+                            counts["news_push_sent"] += push_stats["sent"]
+                        logger.info(f"[INTERNAL-SYNC] Consolidated digest push dispatch: {push_stats}")
+                    except Exception as pe:
+                        logger.warning(f"[INTERNAL-SYNC] Digest push dispatch warning: {pe}")
+
+        except Exception as pe:
+            logger.error(f"[INTERNAL-SYNC] Error during push notification dispatch: {pe}", exc_info=True)
 
     # 3. ML Tournament Summary -> data/models/tournament_summary.json
     if payload.tournament_summary:

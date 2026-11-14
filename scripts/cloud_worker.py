@@ -290,12 +290,13 @@ def run_parallel_news_pipeline(
 
     logger.info(f"Causal Radar identified {len(detected_catalysts)} active catalysts.")
 
-    # Prepare sync payload (explicitly instruct Render backend to dispatch push for new catalysts)
+    # Prepare sync payload (explicitly instruct Render backend to dispatch push for catalysts & breaking filings)
     has_catalysts = len(detected_catalysts) > 0
+    has_articles = len(all_articles) > 0
     payload = {
         "news_articles": all_articles,
         "catalysts": detected_catalysts,
-        "dispatch_push": True if has_catalysts else False,
+        "dispatch_push": True if (has_catalysts or has_articles) else False,
         "push_subscriptions": state.get("push_subscriptions", [])
     }
 

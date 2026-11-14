@@ -41,7 +41,7 @@ def _get_db() -> sqlite3.Connection:
 
 
 def init_push_tables():
-    """Initializes the push_subscriptions table in SQLite."""
+    """Initializes the push_subscriptions and push_dispatch_ledger tables in SQLite."""
     with _get_db() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -53,7 +53,40 @@ def init_push_tables():
                 created_at TEXT NOT NULL
             );
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS push_dispatch_ledger (
+                alert_key TEXT PRIMARY KEY,
+                dispatched_at TEXT NOT NULL
+            );
+        """)
         conn.commit()
+
+
+def is_alert_dispatched(alert_key: str) -> bool:
+    """Checks if an alert key has already been dispatched via Web Push."""
+    init_push_tables()
+    try:
+        with _get_db() as conn:
+            row = conn.execute("SELECT 1 FROM push_dispatch_ledger WHERE alert_key = ?", (alert_key,)).fetchone()
+            return row is not None
+    except Exception as e:
+        logger.error(f"Error checking push_dispatch_ledger: {e}")
+        return False
+
+
+def record_dispatched_alert(alert_key: str):
+    """Records an alert key in push_dispatch_ledger to prevent duplicate push notifications."""
+    init_push_tables()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        with _get_db() as conn:
+            conn.execute("""
+                INSERT OR IGNORE INTO push_dispatch_ledger (alert_key, dispatched_at)
+                VALUES (?, ?)
+            """, (alert_key, now_iso))
+            conn.commit()
+    except Exception as e:
+        logger.error(f"Error recording alert in push_dispatch_ledger: {e}")
 
 
 def load_vapid_instance(raw_input: Optional[str]) -> Optional[Vapid]:
@@ -293,7 +326,7 @@ def send_push_notification(
     body: str,
     url: str = "/",
     tag: Optional[str] = None,
-    badge: str = "/icons/icon-192x192.png",
+    badge: str = "/icons/badge-96x96.png",
     icon: str = "/icons/icon-192x192.png",
     error_collector: Optional[List[str]] = None,
 ) -> bool:
@@ -315,7 +348,7 @@ def send_push_notification(
         "title": title,
         "body": body,
         "url": url,
-        "tag": tag or f"mil-push-{int(datetime.now().timestamp())}",
+        "tag": tag or f"mil-push-{int(datetime.now(timezone.utc).timestamp() * 1000)}",
         "icon": icon,
         "badge": badge,
         "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -357,7 +390,9 @@ def broadcast_push(
     title: str,
     body: str,
     url: str = "/",
-    tag: Optional[str] = None
+    tag: Optional[str] = None,
+    badge: str = "/icons/badge-96x96.png",
+    icon: str = "/icons/icon-192x192.png",
 ) -> Dict[str, Any]:
     """
     Broadcasts a push notification to all subscribed mobile/desktop clients.
@@ -380,6 +415,8 @@ def broadcast_push(
             body=body,
             url=url,
             tag=tag,
+            badge=badge,
+            icon=icon,
             error_collector=err_list,
         )
         if ok:
