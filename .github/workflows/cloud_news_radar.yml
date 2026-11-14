@@ -2,10 +2,10 @@ name: Cloud News Radar & Causal Catalyst Engine
 
 on:
   schedule:
-    # Every 15 minutes during NSE trading hours (08:30 AM - 04:00 PM IST / 03:00 - 10:30 UTC), Mon-Fri
-    - cron: "*/15 3-10 * * 1-5"
-    # Hourly during off-market hours and weekends
-    - cron: "0 * * * *"
+    # Every 10 minutes during NSE trading hours (08:30 AM - 04:00 PM IST / 03:00 - 10:30 UTC), Mon-Fri
+    - cron: "*/10 3-10 * * 1-5"
+    # Every 3 hours during off-market hours and weekends
+    - cron: "0 0,12,15,18,21 * * *"
   workflow_dispatch:
 
 jobs:

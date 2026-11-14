@@ -199,6 +199,14 @@ def bootstrap_worker_db(
             """).fetchall()
             state["priority_symbols"] = [r[0] for r in top_rows if r[0]]
 
+        # Fetch all active equities from securities_master for full-universe coverage
+        all_active_rows = conn.execute("""
+            SELECT symbol FROM securities_master 
+            WHERE is_active = 1 
+            ORDER BY is_nifty50 DESC, symbol ASC
+        """).fetchall()
+        all_active_symbols = [r[0] for r in all_active_rows if r[0]]
+
     # Compute target lists
     wl_syms = [w["symbol"] for w in state["watchlist"]]
     pf_syms = state["portfolio_symbols"]
@@ -207,8 +215,10 @@ def bootstrap_worker_db(
     # Target news symbols: watchlist + portfolio + top 75 liquid equities (~85 total)
     state["target_news_symbols"] = list(dict.fromkeys(wl_syms + pf_syms + prio_syms[:75]))
 
-    # Target ML symbols: watchlist + portfolio + top 300 active equities
-    state["target_ml_symbols"] = list(dict.fromkeys(wl_syms + pf_syms + prio_syms))
+    # Target ML symbols: full active universe (1,000+ equities) prioritized by watchlist + portfolio + active universe
+    state["target_ml_symbols"] = list(dict.fromkeys(wl_syms + pf_syms + all_active_symbols))
+    if not state["target_ml_symbols"]:
+        state["target_ml_symbols"] = list(dict.fromkeys(wl_syms + pf_syms + prio_syms))
 
     logger.info(
         f"Worker Bootstrap Complete: {len(state['target_news_symbols'])} target news symbols, "
@@ -259,6 +269,15 @@ def run_parallel_news_pipeline(
     priority_symbols = list(dict.fromkeys(wl_syms + pf_syms))
     if not priority_symbols:
         priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS", "ITC", "BEL", "SBIN", "RVNL", "NHPC"]
+
+    # 0. Fast 5d batch yfinance quote check on top 150 active equities to ensure fresh intraday price bars & RVOL
+    quote_targets = list(dict.fromkeys(priority_symbols + state.get("priority_symbols", [])[:150]))[:150]
+    if quote_targets:
+        logger.info(f"Running fast 5d quote refresh for {len(quote_targets)} equities...")
+        try:
+            ingest_symbols_parallel(db, quote_targets, max_workers=6, chunk_size=25, period="5d")
+        except Exception as e:
+            logger.warning(f"Fast quote refresh error: {e}")
 
     logger.info(f"Triggering market-wide news & filings sweep (priority targets: {len(priority_symbols)})...")
     news_client = NewsClient(db)
@@ -379,7 +398,7 @@ def run_ml_tournament_pipeline(
             df = pd.read_sql_query(f"""
                 SELECT symbol, trading_date, close
                 FROM ohlcv_daily
-                WHERE symbol IN ({','.join(['?']*len(target_symbols))}) AND series = 'EQ'
+                WHERE symbol IN ({','.join(['?']*len(target_symbols))}) AND (series = 'EQ' OR series IS NULL)
                 ORDER BY symbol, trading_date ASC
             """, conn, params=target_symbols)
 
@@ -485,7 +504,7 @@ def run_ml_tournament_pipeline(
                 sync_url,
                 json=payload,
                 headers={"X-Internal-Token": token},
-                timeout=60
+                timeout=90
             )
             if resp.status_code == 200:
                 logger.info(f"Successfully synced ML forecasts to backend: {resp.json()}")

@@ -2,8 +2,10 @@ name: Walk-Forward ML Tournament & Alpha Forecast Precomputation
 
 on:
   schedule:
-    # Daily post-market at 11:00 UTC (16:30 IST / 4:30 PM IST), Monday through Friday
-    - cron: "0 11 * * 1-5"
+    # Twice on weekdays: 12:30 IST mid-session (07:00 UTC) + 16:30 IST EOD settlement (11:00 UTC)
+    - cron: "0 7,11 * * 1-5"
+    # Sunday evening full-horizon retrain at 18:00 IST (12:30 UTC)
+    - cron: "30 12 * * 0"
   workflow_dispatch:
 
 jobs:
