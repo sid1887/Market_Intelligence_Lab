@@ -1,9 +1,6 @@
-name: Render Backend Keep-Alive (24/7 Zero Spin-Down)
+name: Render Backend Keep-Alive (Manual Verification Only)
 
 on:
-  schedule:
-    # Every 10 minutes, 24/7/365 to prevent Render free instance spin-down (< 750 free hours/month)
-    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:

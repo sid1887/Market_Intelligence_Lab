@@ -22,10 +22,9 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install Dependencies
+      - name: Install Fast Worker Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-worker.txt
 
       - name: Execute Walk-Forward ML Tournament & 300-Stock Precomputation
         env:
