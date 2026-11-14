@@ -17,21 +17,23 @@ jobs:
         env:
           CUSTOM_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
         run: |
-          BASE_URL="${CUSTOM_BACKEND_URL:-https://mil-quant-backend.onrender.com}"
+          RENDER_SECRET="${{ secrets.RENDER_BACKEND_URL }}"
+          BASE_URL="${RENDER_SECRET:-${CUSTOM_BACKEND_URL:-https://mil-quant-backend.onrender.com}}"
+          BASE_URL=$(echo "$BASE_URL" | tr -d '[:space:]')
           BASE_URL="${BASE_URL%/}"
           TARGET_URL="${BASE_URL}/api/v1/health"
           echo "Pinging Render backend at: $TARGET_URL"
           START_TIME=$(date +%s%N)
-          HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" --max-time 30 "$TARGET_URL")
+          HTTP_CODE=$(curl -s -o /tmp/health_response.json -w "%{http_code}" --connect-timeout 15 --max-time 95 --retry 2 --retry-delay 10 "$TARGET_URL" || echo "000") || HTTP_CODE="000"
           END_TIME=$(date +%s%N)
           LATENCY_MS=$(( (END_TIME - START_TIME) / 1000000 ))
 
           echo "HTTP Status Code: $HTTP_CODE"
           echo "Response Latency: ${LATENCY_MS}ms"
-          cat /tmp/health_response.json || true
+          cat /tmp/health_response.json 2>/dev/null || true
           echo ""
 
-          if [ "$HTTP_CODE" -ne 200 ]; then
+          if [ "$HTTP_CODE" != "200" ]; then
             echo "::error::Render instance ping failed with HTTP $HTTP_CODE"
             exit 1
           fi
