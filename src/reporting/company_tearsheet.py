@@ -194,8 +194,19 @@ class CompanyTearsheetBuilder:
                     "ret_3m": p_ret_3m
                 })
 
-        # Corporate Disclosures
-        disclosures = self.db.get_corporate_disclosures(symbol=symbol)
+        # Corporate Disclosures (filtered up to as_of_date by broadcast or effective session, sorted descending)
+        all_disclosures = self.db.get_corporate_disclosures(symbol=symbol)
+        disclosures = [
+            d for d in all_disclosures 
+            if (d.get("broadcast_timestamp") and d["broadcast_timestamp"][:10] <= as_of_date)
+            or (d.get("effective_session_date") and d["effective_session_date"] <= as_of_date)
+            or (not d.get("effective_session_date") and not d.get("broadcast_timestamp"))
+        ]
+        disclosures = sorted(
+            disclosures,
+            key=lambda d: (d.get("effective_session_date") or "", d.get("broadcast_timestamp") or ""),
+            reverse=True
+        )
 
         # Event Study Results (Query database or compute on demand)
         raw_event_studies = self.db.get_event_study_results(symbol=symbol)
@@ -206,9 +217,9 @@ class CompanyTearsheetBuilder:
                 latest_event_studies[did] = s
         event_studies = list(latest_event_studies.values())
 
-        # If database has disclosures without event study rows, run them dynamically
+        # If database has disclosures without event study rows, run them dynamically for the 10 most recent
         existing_dids = {s.get("disclosure_id") for s in event_studies}
-        for d in disclosures:
+        for d in disclosures[:10]:
             did = d["disclosure_id"]
             eff_d = d.get("effective_session_date")
             if did not in existing_dids and eff_d:

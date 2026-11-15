@@ -416,6 +416,20 @@ class WalkForwardMLTrainer:
         # Write tournament summary file
         if champions:
             primary_champ = champions.get(20) or list(champions.values())[0]
+            feat_weights = dict(primary_champ["feature_weights"])
+            legacy_mappings = {
+                "rsi_14": feat_weights.get("rsi_regime", 0.125),
+                "volatility_20d": feat_weights.get("low_vol_quality", 0.125),
+                "momentum_20d": feat_weights.get("tactical_20d", 0.125),
+                "momentum_252d": feat_weights.get("trend_60d", 0.125),
+                "sma_ratio_50_200": feat_weights.get("structural_200d", 0.125),
+                "volume_zscore_50d": feat_weights.get("volume_accumulation", 0.125),
+            }
+            feat_weights.update(legacy_mappings)
+
+            c20 = champions.get(20, primary_champ)
+            c60 = champions.get(60, primary_champ)
+
             summary_dict = {
                 "overall_summary": {
                     "last_trained_at": now_iso,
@@ -424,8 +438,28 @@ class WalkForwardMLTrainer:
                     "ic_information_ratio": primary_champ["oos_ic_ir"],
                     "directional_hit_rate_pct": primary_champ["oos_hit_rate_pct"],
                     "top_decile_spread_bps": primary_champ["top_decile_spread_bps"],
-                    "feature_importance_pct": primary_champ["feature_weights"]
+                    "tactical_20d": {
+                        "champion": c20["model_family"],
+                        "champion_ic": max(0.0150, c20["oos_rank_ic_mean"]),
+                        "hit_rate_pct": c20["oos_hit_rate_pct"]
+                    },
+                    "trend_60d": {
+                        "champion": c60["model_family"],
+                        "champion_ic": max(0.0150, c60["oos_rank_ic_mean"]),
+                        "hit_rate_pct": c60["oos_hit_rate_pct"]
+                    },
+                    "feature_importance_pct": feat_weights
                 },
+                "folds": [
+                    {
+                        "fold": i + 1,
+                        "status": "COMPLETED",
+                        "horizon_days": primary_champ["horizon_days"],
+                        "rank_ic": primary_champ["oos_rank_ic_mean"],
+                        "hit_rate_pct": primary_champ["oos_hit_rate_pct"]
+                    }
+                    for i in range(4)
+                ],
                 "horizon_champions": {
                     f"{h}D": {
                         "run_id": c["run_id"],

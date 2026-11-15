@@ -1,6 +1,6 @@
 # Company Research Tearsheet — SUZLON (Suzlon Energy Ltd)
-**As-of Trading Session:** `2026-10-28` | **Generated:** `2026-11-07 13:18:00 UTC`  
-**ISIN:** `INE040H01021` | **Industry:** `Heavy Electrical Equipment` | **Sector:** `Renewable Energy`  
+**As-of Trading Session:** `2026-10-28` | **Generated:** `2026-11-15 12:35:03 UTC`  
+**ISIN:** `INE040H01021` | **Industry:** `Capital Goods` | **Sector:** `Renewable Energy`  
 **System Status:** Local-First SQLite Research Lab | **Execution Capabilities:** Permanently Disabled  
 
 ---
@@ -20,11 +20,11 @@
 
 | Disclosure ID | Effective Session | Category | Audit Status | Key Operational / Financial Fact | Direct Document URL |
 | :--- | :---: | :---: | :---: | :--- | :--- |
-| `SUZLON_DISC_20261014_ORDER` | `2026-10-14` | `GENERAL_ANNOUNCEMENT` | `UNAUDITED` | Secured 300 MW wind turbine supply and EPC installation order for... (**`VERIFIED`**) | [Official Document PDF](https://nsearchives.nseindia.com/corporate/SUZLON_14102026_Order_Win_300MW.pdf) |
 | `SUZLON_DISC_20261024_Q2` | `2026-10-26` | `EARNINGS` | `AUDITED` | Q2 FY27 Consolidated Net Profit ₹360 Cr (+80% YoY), Revenue ₹2,51... (**`VERIFIED`**) | [Official Document PDF](https://nsearchives.nseindia.com/corporate/SUZLON_24102026_Q2_Results.pdf) |
+| `SUZLON_DISC_20261014_ORDER` | `2026-10-14` | `GENERAL_ANNOUNCEMENT` | `UNAUDITED` | Secured 300 MW wind turbine supply and EPC installation order for... (**`VERIFIED`**) | [Official Document PDF](https://nsearchives.nseindia.com/corporate/SUZLON_14102026_Order_Win_300MW.pdf) |
 
 > [!IMPORTANT]
-> **Financial Field Integrity**: Operating financial figures reflect official board-approved disclosures. Latest filings confirm AUDITED status without metric contamination.
+> **Financial Field Integrity**: Operating financial figures reflect official board-approved disclosures. Latest filings confirm UNAUDITED status without metric contamination.
 
 ## 2. Deterministic Quantitative Analytics
 
@@ -36,7 +36,7 @@
 | **1-Month (1M)** | 21 | `-8.58%` | `N/A` | **`N/A`** |
 | **3-Month (3M)** | 63 | `-22.32%` | `N/A` | **`N/A`** |
 | **6-Month (6M)** | 126 | `-34.48%` | `N/A` | **`N/A`** |
-| **1-Year (1Y)** | 245 | `-36.25%` | `N/A` | **`N/A`** |
+| **1-Year (1Y)** | 245 | `-35.90%` | `N/A` | **`N/A`** |
 
 > [!NOTE]
 > **Return Horizon Methodology**: Trailing returns use fixed trading-session windows (1D = 1 trading session, 1M = 21 trading sessions, 3M = 63 trading sessions, 6M = 126 trading sessions, 1Y = 245 trading sessions), ensuring exact reproducibility across holidays and suspensions.
@@ -48,7 +48,7 @@
 | :--- | :---: | :--- |
 | **20-Day SMA** | ₹38.95 | Distance: **`-4.23%`** |
 | **50-Day SMA** | ₹42.54 | Distance: **`-12.31%`** |
-| **200-Day SMA** | ₹47.98 | Distance: **`-22.26%`** |
+| **200-Day SMA** | ₹48.01 | Distance: **`-22.30%`** |
 | **20-Day Annualized Volatility** | `39.21%` | Annualized standard deviation ($\sigma \times \sqrt{252}$) |
 | **60-Day Rolling Beta (Nifty 50)** | **`N/A`** | OLS slope $\beta = \mathrm{Cov}(R_s, R_b) / \mathrm{Var}(R_b)$ |
 | **20-Day Volume Ratio (VR 20)** | `1.08x` | Today Volume / 20-Day ADV (VR >= 2.5x threshold) |
@@ -60,9 +60,9 @@
 | Peer Symbol | Latest Close | 1-Month Return | 3-Month Return | Excess vs SUZLON (1M) | Excess vs SUZLON (3M) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **SUZLON (Target)** | **₹37.30** | **`-8.58%`** | **`-22.32%`** | *Base* | *Base* |
-| **TCS** | ₹2,460.00 | `+18.78%` | `+3.13%` | `+27.36%` | `+25.45%` |
-| **HCLTECH** | ₹1,400.50 | `+12.62%` | `+8.07%` | `+21.20%` | `+30.40%` |
-| **TECHM** | ₹1,776.60 | `+15.14%` | `+12.80%` | `+23.72%` | `+35.12%` |
+| **TCS** | ₹2,460.00 | `+18.16%` | `+2.59%` | `+26.73%` | `+24.91%` |
+| **HCLTECH** | ₹1,400.50 | `+11.33%` | `+6.21%` | `+19.91%` | `+28.54%` |
+| **TECHM** | ₹1,776.60 | `+14.77%` | `+8.65%` | `+23.35%` | `+30.97%` |
 
 
 ## 4. Econometric Event Studies & Disclosures Audit
@@ -72,8 +72,8 @@
 
 ### 4.1 Epistemic Guardrails & Provenance Warnings
 
-1. **`SUZLON_DISC_20261014_ORDER` (Award of 300 MW Wind Energy Project Order from leading PSU)**: Verified official exchange filing under SEBI LODR regulations. Co-occurring returns reflect verified disclosures.
-2. **`SUZLON_DISC_20261024_Q2` (Financial Results for the Quarter and Half Year ended September 30, 2026)**: Verified official exchange filing under SEBI LODR regulations. Co-occurring returns reflect verified disclosures.
+1. **`SUZLON_DISC_20261024_Q2` (Financial Results for the Quarter and Half Year ended September 30, 2026)**: Verified official exchange filing under SEBI LODR regulations. Co-occurring returns reflect verified disclosures.
+2. **`SUZLON_DISC_20261014_ORDER` (Award of 300 MW Wind Energy Project Order from leading PSU)**: Verified official exchange filing under SEBI LODR regulations. Co-occurring returns reflect verified disclosures.
 
 
 ## 5. Corporate Action Ledger & Downstream Protection
@@ -87,9 +87,9 @@
 
 ## 6. Explanatory Hypotheses & Scenario Projections
 
-1. **Trend & Momentum Hypothesis**: SUZLON is currently positioned at `3.9%` of its 52-week range, trading `-4.23%` relative to its 20-day SMA and `-22.26%` relative to its 200-day SMA. This structural positioning indicates an ongoing intermediate consolidation phase following broad Renewable Energy sector movements.
+1. **Trend & Momentum Hypothesis**: SUZLON is currently positioned at `3.9%` of its 52-week range, trading `-4.23%` relative to its 20-day SMA and `-22.30%` relative to its 200-day SMA. This structural positioning indicates an ongoing intermediate consolidation phase following broad Renewable Energy sector movements.
 2. **Downside Risk Scenario**: In the event that broader macroeconomic headwinds or sector deceleration emerge, key downside support aligns with the designated stop loss level of ₹33.00 (52-week trough at ₹36.31).
-3. **Upside Rebound Scenario**: Conversely, sustained operational performance and sector re-rating position the instrument toward target price objective of ₹45.00, with intermediate resistance aligning with 50-day SMA (₹42.54) and 200-day SMA (₹47.98).
+3. **Upside Rebound Scenario**: Conversely, sustained operational performance and sector re-rating position the instrument toward target price objective of ₹45.00, with intermediate resistance aligning with 50-day SMA (₹42.54) and 200-day SMA (₹48.01).
 
 > [!CAUTION]
 > **Epistemic Limitation**: All hypotheses and scenarios are probabilistic qualitative frameworks generated for quantitative research. They do not constitute financial advice, trade recommendations, or causal certainty. Live order placement is Permanently Disabled.

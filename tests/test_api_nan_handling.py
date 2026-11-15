@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 from fastapi.testclient import TestClient
 
-from src.api.main import app
+from src.api.main import app, invalidate_screener_cache
 from src.api.utils import sanitize_for_json, safe_float, safe_int
 from src.pipeline.dynamic_ingestion import DynamicIngestionManager
 
@@ -30,6 +30,9 @@ class TestApiNanHandlingAndRoutes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = TestClient(app)
+
+    def setUp(self):
+        invalidate_screener_cache()
 
     def test_01_sanitize_for_json_unit(self):
         """Verify sanitize_for_json recursively converts NaN, Inf, and DataFrames to None."""

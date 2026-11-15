@@ -974,6 +974,68 @@ def _migration_0012(conn: sqlite3.Connection) -> None:
     """, (now_iso,))
 
 
+def _migration_0013(conn: sqlite3.Connection) -> None:
+    """
+    Migration 0013: Index Optimization & Covering Indexes for Ultra-Low Latency (<5ms).
+    - Drops duplicate and redundant indexes:
+      * idx_quant_factors_daily_sym_date (duplicate of PRIMARY KEY and idx_factors_symbol_date)
+      * idx_ohlcv_daily_sym_date & idx_ohlcv_symbol_date (redundant with PRIMARY KEY (symbol, trading_date, series))
+      * idx_market_catalysts_sym & idx_market_catalysts_date (duplicates of idx_catalysts_symbol & idx_catalysts_triggered_at)
+      * Fixes typo indexes on catalyst_audit_ledger & forecast_audit_ledger (symbol, symbol -> symbol, published_at / target_date).
+    - Adds high-performance covering and compound indexes:
+      * idx_ohlcv_covering on ohlcv_daily(symbol, series, trading_date DESC, close, volume) WHERE is_synthetic = 0 AND is_eligible_for_live_analytics = 1
+      * idx_qf_pit on quant_factors_daily(trading_date DESC, symbol) WHERE is_orphaned = 0
+      * idx_market_catalysts_sym_date on market_catalysts(symbol, triggered_at DESC)
+      * idx_news_published on stock_news_articles(published_at DESC)
+    """
+    # 1. Drop duplicate and redundant indexes
+    conn.execute("DROP INDEX IF EXISTS idx_quant_factors_daily_sym_date;")
+    conn.execute("DROP INDEX IF EXISTS idx_ohlcv_daily_sym_date;")
+    conn.execute("DROP INDEX IF EXISTS idx_ohlcv_symbol_date;")
+    conn.execute("DROP INDEX IF EXISTS idx_market_catalysts_sym;")
+    conn.execute("DROP INDEX IF EXISTS idx_market_catalysts_date;")
+    conn.execute("DROP INDEX IF EXISTS idx_catalyst_audit_ledger_sym_date;")
+    conn.execute("DROP INDEX IF EXISTS idx_forecast_audit_ledger_sym_date;")
+
+    # 2. Add corrected compound indexes for audit ledgers if tables exist
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='catalyst_audit_ledger';")
+    if cur.fetchone():
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_catalyst_audit_sym_pub ON catalyst_audit_ledger(symbol, published_at DESC);")
+
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='forecast_audit_ledger';")
+    if cur.fetchone():
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_forecast_audit_sym_target ON forecast_audit_ledger(symbol, target_date DESC);")
+
+    # 3. Add high-performance covering and filtered indexes if tables exist
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ohlcv_daily';")
+    if cur.fetchone():
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ohlcv_covering 
+            ON ohlcv_daily(symbol, series, trading_date DESC, close, volume)
+            WHERE is_synthetic = 0 AND is_eligible_for_live_analytics = 1;
+        """)
+
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='quant_factors_daily';")
+    if cur.fetchone():
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_qf_pit 
+            ON quant_factors_daily(trading_date DESC, symbol) 
+            WHERE is_orphaned = 0;
+        """)
+
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='market_catalysts';")
+    if cur.fetchone():
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_catalysts_sym_date 
+            ON market_catalysts(symbol, triggered_at DESC);
+        """)
+
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='stock_news_articles';")
+    if cur.fetchone():
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_news_published ON stock_news_articles(published_at DESC);")
+
+
 ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0001_baseline_schema", _migration_0001),
     ("0002_truth_layer_invariants", _migration_0002),
@@ -987,6 +1049,7 @@ ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0010_portfolio_execution_ledger", _migration_0010),
     ("0011_corporate_actions_and_backfill_checkpoints", _migration_0011),
     ("0012_v8_dynamic_capital_and_telemetry", _migration_0012),
+    ("0013_index_optimization_and_covering_indexes", _migration_0013),
 ]
 
 

@@ -165,7 +165,8 @@ class ModelTournament:
         end_date: str = "2026-10-28",
         train_ratio: float = 0.75,
         embargo_sessions: int = 20,
-        n_splits: int = 3
+        n_splits: int = 3,
+        symbols: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Executes purged walk-forward cross-validation tournament.
@@ -174,7 +175,7 @@ class ModelTournament:
         2. RidgeRegressor_alpha10 (fold-isolated median imputer + Ridge)
         3. HistGradientBoostingRegressor (native NaN handling)
         """
-        df = self.prepare_dataset(start_date, end_date)
+        df = self.prepare_dataset(start_date, end_date, symbols=symbols)
         if len(df) < 100:
             return {
                 "status": "INSUFFICIENT_DATA",

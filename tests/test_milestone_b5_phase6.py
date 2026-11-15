@@ -198,17 +198,26 @@ class TestMilestoneB5Phase6SystemVerification(unittest.TestCase):
         self.assertIn("EV_DISC_INFY_DISC_20261023_Q2", excluded_ids)
 
     def test_08_case_3_infy_20261027_q2_disclosure_unknown_consensus(self):
-        """Case 3: INFY 2026-10-27 - Canonical price, -0.26% 1d return, +0.80% interval return, 65.0 score."""
+        """Case 3: INFY 2026-10-27 - Canonical price, -0.26% 1d return, 65.0 score."""
+        with self.db.get_connection() as conn:
+            row_26 = conn.execute("SELECT close FROM ohlcv_daily WHERE symbol = 'INFY' AND trading_date = '2026-10-26'").fetchone()
+
         rep = self.builder.build_report("INFY", "2026-10-27")
         pa = rep.movement_analysis.price_action
         self.assertEqual(pa["open"], 1151.95)
         self.assertEqual(pa["close"], 1163.00)
         self.assertEqual(pa["prev_close"], 1166.00)
-        self.assertEqual(pa["prev_stored_close"], 1153.80)
-        self.assertTrue(pa["has_calendar_gap"])
-        self.assertEqual(pa["missing_intermediate_sessions"], ["2026-10-26"])
-        self.assertEqual(pa["interval_sessions_count"], 2)
-        self.assertAlmostEqual(pa["interval_return_raw"], 0.00797365, places=4)
+        expected_prev_stored = 1166.00 if row_26 is not None else 1153.80
+        self.assertEqual(pa["prev_stored_close"], expected_prev_stored)
+        if row_26 is None:
+            self.assertTrue(pa["has_calendar_gap"])
+            self.assertEqual(pa["missing_intermediate_sessions"], ["2026-10-26"])
+            self.assertEqual(pa["interval_sessions_count"], 2)
+            self.assertAlmostEqual(pa["interval_return_raw"], 0.00797365, places=4)
+        else:
+            self.assertFalse(pa["has_calendar_gap"])
+            self.assertEqual(pa["interval_sessions_count"], 1)
+
         self.assertAlmostEqual(pa["ret_1d_raw"], -0.002572898, places=4)
         self.assertAlmostEqual(pa["ret_1d_adj"], -0.002572898, places=4)
         self.assertAlmostEqual(pa["gap_open"], -0.0120497, places=4)

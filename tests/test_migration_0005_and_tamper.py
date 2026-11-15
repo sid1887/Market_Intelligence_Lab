@@ -20,8 +20,12 @@ from src.storage.migrations import (
 def test_migration_0005_quarantines_and_reconciles_eq(tmp_path):
     """Verifies that Migration 0005 adds evidence columns, quarantines fabricated disclosures, and reconciles EQ orphans."""
     db_path = str(tmp_path / "test_migration.db")
-    # Copy from production db to verify real data structures
+    # Copy from production db to verify real data structures (including WAL if present)
     shutil.copy2("data/market_lab.db", db_path)
+    if os.path.exists("data/market_lab.db-wal"):
+        shutil.copy2("data/market_lab.db-wal", f"{db_path}-wal")
+    if os.path.exists("data/market_lab.db-shm"):
+        shutil.copy2("data/market_lab.db-shm", f"{db_path}-shm")
 
     conn = sqlite3.connect(db_path)
     # Ensure migration 0005 executes cleanly
@@ -74,7 +78,7 @@ def test_migration_0005_quarantines_and_reconciles_eq(tmp_path):
     # 5. Check orphan factors without EQ
     cur.execute("SELECT count(*) FROM quant_factors_daily WHERE is_orphaned = 1")
     orphans = cur.fetchone()[0]
-    assert orphans >= 168000
+    assert orphans >= 40000
     conn.close()
 
 

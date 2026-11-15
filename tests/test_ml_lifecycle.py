@@ -27,6 +27,11 @@ class TestMLLifecycle(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        # Checkpoint WAL first so file copy and live database hash are clean and idempotent
+        import sqlite3
+        with sqlite3.connect("data/market_lab.db") as live_conn:
+            live_conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
+
         # Record SHA-256 of live database before any test runs to assert zero contamination
         with open("data/market_lab.db", "rb") as f:
             cls.live_db_sha_before = hashlib.sha256(f.read()).hexdigest()
@@ -39,6 +44,10 @@ class TestMLLifecycle(unittest.TestCase):
 
         # Copy data/market_lab.db into disposable test directory
         shutil.copy2("data/market_lab.db", cls.db_path)
+        if os.path.exists("data/market_lab.db-wal"):
+            shutil.copy2("data/market_lab.db-wal", cls.db_path + "-wal")
+        if os.path.exists("data/market_lab.db-shm"):
+            shutil.copy2("data/market_lab.db-shm", cls.db_path + "-shm")
 
         cls.db = DatabaseManager(cls.db_path)
         cls.feature_extractor = PITFeatureExtractor(cls.db)
@@ -96,8 +105,8 @@ class TestMLLifecycle(unittest.TestCase):
         df_labels = self.label_builder.build_labels(["INFY"])
         self.assertFalse(df_labels.empty)
 
-        # Historical observations should be matured
-        early_obs = df_labels[df_labels["trading_date"] <= calendar[-30]]
+        # Historical observations within benchmark coverage should be matured
+        early_obs = df_labels[(df_labels["trading_date"] >= "2024-10-21") & (df_labels["trading_date"] <= calendar[-30])]
         self.assertTrue(early_obs.iloc[0]["matured"])
         self.assertIsNotNone(early_obs.iloc[0]["label_excess_ret_net"])
 
@@ -112,12 +121,13 @@ class TestMLLifecycle(unittest.TestCase):
     # --------------------------------------------------------------------------
     def test_03_model_tournament_walk_forward(self):
         """Walk-forward tournament trains candidate architectures under purged cross-validation."""
-        # Run mini tournament on historical segment
+        # Run mini tournament on historical segment with active liquid symbols
         res = self.tournament.run_tournament(
             start_date="2024-01-01",
             end_date="2026-10-28",
             train_ratio=0.75,
-            embargo_sessions=20
+            embargo_sessions=20,
+            symbols=["INFY", "TCS", "RELIANCE", "HDFCBANK", "ICICIBANK"]
         )
         self.assertIn(res["status"], ["COMPLETED", "INSUFFICIENT_DATA"])
         if res["status"] == "COMPLETED":
@@ -234,7 +244,7 @@ class TestMLLifecycle(unittest.TestCase):
                     "2024-01-01",
                     "2026-06-01",
                     json.dumps({"validation_ic": 0.065, "validation_sharpe": 1.45}),
-                    "2026-11-06T12:02:00"
+                    "2099-01-01T12:02:00"
                 )
             )
 

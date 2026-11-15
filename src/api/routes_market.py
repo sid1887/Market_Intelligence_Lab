@@ -15,7 +15,7 @@ import logging
 import datetime
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query, Body
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query, Body, Response
 from fastapi.responses import JSONResponse
 
 from src.storage.database import DatabaseManager
@@ -1068,23 +1068,35 @@ def get_ingest_status():
     return sanitize_for_json(st)
 
 
-@router.post("/system/ingest", status_code=202)
-@router.post("/api/v1/system/ingest", status_code=202)
-@router.post("/ingest", status_code=202)
-@router.post("/api/v1/ingest", status_code=202)
+@router.post("/system/ingest")
+@router.post("/api/v1/system/ingest")
+@router.post("/ingest")
+@router.post("/api/v1/ingest")
 def trigger_system_ingest(
+    response: Response,
     background_tasks: BackgroundTasks,
     payload: Optional[IngestRequestBody] = None,
     background: bool = Query(True, description="Run ingestion in background asynchronously"),
 ):
     """
-    Executes non-blocking dynamic market ingestion.
-    Returns 202 Accepted in < 100ms. Guards against duplicate concurrent runs.
+    Executes dynamic market ingestion.
+    If background=False, runs synchronously and returns 200 OK.
+    If background=True, returns 202 Accepted in < 100ms.
+    Guards against duplicate concurrent runs.
     """
     global _CLOUD_INGEST_STATUS
     from src.storage.hydration import is_cloud_lightweight_mode
 
+    if not background:
+        from src.pipeline.universe_ingestion import UniverseIngestionManager
+        mgr = UniverseIngestionManager()
+        target_syms = payload.symbols if payload else None
+        res = mgr.execute_universe_ingestion()
+        response.status_code = 200
+        return sanitize_for_json(res)
+
     if _CLOUD_INGEST_STATUS.get("status") == "running":
+        response.status_code = 202
         return sanitize_for_json({
             **_CLOUD_INGEST_STATUS,
             "job_id": "cloud-sync",
@@ -1093,6 +1105,7 @@ def trigger_system_ingest(
 
     target_syms = payload.symbols if payload else None
     background_tasks.add_task(run_cloud_safe_ingestion, target_symbols=target_syms)
+    response.status_code = 202
     return sanitize_for_json({
         "status": "running",
         "job_id": "cloud-sync",

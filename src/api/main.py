@@ -19,6 +19,7 @@ import json
 import sqlite3
 import datetime
 import logging
+import gzip
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -33,7 +34,7 @@ for _uvicorn_logger in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     logging.getLogger(_uvicorn_logger).setLevel(logging.INFO)
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, Response
+from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, Response, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -85,7 +86,9 @@ logger = logging.getLogger(__name__)
 _screener_cache_lock = threading.Lock()
 _screener_snapshot_cache: Optional[Dict[str, Any]] = None
 _screener_cached_bytes: Optional[bytes] = None
+_screener_cached_gzip: Optional[bytes] = None
 _screener_cached_1000_bytes: Optional[bytes] = None
+_screener_cached_1000_gzip: Optional[bytes] = None
 _screener_cache_date: Optional[str] = None
 _screener_cache_time: float = 0.0
 SCREENER_CACHE_TTL_SECONDS: float = 300.0
@@ -93,11 +96,13 @@ SCREENER_CACHE_TTL_SECONDS: float = 300.0
 
 def invalidate_screener_cache() -> None:
     """Explicitly invalidates the in-memory screener snapshot cache."""
-    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_1000_bytes, _screener_cache_date, _screener_cache_time
+    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
     with _screener_cache_lock:
         _screener_snapshot_cache = None
         _screener_cached_bytes = None
+        _screener_cached_gzip = None
         _screener_cached_1000_bytes = None
+        _screener_cached_1000_gzip = None
         _screener_cache_date = None
         _screener_cache_time = 0.0
     logger.info("In-memory screener cache invalidated.")
@@ -258,11 +263,13 @@ def get_supervisor_status():
 @app.get("/screener")
 @app.get("/api/v1/screener")
 def get_screener(
+    request: Request,
     min_roe: Optional[float] = Query(None, description="Minimum Return on Equity (%)"),
     max_de: Optional[float] = Query(None, description="Maximum Debt-to-Equity ratio"),
     price_above_sma200: Optional[bool] = Query(None, description="Filter for Price > 200-day SMA"),
     exclude_financials: bool = Query(False, description="Exclude Financial Services sector"),
     include_watchlists: bool = Query(True, description="Include onboarded user watchlists"),
+    sort_by: Optional[str] = Query(None, description="Sort column (e.g. composite_score or blended_score)"),
     limit: int = Query(1000, ge=1, le=2000, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Pagination offset")
 ):
@@ -271,15 +278,18 @@ def get_screener(
     sorted descending by composite Quality-Momentum score.
     Safely sanitizes all NaN / Infinity values to prevent serialization crashes.
     """
-    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_1000_bytes, _screener_cache_date, _screener_cache_time
+    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
     try:
         is_default_query = (
             min_roe is None and
             max_de is None and
             price_above_sma200 is None and
             not exclude_financials and
-            include_watchlists
+            include_watchlists and
+            (sort_by is None or sort_by == "composite_score")
         )
+
+        accepts_gzip = "gzip" in request.headers.get("accept-encoding", "").lower()
 
         # Fast In-Memory Materialized View Serve (< 5ms)
         now_time = datetime.datetime.now().timestamp()
@@ -291,10 +301,16 @@ def get_screener(
                 ):
                     cached_items = _screener_snapshot_cache["items"]
                     cached_date = _screener_cache_date
-                    if offset == 0 and limit == 1000 and _screener_cached_1000_bytes is not None:
-                        return Response(content=_screener_cached_1000_bytes, media_type="application/json")
-                    if offset == 0 and limit >= len(cached_items) and _screener_cached_bytes is not None:
-                        return Response(content=_screener_cached_bytes, media_type="application/json")
+                    if offset == 0 and limit == 1000:
+                        if accepts_gzip and _screener_cached_1000_gzip is not None:
+                            return Response(content=_screener_cached_1000_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
+                        if _screener_cached_1000_bytes is not None:
+                            return Response(content=_screener_cached_1000_bytes, media_type="application/json")
+                    if offset == 0 and limit >= len(cached_items):
+                        if accepts_gzip and _screener_cached_gzip is not None:
+                            return Response(content=_screener_cached_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
+                        if _screener_cached_bytes is not None:
+                            return Response(content=_screener_cached_bytes, media_type="application/json")
 
                     sliced_items = cached_items[offset: offset + limit]
                     payload = {
@@ -332,6 +348,10 @@ def get_screener(
             criteria["price_above_sma200"] = True
         if exclude_financials:
             criteria["exclude_sectors"] = ["Financial Services"]
+        if sort_by:
+            criteria["sort_by"] = sort_by
+        else:
+            criteria["sort_by"] = "composite_score"
 
         # 3. Execute deterministic screen
         # If default query, fetch all candidates to populate the in-memory cache
@@ -415,6 +435,7 @@ def get_screener(
                 "cached": True
             }
             raw_bytes = json.dumps(payload).encode("utf-8")
+            raw_gzip = gzip.compress(raw_bytes, compresslevel=6)
             sliced_1000 = results[:1000]
             raw_1000_bytes = json.dumps({
                 "trading_date": latest_date,
@@ -428,6 +449,7 @@ def get_screener(
                 "items": sliced_1000,
                 "cached": True
             }).encode("utf-8")
+            raw_1000_gzip = gzip.compress(raw_1000_bytes, compresslevel=6)
             with _screener_cache_lock:
                 _screener_snapshot_cache = {
                     "trading_date": latest_date,
@@ -436,13 +458,19 @@ def get_screener(
                     "items": results
                 }
                 _screener_cached_bytes = raw_bytes
+                _screener_cached_gzip = raw_gzip
                 _screener_cached_1000_bytes = raw_1000_bytes
+                _screener_cached_1000_gzip = raw_1000_gzip
                 _screener_cache_date = latest_date
                 _screener_cache_time = now_time
 
             if offset == 0 and limit == 1000:
+                if accepts_gzip:
+                    return Response(content=raw_1000_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
                 return Response(content=raw_1000_bytes, media_type="application/json")
             if offset == 0 and limit >= len(results):
+                if accepts_gzip:
+                    return Response(content=raw_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
                 return Response(content=raw_bytes, media_type="application/json")
 
             sliced_results = results[offset: offset + limit]

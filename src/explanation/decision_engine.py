@@ -146,6 +146,29 @@ class InvestmentDecisionEngine:
         debt_to_equity = safe_float(factor_row["debt_to_equity"]) if factor_row else None
         opm_pct = safe_float(factor_row["opm_pct"]) if factor_row else None
 
+        # Robust forward-fill for quarterly fundamentals if latest session has technical-only factors
+        if factor_row and (roe_pct is None or debt_to_equity is None):
+            with self.db.get_connection() as conn:
+                cur_f = conn.execute(
+                    """
+                    SELECT roe_pct, debt_to_equity, opm_pct, ttm_pe
+                    FROM quant_factors_daily
+                    WHERE symbol = ? AND roe_pct IS NOT NULL
+                    ORDER BY trading_date DESC LIMIT 1;
+                    """,
+                    (sym,)
+                )
+                prev_f = cur_f.fetchone()
+                if prev_f:
+                    if roe_pct is None:
+                        roe_pct = safe_float(prev_f["roe_pct"])
+                    if debt_to_equity is None:
+                        debt_to_equity = safe_float(prev_f["debt_to_equity"])
+                    if opm_pct is None:
+                        opm_pct = safe_float(prev_f["opm_pct"])
+                    if ttm_pe is None:
+                        ttm_pe = safe_float(prev_f["ttm_pe"])
+
         # 3. Fetch Forecast Cone Summary (Read-Only: No audit ledger writes, P0-08, ADR-0011)
         try:
             fc_res = self.forecaster.generate_forecast(sym, horizon_days=20, cutoff_date=as_of_date)

@@ -7,7 +7,7 @@ import uuid
 import hashlib
 import datetime
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,9 @@ class DatabaseManager:
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA busy_timeout = 60000;")
         conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA cache_size = -64000;")
+        conn.execute("PRAGMA temp_store = MEMORY;")
+        conn.execute("PRAGMA mmap_size = 268435456;")
         return conn
 
     def get_readonly_connection(self) -> sqlite3.Connection:
@@ -47,8 +50,35 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout = 10000;")
         conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA cache_size = -64000;")
+        conn.execute("PRAGMA mmap_size = 268435456;")
         conn.execute("PRAGMA query_only = ON;")
         return conn
+
+    def wal_checkpoint(self, mode: str = "PASSIVE") -> Tuple[int, int, int]:
+        """
+        Executes a WAL checkpoint (PASSIVE, RESTART, FULL, or TRUNCATE) to keep WAL file size bounded.
+        Returns (busy, log_frames, checkpointed_frames).
+        """
+        valid_modes = {"PASSIVE", "FULL", "RESTART", "TRUNCATE"}
+        target_mode = mode.upper() if mode.upper() in valid_modes else "PASSIVE"
+        with self.get_connection() as conn:
+            cur = conn.execute(f"PRAGMA wal_checkpoint({target_mode});")
+            row = cur.fetchone()
+            return (row[0], row[1], row[2]) if row else (0, 0, 0)
+
+    def optimize_database(self) -> None:
+        """
+        Performs periodic SQLite maintenance:
+        1. Runs PRAGMA wal_checkpoint(PASSIVE) to flush WAL back to main db without blocking concurrent readers.
+        2. Runs PRAGMA optimize to update query planner statistics.
+        3. Reanalyzes tables for optimal query plans.
+        """
+        with self.get_connection() as conn:
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE);")
+            conn.execute("PRAGMA optimize;")
+            conn.execute("ANALYZE;")
+            conn.commit()
 
     def init_schema(self) -> None:
         """Applies base Phase 1 schema, Phase 2 migration, and safe column alterations."""

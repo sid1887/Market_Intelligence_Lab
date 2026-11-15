@@ -403,10 +403,10 @@ def ingest_symbols_parallel(
                     c = round(float(c_val), 2)
                     h = round(float(row[high_col]), 2) if not pd.isna(row[high_col]) else max(o, c)
                     l = round(float(row[low_col]), 2) if not pd.isna(row[low_col]) else min(o, c)
-                    v = int(row[vol_col]) if vol_col and not pd.isna(row[vol_col]) and row[vol_col] >= 0 else 0
+                    v = int(row[vol_col]) if vol_col and not pd.isna(row[vol_col]) and row[vol_col] > 0 else 0
 
-                    # Strict OHLC invariant validation
-                    if h < max(o, c) or l > min(o, c) or o <= 0 or c <= 0 or l <= 0 or h <= 0:
+                    # Strict OHLC & Volume invariant validation: reject corrupt or zero-volume holiday placeholder bars
+                    if v <= 0 or h < max(o, c) or l > min(o, c) or o <= 0 or c <= 0 or l <= 0 or h <= 0:
                         continue
 
                     d_str = dt_idx.strftime("%Y-%m-%d") if hasattr(dt_idx, "strftime") else str(dt_idx)[:10]

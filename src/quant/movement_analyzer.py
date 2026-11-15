@@ -188,13 +188,19 @@ class MarketMovementAnalyzer:
             interval_start_date = None
             interval_return_raw = None
             interval_return_adj = None
-            effective_prev_close = prev_stored_close
-            prev_close_adj = prev_stored_close * cum_ca_factor
-            ret_1d_raw = (close_p - prev_stored_close) / prev_stored_close if prev_stored_close > 0 else 0.0
+            # For corporate action ex-dates (split/bonus), source_prev_close represents the pre-adjustment raw price.
+            # For standard consecutive sessions, the database's prior session close is the authoritative reference.
+            if cum_ca_factor != 1.0 and source_prev_close is not None and source_prev_close > 0:
+                base_prev = source_prev_close
+            else:
+                base_prev = prev_stored_close
+            effective_prev_close = base_prev
+            prev_close_adj = base_prev * cum_ca_factor
+            ret_1d_raw = (close_p - base_prev) / base_prev if base_prev > 0 else 0.0
             ret_1d_adj = (close_p - prev_close_adj) / prev_close_adj if prev_close_adj > 0 else ret_1d_raw
             ret_1d_total = ((close_p + dividend_amount - prev_close_adj) / prev_close_adj) if prev_close_adj > 0 else ret_1d_adj
-            gap_open = (open_p - prev_stored_close) / prev_stored_close if prev_stored_close > 0 else 0.0
-            intraday_range = (high_p - low_p) / prev_stored_close if prev_stored_close > 0 else 0.0
+            gap_open = (open_p - base_prev) / base_prev if base_prev > 0 else 0.0
+            intraday_range = (high_p - low_p) / base_prev if base_prev > 0 else 0.0
 
         # 3. Benchmark (NIFTY 50 PRI) Return
         nifty_records = self.db.get_index_history("NIFTY 50", "PRI")

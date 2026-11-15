@@ -31,7 +31,7 @@ DEFAULT_TOURNAMENT_WEIGHTS = {
     "volatility_20d": 0.25,
     "momentum_20d": 0.18,
     "momentum_252d": 0.07,
-    "sma_ratio": 0.06,
+    "sma_ratio_50_200": 0.06,
     "fundamental": 0.04
 }
 
@@ -46,7 +46,7 @@ def load_tournament_weights(model_summary_path: str = "data/models/tournament_su
         "volatility_20d": 0.25,
         "momentum_20d": 0.18,
         "momentum_252d": 0.07,
-        "sma_ratio": 0.06,
+        "sma_ratio_50_200": 0.06,
         "fundamental": 0.04
     }
     """
@@ -57,26 +57,6 @@ def load_tournament_weights(model_summary_path: str = "data/models/tournament_su
             path = alt_path
 
     if not path.exists():
-        # Dynamic fallback: check SQLite ml_training_runs for champion weights
-        try:
-            from src.storage.database import DatabaseManager
-            db_path = Path(__file__).resolve().parent.parent.parent / "data" / "market_lab.db"
-            if db_path.exists():
-                db = DatabaseManager(str(db_path))
-                with db.get_connection() as conn:
-                    cur = conn.execute("SELECT feature_weights_json FROM ml_training_runs WHERE is_champion = 1 ORDER BY horizon_days DESC LIMIT 1")
-                    row = cur.fetchone()
-                    if row and row[0]:
-                        fw = json.loads(row[0])
-                        if fw and isinstance(fw, dict):
-                            valid = {k: float(v) for k, v in fw.items() if isinstance(v, (int, float)) and v > 0}
-                            total = sum(valid.values())
-                            if total > 0:
-                                logger.info("Loaded champion weights dynamically from ml_training_runs SQLite table.")
-                                return {k: round(v / total, 4) for k, v in valid.items()}
-        except Exception as e:
-            logger.debug(f"SQLite champion weight lookup fallback failed: {e}")
-
         logger.warning(f"Tournament summary not found at {model_summary_path}. Falling back to default weights.")
         return DEFAULT_TOURNAMENT_WEIGHTS.copy()
 
@@ -90,6 +70,20 @@ def load_tournament_weights(model_summary_path: str = "data/models/tournament_su
             return DEFAULT_TOURNAMENT_WEIGHTS.copy()
 
         valid_weights = {k: float(v) for k, v in raw_weights.items() if isinstance(v, (int, float)) and v > 0}
+        
+        # Ensure legacy feature names exist for backwards compatibility
+        alias_map = {
+            "rsi_14": valid_weights.get("rsi_regime", 0.125),
+            "volatility_20d": valid_weights.get("low_vol_quality", 0.125),
+            "momentum_20d": valid_weights.get("tactical_20d", 0.125),
+            "momentum_252d": valid_weights.get("trend_60d", 0.125),
+            "sma_ratio_50_200": valid_weights.get("structural_200d", 0.125),
+            "volume_zscore_50d": valid_weights.get("volume_accumulation", 0.125),
+        }
+        for k, v in alias_map.items():
+            if k not in valid_weights:
+                valid_weights[k] = float(v)
+
         total_w = sum(valid_weights.values())
         if total_w <= 0:
             logger.warning("Sum of tournament weights is non-positive. Using fallback defaults.")
@@ -120,6 +114,7 @@ class RebalanceEngine:
         self.db = db
         self.registry = registry_manager or ModelRegistryManager(db)
         self.feature_extractor = PITFeatureExtractor(db)
+        self._universe_blended_cache: Dict[Tuple[str, str], Dict[str, Dict[str, Any]]] = {}
 
     def get_latest_session_date(self) -> str:
         """Finds the most recent settled session date with available factor rows."""
@@ -632,7 +627,7 @@ class RebalanceEngine:
                 nifty_row = conn.execute("""
                     SELECT (c.close / p.close) - 1.0
                     FROM index_daily c
-                    JOIN index_daily p ON c.index_name = p.index_name
+                    JOIN index_daily p ON c.index_name = p.index_name AND p.trading_date <= c.trading_date
                     WHERE c.index_name = 'NIFTY 50' AND c.trading_date = ?
                     ORDER BY p.trading_date DESC LIMIT 1 OFFSET 20
                 """, (trading_date,)).fetchone()
@@ -822,17 +817,22 @@ class RebalanceEngine:
         if not session_date:
             session_date = self.get_latest_session_date()
 
+        cache_key = (str(session_date), str(account_id))
+        if hasattr(self, "_universe_blended_cache") and cache_key in self._universe_blended_cache:
+            return self._universe_blended_cache[cache_key]
+
         candidate_df = self.score_candidate_universe(trading_date=session_date, account_id=account_id)
         if candidate_df.empty:
             return {}
 
         results: Dict[str, Dict[str, Any]] = {}
-        for _, row in candidate_df.iterrows():
+        records = candidate_df.to_dict(orient="records")
+        for row in records:
             sym = str(row["symbol"])
-            target_pct = float(row.get("target_allocation_pct", 0.0))
-            b_score = float(row.get("blended_score", 0.0))
-            s20 = float(row.get("score_20d", 50.0))
-            s60 = float(row.get("score_60d", 50.0))
+            target_pct = float(row.get("target_allocation_pct", 0.0) or 0.0)
+            b_score = float(row.get("blended_score", 0.0) or 0.0)
+            s20 = float(row.get("score_20d", 50.0) or 50.0)
+            s60 = float(row.get("score_60d", 50.0) or 50.0)
 
             drivers = []
             if target_pct > 0:
@@ -854,4 +854,6 @@ class RebalanceEngine:
                 "is_rebalance_target": target_pct > 0
             }
 
+        if hasattr(self, "_universe_blended_cache"):
+            self._universe_blended_cache[cache_key] = results
         return results
