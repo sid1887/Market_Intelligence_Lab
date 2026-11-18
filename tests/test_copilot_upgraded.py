@@ -159,3 +159,47 @@ async def test_copilot_with_multi_turn_history(copilot_engine):
     full_output = "".join(chunks)
     assert '"stage": "conversational"' in full_output
     assert '"stage": "complete"' in full_output
+
+
+@pytest.mark.asyncio
+async def test_copilot_colpal_telemetry_grounding(copilot_engine):
+    """Verifies COLPAL grounding resolves live price from ohlcv_daily, non-null ROE, and historical dip."""
+    funds = copilot_engine.bridge.get_stock_fundamentals("COLPAL")
+    drawdowns = copilot_engine.bridge.get_historical_drawdown_telemetry("COLPAL")
+
+    assert funds.get("current_price", 0.0) > 1000.0
+    # ROE should be resolved to ~63.07% from quant_factors_daily / fundamentals
+    assert funds.get("fundamentals", {}).get("roe_pct") is not None
+    assert funds["fundamentals"]["roe_pct"] > 50.0
+
+    # Historical drawdown telemetry verification
+    assert "last_major_dip" in drawdowns
+    last_dip = drawdowns["last_major_dip"]
+    assert last_dip["drop_pct"] <= -8.0
+    assert last_dip["peak_price"] > last_dip["trough_price"]
+    assert "high_52w" in drawdowns
+    assert "low_52w" in drawdowns
+
+
+@pytest.mark.asyncio
+async def test_copilot_direct_response_greeting_vs_canned_template(copilot_engine):
+    """Verifies asking 'hi' returns natural conversational greeting with live price & ROE instead of 3-agent template."""
+    resp = await copilot_engine.generate_direct_response("hi", symbol="COLPAL")
+    assert resp and len(resp.strip()) > 30
+    # Should contain price and ROE
+    assert "1714" in resp or "₹" in resp
+    assert "63" in resp or "ROE" in resp
+    # Should NOT contain rigid multi-agent template artifacts
+    assert "Bull Analyst Thesis" not in resp
+    assert "Bear Analyst Thesis" not in resp
+
+
+@pytest.mark.asyncio
+async def test_copilot_direct_response_dip_query(copilot_engine):
+    """Verifies asking 'what was its last massive dip?' returns exact historical drawdown data."""
+    resp = await copilot_engine.generate_direct_response("what was its last massive dip?", symbol="COLPAL")
+    assert resp and len(resp.strip()) > 30
+    # Should cite the -58% or -59% decline and dates
+    assert "58" in resp or "59" in resp or "Dip" in resp or "Drawdown" in resp
+    assert "3838" in resp or "1575" in resp or "2024" in resp
+

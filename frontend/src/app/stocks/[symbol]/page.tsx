@@ -18,7 +18,7 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
 import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
 import Navbar from "@/components/Navbar";
-import { requestLifecycle, API_BASE, DEFAULT_HEADERS, apiFetch } from "@/lib/api";
+import { requestLifecycle, API_BASE, DEFAULT_HEADERS, apiFetch, clearMemoryCache } from "@/lib/api";
 import {
   ArrowLeft,
   TrendingUp,
@@ -279,7 +279,17 @@ export default function StockTearsheetPage() {
     if (!symbol) return;
     fetchTearsheet();
 
+    const handleRefresh = () => {
+      clearMemoryCache();
+      fetchTearsheet();
+    };
+
+    window.addEventListener("mil:tearsheet-refresh", handleRefresh);
+    window.addEventListener("mil:screener-refresh", handleRefresh);
+
     return () => {
+      window.removeEventListener("mil:tearsheet-refresh", handleRefresh);
+      window.removeEventListener("mil:screener-refresh", handleRefresh);
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       requestLifecycle.cleanup('stock_detail_active');
     };

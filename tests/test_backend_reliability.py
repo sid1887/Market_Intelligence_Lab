@@ -230,3 +230,24 @@ def test_root_probe_and_health_endpoints():
     res_health = client.get("/api/v1/health")
     assert res_health.status_code == 200
     assert "status" in res_health.json()
+
+
+def test_cloud_safe_ingestion_universe_selection():
+    """Verify that run_cloud_safe_ingestion queries active equities without LIMIT 125 cap and uses 150 batches."""
+    from src.api.routes_market import run_cloud_safe_ingestion, _CLOUD_INGEST_STATUS
+    from unittest.mock import patch
+
+    with patch("src.data.universe_expander.ingest_symbols_parallel") as mock_ingest, \
+         patch("src.tasks.catalyst_engine.catalyst_engine.run_intraday_scan") as mock_cat, \
+         patch("src.api.main.invalidate_screener_cache") as mock_inv:
+
+        run_cloud_safe_ingestion()
+
+        assert mock_ingest.called
+        # Each batch should be up to 150 symbols
+        first_batch = mock_ingest.call_args_list[0][0][1]
+        assert len(first_batch) <= 150
+        # Total universe should reflect all active equities (> 1000), not capped at 125
+        assert _CLOUD_INGEST_STATUS["total"] >= 1000
+        assert _CLOUD_INGEST_STATUS["status"] == "completed"
+        assert _CLOUD_INGEST_STATUS["progress"] == _CLOUD_INGEST_STATUS["total"]

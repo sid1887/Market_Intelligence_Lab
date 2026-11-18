@@ -102,11 +102,11 @@ function StockInspectorComponent({
 
     setIsSyncing(true);
 
-    const timer = setTimeout(async () => {
+    const fetchBundleData = async (skipCache: boolean = false) => {
       const { signal, generation } = requestLifecycle.prepareRequest("inspector_active");
 
       try {
-        const bundle = await fetchStockBundle(symbol, { signal, useCache: true });
+        const bundle = await fetchStockBundle(symbol, { signal, useCache: !skipCache });
         if (requestLifecycle.isLatest("inspector_active", generation) && !signal.aborted) {
           setCandles(bundle.tearsheet?.history || []);
           setForecast(bundle.forecast || null);
@@ -124,10 +124,10 @@ function StockInspectorComponent({
         if (signal.aborted || !requestLifecycle.isLatest("inspector_active", generation)) return;
         // Fallback to parallel fetch if bundle endpoint fails (extracting history from tearsheet)
         Promise.allSettled([
-          apiFetch<{ history?: CandleData[] }>(`/stocks/${symbol}/tearsheet`, { signal, useCache: true }),
-          apiFetch<ForecastData>(`/stocks/${symbol}/forecast`, { signal, useCache: true }),
-          apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal, useCache: true }),
-          apiFetch<NewsResponse>(`/stocks/${symbol}/news`, { signal, useCache: true }),
+          apiFetch<{ history?: CandleData[] }>(`/stocks/${symbol}/tearsheet`, { signal, useCache: !skipCache }),
+          apiFetch<ForecastData>(`/stocks/${symbol}/forecast`, { signal, useCache: !skipCache }),
+          apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal, useCache: !skipCache }),
+          apiFetch<NewsResponse>(`/stocks/${symbol}/news`, { signal, useCache: !skipCache }),
         ]).then(([tearsheetRes, forecastRes, memoRes, newsRes]) => {
           if (signal.aborted || !requestLifecycle.isLatest("inspector_active", generation)) return;
           setCandles(tearsheetRes.status === "fulfilled" && tearsheetRes.value ? tearsheetRes.value.history || [] : []);
@@ -137,10 +137,24 @@ function StockInspectorComponent({
           setIsSyncing(false);
         });
       }
+    };
+
+    const timer = setTimeout(() => {
+      void fetchBundleData(false);
     }, 150);
+
+    const handleRefresh = () => {
+      setIsSyncing(true);
+      void fetchBundleData(true);
+    };
+
+    window.addEventListener("mil:tearsheet-refresh", handleRefresh);
+    window.addEventListener("mil:screener-refresh", handleRefresh);
 
     return () => {
       clearTimeout(timer);
+      window.removeEventListener("mil:tearsheet-refresh", handleRefresh);
+      window.removeEventListener("mil:screener-refresh", handleRefresh);
       requestLifecycle.cleanup("inspector_active");
     };
   }, [symbol]);

@@ -42,17 +42,18 @@ export default function IngestStatusButton({
         if (data.status === "running") {
           setStatus("running");
           setProgress(data.progress || 0);
-          setTotal(data.total || 130);
+          setTotal(data.total || 1143);
           setCurrentBatch(data.current_batch || 1);
-          setTotalBatches(data.total_batches || 6);
+          setTotalBatches(data.total_batches || 8);
         } else if (data.status === "completed") {
           setStatus("completed");
-          setProgress(data.total || 130);
-          setTotal(data.total || 130);
+          setProgress(data.total || 1143);
+          setTotal(data.total || 1143);
           stopPolling();
-          // Dispatch single refresh event to let ScreenerWorkspace update cleanly once
+          // Dispatch refresh events to let ScreenerWorkspace and active Tearsheet update cleanly
           if (typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("mil:screener-refresh"));
+            window.dispatchEvent(new CustomEvent("mil:tearsheet-refresh"));
           }
           if (revertTimerRef.current) clearTimeout(revertTimerRef.current);
           revertTimerRef.current = setTimeout(() => {
@@ -79,9 +80,9 @@ export default function IngestStatusButton({
         if (data.status === "running") {
           setStatus("running");
           setProgress(data.progress || 0);
-          setTotal(data.total || 130);
+          setTotal(data.total || 1143);
           setCurrentBatch(data.current_batch || 1);
-          setTotalBatches(data.total_batches || 6);
+          setTotalBatches(data.total_batches || 8);
           startPolling();
         }
       })
@@ -100,9 +101,9 @@ export default function IngestStatusButton({
       await triggerSystemIngest();
       setStatus("running");
       setProgress(0);
-      setTotal(130);
+      setTotal(1143);
       setCurrentBatch(1);
-      setTotalBatches(6);
+      setTotalBatches(8);
       startPolling();
     } catch (err) {
       console.error("[IngestStatusButton] Ingest dispatch failed:", err);
@@ -125,7 +126,7 @@ export default function IngestStatusButton({
         disabled={isRunning}
         title={
           isRunning
-            ? `Syncing ${progress}/${total || 130} (Batch ${currentBatch}/${totalBatches})`
+            ? `Syncing ${progress}/${total || 1143} (Batch ${currentBatch}/${totalBatches || 8})`
             : status === "completed"
             ? "Cloud DB Synced"
             : "Execute Universal Dynamic Ingestion"
@@ -174,7 +175,7 @@ export default function IngestStatusButton({
       disabled={isRunning}
       title={
         isRunning
-          ? `Syncing ${progress}/${total || 130} (Batch ${currentBatch}/${totalBatches})...`
+          ? `Syncing ${progress}/${total || 1143} (Batch ${currentBatch}/${totalBatches || 8})...`
           : status === "completed"
           ? "Cloud DB Synced (2.7M Bars)"
           : "Execute Universal Dynamic Ingestion via Cloud Ingest Pipeline"
@@ -200,7 +201,7 @@ export default function IngestStatusButton({
         <>
           <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
           <span className="hidden sm:inline">
-            Syncing {progress}/{total || 130} (Batch {currentBatch}/{totalBatches || 6})...
+            Syncing {progress}/{total || 1143} (Batch {currentBatch}/${totalBatches || 8})...
           </span>
           <span className="sm:hidden">
             {total ? Math.round((progress / total) * 100) : 0}%

@@ -885,40 +885,27 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
     try:
         if target_symbols and len(target_symbols) > 0:
             priority_symbols = [s.strip().upper() for s in target_symbols if s.strip()]
-        elif is_cloud_lightweight_mode():
-            # In cloud lightweight mode: prioritize Watchlist + Portfolio + Top 125 liquid equities (~130 total)
+        else:
+            # Full universe: prioritize Watchlist + Portfolio, followed by all active master equities (~1,143+ total)
             with manager.db.get_connection() as conn:
                 wl_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM user_watchlists").fetchall()]
                 pf_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM portfolio_positions WHERE quantity > 0").fetchall()]
-                top_rows = [r[0] for r in conn.execute("""
+                all_rows = [r[0] for r in conn.execute("""
                     SELECT symbol FROM securities_master 
                     WHERE is_active = 1 
-                    ORDER BY is_nifty50 DESC, symbol ASC 
-                    LIMIT 125
+                    ORDER BY is_nifty50 DESC, symbol ASC
                 """).fetchall()]
             
-            priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + top_rows))
-            if not priority_symbols:
-                priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT", "FEDERALBNK", "UNIONBANK"]
-        else:
-            with manager.db.get_connection() as conn:
-                wl_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM user_watchlists").fetchall()]
-                pf_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM portfolio_positions WHERE quantity > 0").fetchall()]
-                top_rows = [r[0] for r in conn.execute("""
-                    SELECT symbol FROM securities_master 
-                    WHERE is_active = 1 
-                    ORDER BY is_nifty50 DESC, symbol ASC 
-                    LIMIT 200
-                """).fetchall()]
-            priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + top_rows))
+            priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + all_rows))
             if not priority_symbols:
                 priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT", "FEDERALBNK", "UNIONBANK"]
 
         total_symbols = len(priority_symbols)
-        batch_size = 25
+        batch_size = 150
         total_batches = math.ceil(total_symbols / batch_size)
 
-        _CLOUD_INGEST_STATUS = {
+        _CLOUD_INGEST_STATUS.clear()
+        _CLOUD_INGEST_STATUS.update({
             "status": "running",
             "stage": "BATCH_SYNC",
             "progress": 0,
@@ -929,7 +916,7 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
             "started_at": started_iso,
             "elapsed_sec": 0.0,
             "message": f"Ingesting {total_symbols} priority equities across {total_batches} batches..."
-        }
+        })
         logger.info(f"[CLOUD-INGEST] Processing {total_symbols} symbols in {total_batches} batches of {batch_size}...")
         sys.stdout.flush()
         
@@ -943,7 +930,7 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
             sys.stdout.flush()
 
             try:
-                ingest_symbols_parallel(manager.db, chunk, max_workers=1, chunk_size=batch_size, period="5d")
+                ingest_symbols_parallel(manager.db, chunk, max_workers=2, chunk_size=len(chunk), period="5d")
             except Exception as e:
                 logger.warning(f"[CLOUD-INGEST] Batch {b_idx + 1} partial failure: {e}")
                 sys.stdout.flush()
@@ -965,12 +952,12 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
 
         try:
             with manager.db.get_connection() as conn:
-                df = pd.read_sql_query(f"""
+                df = pd.read_sql_query("""
                     SELECT symbol, trading_date, close
                     FROM ohlcv_daily
-                    WHERE symbol IN ({','.join(['?']*len(priority_symbols))}) AND series = 'EQ'
+                    WHERE series = 'EQ' AND trading_date >= (SELECT date(MAX(trading_date), '-400 days') FROM ohlcv_daily)
                     ORDER BY symbol, trading_date ASC
-                """, conn, params=priority_symbols)
+                """, conn)
 
             factor_updates = []
             now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -1024,7 +1011,8 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
             logger.warning(f"Catalyst scan post-ingest error: {e}")
             
         elapsed = round(time.time() - t0, 1)
-        _CLOUD_INGEST_STATUS = {
+        _CLOUD_INGEST_STATUS.clear()
+        _CLOUD_INGEST_STATUS.update({
             "status": "completed",
             "stage": "COMPLETED",
             "progress": total_symbols,
@@ -1035,13 +1023,14 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
             "started_at": started_iso,
             "elapsed_sec": elapsed,
             "message": f"Market ingestion completed successfully in {elapsed}s."
-        }
+        })
         logger.info(f"[CLOUD-INGEST] Completed in {elapsed}s across {total_symbols} symbols.")
         sys.stdout.flush()
     except Exception as e:
         logger.error(f"[CLOUD-INGEST] Fatal error in market ingestion: {e}", exc_info=True)
         sys.stdout.flush()
-        _CLOUD_INGEST_STATUS = {
+        _CLOUD_INGEST_STATUS.clear()
+        _CLOUD_INGEST_STATUS.update({
             "status": "error",
             "stage": "ERROR",
             "progress": 0,
@@ -1052,7 +1041,7 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
             "started_at": started_iso,
             "elapsed_sec": round(time.time() - t0, 1),
             "message": f"Ingestion error: {str(e)}"
-        }
+        })
     finally:
         gc.collect()
 

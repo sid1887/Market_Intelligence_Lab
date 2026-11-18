@@ -268,7 +268,18 @@ class WalkForwardMLTrainer:
                     elif hasattr(model_inst, "feature_importances_"):
                         feature_importances_accum += model_inst.feature_importances_
                     else:
-                        feature_importances_accum += np.ones(len(FEATURE_COLUMNS_8)) / len(FEATURE_COLUMNS_8)
+                        try:
+                            from sklearn.inspection import permutation_importance
+                            sub_n = min(len(X_test), 500)
+                            p_imp = permutation_importance(model_inst, X_test[:sub_n], y_test[:sub_n], n_repeats=3, random_state=42)
+                            raw_imp = np.maximum(p_imp.importances_mean, 0.0)
+                            s_imp = raw_imp.sum()
+                            if s_imp > 0:
+                                feature_importances_accum += (raw_imp / s_imp)
+                            else:
+                                feature_importances_accum += np.ones(len(FEATURE_COLUMNS_8)) / len(FEATURE_COLUMNS_8)
+                        except Exception:
+                            feature_importances_accum += np.ones(len(FEATURE_COLUMNS_8)) / len(FEATURE_COLUMNS_8)
 
                     # Daily out-of-sample Rank IC and decile spread evaluation
                     test_df_eval = test_df.copy()
