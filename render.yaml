@@ -2,7 +2,7 @@ services:
   - type: web
     name: mil-quant-backend
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --no-cache-dir -r requirements-worker.txt
     startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     plan: free

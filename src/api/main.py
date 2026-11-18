@@ -226,6 +226,12 @@ app.include_router(push_router, prefix="/api/v1")
 app.include_router(internal_router, prefix="/api/v1")
 
 
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+def root_probe():
+    """Lightweight root probe for Render load balancer and ingress health checks."""
+    return {"status": "ok", "service": "mil-quant-backend"}
+
+
 @app.get("/health")
 @app.get("/api/v1/health")
 def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):

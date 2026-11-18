@@ -208,3 +208,25 @@ def test_database_migration_fails_fast_on_error(tmp_path):
     with patch("src.storage.migrations.run_all_migrations", side_effect=RuntimeError("Syntax error in migration 005")):
         with pytest.raises(RuntimeError, match="Syntax error in migration 005"):
             db.init_schema()
+
+
+def test_root_probe_and_health_endpoints():
+    """Verify that Render root probes (HEAD / and GET /) and API health endpoints return 200 OK."""
+    from fastapi.testclient import TestClient
+    from src.api.main import app
+
+    client = TestClient(app)
+
+    # 1. HEAD /
+    res_head = client.head("/")
+    assert res_head.status_code == 200
+
+    # 2. GET /
+    res_get = client.get("/")
+    assert res_get.status_code == 200
+    assert res_get.json() == {"status": "ok", "service": "mil-quant-backend"}
+
+    # 3. GET /api/v1/health
+    res_health = client.get("/api/v1/health")
+    assert res_health.status_code == 200
+    assert "status" in res_health.json()
