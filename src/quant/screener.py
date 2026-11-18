@@ -280,6 +280,8 @@ class FactorScreener:
             extra_where = ""
             if not include_watchlists:
                 extra_where += " AND (s.is_active = 1)"
+            else:
+                extra_where += " AND (COALESCE(s.is_active, 1) = 1 OR w.symbol IS NOT NULL)"
             if universe:
                 placeholders = ",".join("?" for _ in universe)
                 extra_where += f" AND q.symbol IN ({placeholders})"
@@ -301,9 +303,9 @@ class FactorScreener:
                   ON q.symbol = w.symbol
                 WHERE q.trading_date = ?
                   AND COALESCE(q.is_orphaned, 0) = 0
-                  AND o.series = 'EQ'
+                  AND (o.series IN ('EQ', 'BE', 'SM', 'ST') OR w.symbol IS NOT NULL)
                   AND COALESCE(o.is_synthetic, 0) = 0
-                  AND o.is_eligible_for_live_analytics = 1
+                  AND (o.is_eligible_for_live_analytics = 1 OR w.symbol IS NOT NULL)
                 {extra_where}
                 ORDER BY q.symbol ASC;
                 """
@@ -312,8 +314,17 @@ class FactorScreener:
                     exact_params.extend(universe)
                 df = pd.read_sql_query(exact_sql, conn, params=exact_params)
 
-            # Tier 2: Fall back to grouped max-date scan if session is empty or sparse (< 5 instruments)
-            if df.empty or len(df) < 5:
+            # Determine Tier 1 completeness threshold (at least 80% of active universe)
+            if universe:
+                min_threshold = max(1, int(len(universe) * 0.80))
+            else:
+                cur = conn.execute("SELECT COUNT(*) FROM securities_master WHERE is_active = 1")
+                row = cur.fetchone()
+                active_universe_count = row[0] if row and row[0] else 1153
+                min_threshold = max(200, int(active_universe_count * 0.80))
+
+            # Tier 2: Fall back to grouped max-date scan if session is empty or partial (< min_threshold)
+            if df.empty or len(df) < min_threshold:
                 fallback_sql = f"""
                 WITH max_dates AS (
                     SELECT symbol, MAX(trading_date) as max_date
@@ -335,9 +346,9 @@ class FactorScreener:
                   ON q.symbol = s.symbol
                 LEFT JOIN user_watchlists w 
                   ON q.symbol = w.symbol
-                WHERE o.series = 'EQ'
+                WHERE (o.series IN ('EQ', 'BE', 'SM', 'ST') OR w.symbol IS NOT NULL)
                   AND COALESCE(o.is_synthetic, 0) = 0
-                  AND o.is_eligible_for_live_analytics = 1
+                  AND (o.is_eligible_for_live_analytics = 1 OR w.symbol IS NOT NULL)
                 {extra_where}
                 ORDER BY q.symbol ASC;
                 """

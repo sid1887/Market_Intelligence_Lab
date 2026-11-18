@@ -313,20 +313,38 @@ def sync_internal_state_endpoint(
             # A. Catalysts (Highest priority)
             for c in new_catalyst_records:
                 sym = c.get("symbol", "").strip().upper()
-                headline = c.get("causal_headline", f"Catalyst Alert: {sym}").strip()
-                bullets = c.get("causal_bullets", [])
-                if isinstance(bullets, list) and bullets:
-                    body_text = bullets[0][:140] + "..." if len(bullets[0]) > 140 else bullets[0]
+                move_pct = float(c.get("move_pct") or 0.0)
+                rvol = float(c.get("rvol") or 1.0)
+                icon = "🚀" if move_pct > 0 else "📉"
+
+                title = c.get("push_title") or f"{icon} {sym} {move_pct:+.1f}% ({rvol:.1f}x Vol)"
+
+                if c.get("push_body"):
+                    body_text = c["push_body"]
                 else:
-                    body_text = headline
+                    p4 = c.get("pillar4") or {}
+                    p3 = c.get("pillar3") or {}
+                    p2 = c.get("pillar2") or {}
+                    classification = str(c.get("classification") or p2.get("classification") or "Market Anomaly").replace("_", " ").title()
+                    story = p4.get("top_story") or p3.get("summary")
+                    if story and story not in ("No major wire stories in last 48h.", "No corporate actions or board meetings in window."):
+                        body_text = f"{story}. Flow: {classification}."
+                    else:
+                        headline = c.get("causal_headline", "")
+                        body_text = f"{headline} · {classification}" if headline else f"{classification} with {rvol:.1f}x volume surge."
+
+                if len(body_text) > 160:
+                    body_text = body_text[:157] + "..."
+
                 trig_at = c.get("triggered_at", "")
                 trig_date = trig_at[:10] if trig_at else datetime.date.today().isoformat()
-                alert_key = f"catalyst:{sym}:{trig_date}:{headline[:40]}"
+                headline_for_key = c.get("causal_headline", "")
+                alert_key = f"catalyst:{sym}:{trig_date}:{headline_for_key[:40]}"
                 raw_candidates.append({
                     "type": "catalyst",
                     "key": alert_key,
                     "sym": sym,
-                    "title": headline,
+                    "title": title,
                     "body": body_text,
                     "url": f"/stocks/{sym}" if sym else "/",
                     "priority": 100,
@@ -336,29 +354,48 @@ def sync_internal_state_endpoint(
             if payload.news_articles:
                 for art in payload.news_articles:
                     sym = str(art.get("symbol", "")).strip().upper()
-                    source = str(art.get("source", ""))
-                    impact = str(art.get("impact", "NEUTRAL")).upper()
-                    is_user_asset = bool(sym and (sym in watchlist_symbols_set or sym in portfolio_symbols_set))
-                    is_bse_filing = "BSE Filing" in source and impact in ("BULLISH", "BEARISH")
-                    is_high_impact = impact in ("BULLISH", "BEARISH")
+                    source = str(art.get("source") or "Market Wire").strip()
+                    impact = str(art.get("impact_direction") or art.get("impact") or "NEUTRAL").upper()
+                    headline = str(art.get("title") or art.get("headline") or "").strip()
+                    bullets = art.get("summary_bullets") or art.get("summary") or []
+                    summary = bullets[0] if isinstance(bullets, list) and bullets else str(bullets).strip()
+                    art_id = art.get("id") or art.get("article_id") or art.get("article_url") or f"{sym}:{headline[:40]}"
+                    alert_key = f"news:{art_id}"
+                    conf_score = float(art.get("confidence_score") or 1.0)
 
-                    if not (is_bse_filing or (is_user_asset and is_high_impact)):
+                    is_user_asset = bool(sym and (sym in watchlist_symbols_set or sym in portfolio_symbols_set))
+                    is_exchange_filing = ("BSE Filing" in source or "NSE Filing" in source)
+                    is_high_conviction_wire = (conf_score >= 0.75 and impact in ("BULLISH", "BEARISH"))
+
+                    # Trigger push for watchlist/portfolio equities (for ANY directional/material news),
+                    # OR exchange filings, OR high-conviction wire catalysts
+                    if not (is_user_asset or is_exchange_filing or is_high_conviction_wire):
                         continue
 
-                    headline = str(art.get("headline", "")).strip()
-                    summary = str(art.get("summary", "")).strip()
-                    body_text = summary[:140] + "..." if len(summary) > 140 else (summary or headline)
-                    art_id = art.get("article_id") or art.get("url") or f"{sym}:{headline[:40]}"
-                    alert_key = f"news:{art_id}"
+                    impact_icon = "🟢" if impact == "BULLISH" else ("🔴" if impact == "BEARISH" else "📰")
+                    news_title = f"{impact_icon} {sym} · {source}" if sym else f"{impact_icon} {source}"
 
-                    # Priority ranking: BSE filings first (90), then user asset news (80)
-                    prio = 90 if is_bse_filing else 80
+                    if summary and summary.lower() != headline.lower():
+                        body_text = f"{headline}. {summary}"
+                    else:
+                        body_text = headline or summary
+
+                    if len(body_text) > 160:
+                        body_text = body_text[:157] + "..."
+
+                    # Priority ranking: Exchange filings first (90), then watchlist/portfolio assets (85), then high conviction wire (80)
+                    if is_exchange_filing:
+                        prio = 90
+                    elif is_user_asset:
+                        prio = 85
+                    else:
+                        prio = 80
 
                     raw_candidates.append({
                         "type": "news",
                         "key": alert_key,
                         "sym": sym,
-                        "title": headline,
+                        "title": news_title,
                         "body": body_text,
                         "url": f"/stocks/{sym}" if sym else "/",
                         "priority": prio,
@@ -380,7 +417,10 @@ def sync_internal_state_endpoint(
             if push_candidates:
                 logger.info(f"[INTERNAL-SYNC] Dispatching push notifications for {len(push_candidates)} eligible alerts.")
 
-                if len(push_candidates) <= 3:
+                MAX_INDIVIDUAL_ALERTS = 2
+                INTER_ALERT_GAP_SECONDS = 2.0
+
+                if len(push_candidates) <= MAX_INDIVIDUAL_ALERTS:
                     for alert in push_candidates:
                         try:
                             push_stats = broadcast_push(
@@ -398,13 +438,13 @@ def sync_internal_state_endpoint(
                             logger.info(f"[INTERNAL-SYNC] Web push dispatch for {alert['key']}: {push_stats}")
                         except Exception as pe:
                             logger.warning(f"[INTERNAL-SYNC] Push dispatch error for {alert['key']}: {pe}")
-                        time.sleep(1.0)
+                        time.sleep(INTER_ALERT_GAP_SECONDS)
                 else:
-                    # Smart Burst Throttling: Top 3 individual + 1 consolidated digest
-                    top3 = push_candidates[:3]
-                    overflow = push_candidates[3:]
+                    # Smart Burst Throttling: Max 2 individual + 1 consolidated digest
+                    top_alerts = push_candidates[:MAX_INDIVIDUAL_ALERTS]
+                    overflow = push_candidates[MAX_INDIVIDUAL_ALERTS:]
 
-                    for alert in top3:
+                    for alert in top_alerts:
                         try:
                             push_stats = broadcast_push(
                                 title=alert["title"],
@@ -421,7 +461,7 @@ def sync_internal_state_endpoint(
                             logger.info(f"[INTERNAL-SYNC] Web push dispatch for {alert['key']}: {push_stats}")
                         except Exception as pe:
                             logger.warning(f"[INTERNAL-SYNC] Push dispatch error for {alert['key']}: {pe}")
-                        time.sleep(1.0)
+                        time.sleep(INTER_ALERT_GAP_SECONDS)
 
                     # Record all overflow alerts in ledger so they won't repeat
                     for alert in overflow:

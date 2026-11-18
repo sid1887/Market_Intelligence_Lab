@@ -64,7 +64,7 @@ export default function CockpitPage() {
     }
     try {
       const [scrRes, wlRes] = await Promise.allSettled([
-        apiFetch<ScreenerResponse>("/screener?limit=1000", !invalidateCache),
+        apiFetch<ScreenerResponse>("/screener?limit=1500", !invalidateCache),
         apiFetch<WatchlistResponse>("/watchlist", !invalidateCache),
       ]);
 

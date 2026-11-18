@@ -377,6 +377,30 @@ class CausalCatalystEngine:
             ),
         ]
 
+        # Human-readable, actionable mobile push formatting
+        move_pct = p1["move_pct"]
+        rvol = p1["rvol"]
+        icon = "🚀" if move_pct > 0 else "📉"
+        push_title = f"{icon} {symbol} {move_pct:+.1f}% ({rvol:.1f}x Vol)"
+
+        news_or_filing = ""
+        if p4.get("top_story") and p4["top_story"] != "No major wire stories in last 48h.":
+            news_or_filing = p4["top_story"]
+        elif p3.get("summary") and p3["summary"] != "No corporate actions or board meetings in window.":
+            news_or_filing = p3["summary"]
+        elif p4.get("headlines"):
+            news_or_filing = p4["headlines"][0]
+
+        classification = p2.get("classification", "Unclassified").replace("_", " ").title()
+
+        if news_or_filing:
+            push_body = f"{news_or_filing}. Sector context: {classification}."
+        else:
+            push_body = f"{classification} with {rvol:.1f}x volume surge vs 20-day average."
+
+        if len(push_body) > 160:
+            push_body = push_body[:157] + "..."
+
         return {
             "symbol": symbol,
             "company_name": company_name,
@@ -386,6 +410,8 @@ class CausalCatalystEngine:
             "classification": p2["classification"],
             "causal_headline": causal_headline,
             "causal_bullets": bullets,
+            "push_title": push_title,
+            "push_body": push_body,
             "pillar1": p1,
             "pillar2": p2,
             "pillar3": p3,
@@ -467,10 +493,11 @@ class CausalCatalystEngine:
         # Broadcast Web Push Notification to mobile & desktop subscribers if enabled
         should_push = self.auto_push if dispatch_push is None else dispatch_push
         if should_push:
-            push_body = synth["causal_bullets"][0][:140] + "..." if synth["causal_bullets"] else synth["causal_headline"]
+            push_title = synth.get("push_title") or synth["causal_headline"]
+            push_body = synth.get("push_body") or (synth["causal_bullets"][0][:140] + "..." if synth["causal_bullets"] else synth["causal_headline"])
             try:
                 broadcast_push(
-                    title=synth["causal_headline"],
+                    title=push_title,
                     body=push_body,
                     url=f"/stocks/{symbol}",
                     tag=f"catalyst-{symbol}-{int(now.timestamp())}"

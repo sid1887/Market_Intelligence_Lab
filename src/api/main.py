@@ -270,7 +270,7 @@ def get_screener(
     exclude_financials: bool = Query(False, description="Exclude Financial Services sector"),
     include_watchlists: bool = Query(True, description="Include onboarded user watchlists"),
     sort_by: Optional[str] = Query(None, description="Sort column (e.g. composite_score or blended_score)"),
-    limit: int = Query(1000, ge=1, le=2000, description="Max results to return"),
+    limit: int = Query(1500, ge=1, le=2500, description="Max results to return"),
     offset: int = Query(0, ge=0, description="Pagination offset")
 ):
     """

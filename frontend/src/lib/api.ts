@@ -567,7 +567,7 @@ export async function fetchStockBundle(
 }
 
 export async function fetchScreener(
-  limit = 1000,
+  limit = 1500,
   options: ApiFetchOptions = {}
 ): Promise<ScreenerResponse> {
   return apiFetch<ScreenerResponse>(`/screener?limit=${limit}`, options);
