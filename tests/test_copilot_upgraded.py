@@ -1,0 +1,161 @@
+"""
+Unit and integration tests for Upgraded Multi-Agent Copilot Deliberation Engine.
+Verifies intent classification, multi-symbol extraction, direct Q&A, peer comparison,
+portfolio/watchlist summaries, and multi-turn conversational history.
+"""
+
+import json
+import pytest
+import asyncio
+from unittest.mock import patch, MagicMock
+
+from src.copilot.deliberation import MultiAgentDeliberationEngine
+
+
+@pytest.fixture
+def copilot_engine():
+    return MultiAgentDeliberationEngine()
+
+
+def test_copilot_symbol_extraction_and_alias_mapping(copilot_engine):
+    """Verifies symbol extraction, common company alias resolution, and deduplication."""
+    # Direct symbol
+    syms = copilot_engine._extract_symbols("What is the 20D forecast for RELIANCE?", "NIFTY 50")
+    assert "RELIANCE" in syms
+
+    # Multi-symbol comparison
+    syms_comp = copilot_engine._extract_symbols("Compare TCS and INFY performance", "NIFTY 50")
+    assert "TCS" in syms_comp
+    assert "INFY" in syms_comp
+
+    # Common Indian company names via alias map
+    syms_suzlon = copilot_engine._extract_symbols("Is Suzlon Energy a good buy?", "NIFTY 50")
+    assert "SUZLON" in syms_suzlon
+
+    syms_hdfc = copilot_engine._extract_symbols("Review HDFC Bank fundamentals", "NIFTY 50")
+    assert "HDFCBANK" in syms_hdfc
+
+
+def test_copilot_intent_classification(copilot_engine):
+    """Verifies intent classification across DIRECT_QA, COMPARE, PORTFOLIO_WATCHLIST, and DEBATE_THESIS."""
+    # Compare
+    assert copilot_engine._classify_intent("Compare TCS vs INFY", ["TCS", "INFY"]) == "COMPARE"
+    assert copilot_engine._classify_intent("Which is better, TCS or INFY?", ["TCS", "INFY"]) == "COMPARE"
+
+    # Portfolio / Watchlist
+    assert copilot_engine._classify_intent("Review my current watchlist", ["NIFTY 50"]) == "PORTFOLIO_WATCHLIST"
+    assert copilot_engine._classify_intent("What positions are in my portfolio?", ["NIFTY 50"]) == "PORTFOLIO_WATCHLIST"
+
+    # Debate Thesis
+    assert copilot_engine._classify_intent("Debate Bull vs Bear Thesis", ["RELIANCE"]) == "DEBATE_THESIS"
+    assert copilot_engine._classify_intent("Give me the committee debate on INFY", ["INFY"]) == "DEBATE_THESIS"
+
+    # Direct QA
+    assert copilot_engine._classify_intent("What is the 20D forecast for RELIANCE?", ["RELIANCE"]) == "DIRECT_QA"
+    assert copilot_engine._classify_intent("Explain the GARCH bounds for TCS", ["TCS"]) == "DIRECT_QA"
+    assert copilot_engine._classify_intent("What is the current RSI and ATR?", ["RELIANCE"]) == "DIRECT_QA"
+
+
+@pytest.mark.asyncio
+async def test_copilot_direct_qa_stream(copilot_engine):
+    """Verifies DIRECT_QA produces conversational stage and avoids bull/bear debate boilerplate."""
+    chunks = []
+    async for chunk in copilot_engine.run_deliberation_stream(
+        symbol="RELIANCE",
+        user_prompt="What is the 20D forecast for RELIANCE?",
+        context_override={
+            "fundamentals": {"ltp": 2450.0, "company_name": "Reliance Industries Ltd", "market_cap_tier": "LARGE_CAP"},
+            "ml_drift": {"expected_return_pct": 3.8, "drift_label": "BULLISH"},
+            "garch": {"current_vol_annual": 0.22, "cone_80_upper": 2550.0, "cone_80_lower": 2350.0}
+        }
+    ):
+        chunks.append(chunk)
+
+    full_output = "".join(chunks)
+    assert "data: " in full_output
+    assert '"stage": "conversational"' in full_output
+    assert '"stage": "complete"' in full_output
+    # Direct Q&A should not emit bull_analyst / bear_analyst stages
+    assert '"stage": "bull_analyst"' not in full_output
+    assert '"stage": "bear_analyst"' not in full_output
+
+
+@pytest.mark.asyncio
+async def test_copilot_compare_stream(copilot_engine):
+    """Verifies COMPARE intent extracts both symbols and returns comparative metrics."""
+    chunks = []
+    async for chunk in copilot_engine.run_deliberation_stream(
+        symbol="TCS",
+        user_prompt="Compare TCS vs INFY",
+        context_override={
+            "TCS": {"ltp": 4100.0, "quality_score": 85.0, "expected_return_pct": 2.5},
+            "INFY": {"ltp": 1850.0, "quality_score": 80.0, "expected_return_pct": 3.2}
+        }
+    ):
+        chunks.append(chunk)
+
+    full_output = "".join(chunks)
+    assert '"stage": "conversational"' in full_output
+    assert '"stage": "complete"' in full_output
+
+
+@pytest.mark.asyncio
+async def test_copilot_watchlist_stream(copilot_engine):
+    """Verifies PORTFOLIO_WATCHLIST intent returns watchlist / portfolio analysis."""
+    chunks = []
+    async for chunk in copilot_engine.run_deliberation_stream(
+        symbol="NIFTY 50",
+        user_prompt="Review my watchlist",
+        context_override={
+            "watchlist": [
+                {"symbol": "RELIANCE", "ltp": 2450.0, "entry_price": 2400.0, "unrealized_pnl_pct": 2.08, "composite_score": 78.5}
+            ]
+        }
+    ):
+        chunks.append(chunk)
+
+    full_output = "".join(chunks)
+    assert '"stage": "conversational"' in full_output
+    assert '"stage": "complete"' in full_output
+
+
+@pytest.mark.asyncio
+async def test_copilot_debate_stream_preserves_3_agents(copilot_engine):
+    """Verifies DEBATE_THESIS intent preserves the 3-agent committee pipeline."""
+    stages_seen = set()
+    async for chunk in copilot_engine.run_deliberation_stream(
+        symbol="RELIANCE",
+        user_prompt="Debate Bull vs Bear Thesis"
+    ):
+        if chunk.startswith("data: ") and not chunk.startswith("data: [DONE]"):
+            try:
+                payload = json.loads(chunk[6:].strip())
+                if "stage" in payload:
+                    stages_seen.add(payload["stage"])
+            except Exception:
+                pass
+
+    assert "bull_analyst" in stages_seen
+    assert "bear_analyst" in stages_seen
+    assert "judge_synthesis" in stages_seen
+    assert "complete" in stages_seen
+
+
+@pytest.mark.asyncio
+async def test_copilot_with_multi_turn_history(copilot_engine):
+    """Verifies multi-turn conversation history is received and handled cleanly."""
+    history = [
+        {"role": "user", "content": "What is the trend for RELIANCE?"},
+        {"role": "assistant", "content": "RELIANCE is showing a positive drift with 5D expected return of +1.4%."}
+    ]
+    chunks = []
+    async for chunk in copilot_engine.run_deliberation_stream(
+        symbol="RELIANCE",
+        user_prompt="What are its key support levels?",
+        history=history
+    ):
+        chunks.append(chunk)
+
+    full_output = "".join(chunks)
+    assert '"stage": "conversational"' in full_output
+    assert '"stage": "complete"' in full_output

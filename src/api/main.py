@@ -74,6 +74,8 @@ from src.api.routes_portfolio import router as portfolio_router
 from src.api.routes_backtest import router as backtest_router
 from src.api.routes_push import router as push_router
 from src.api.routes_internal import router as internal_router
+from src.api.routes_telegram import router as telegram_router
+from src.notifications.telegram_bot import register_telegram_webhook
 
 from contextlib import asynccontextmanager
 import asyncio
@@ -156,6 +158,12 @@ async def lifespan(app: FastAPI):
 
     if is_cloud:
         logger.info("CLOUD_LIGHTWEIGHT_MODE active: Autonomous EOD & Catalyst daemons delegated to GitHub Actions 7GB worker.")
+        if os.getenv("TELEGRAM_BOT_TOKEN"):
+            try:
+                backend_url = os.getenv("RENDER_BACKEND_URL", "https://mil-quant-backend.onrender.com").rstrip("/")
+                asyncio.create_task(register_telegram_webhook(f"{backend_url}/api/v1/telegram/webhook"))
+            except Exception as tg_err:
+                logger.warning(f"Failed to schedule Telegram webhook registration: {tg_err}")
     else:
         # 2. Start autonomous platform daemon (Local / dedicated server only)
         daemon_task = asyncio.create_task(run_autonomous_platform_daemon())
@@ -224,6 +232,7 @@ app.include_router(portfolio_router)
 app.include_router(backtest_router)
 app.include_router(push_router, prefix="/api/v1")
 app.include_router(internal_router, prefix="/api/v1")
+app.include_router(telegram_router, prefix="/api/v1")
 
 
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
@@ -793,6 +802,7 @@ class CopilotStreamRequest(BaseModel):
     symbol: str
     prompt: Optional[str] = "Debate Bull vs Bear Thesis"
     context_override: Optional[Dict[str, Any]] = None
+    history: Optional[List[Dict[str, str]]] = None
 
 
 copilot_engine = MultiAgentDeliberationEngine()
@@ -813,7 +823,8 @@ async def stream_copilot_deliberation(request: CopilotStreamRequest):
             async for chunk in copilot_engine.run_deliberation_stream(
                 symbol=sym,
                 user_prompt=user_prompt,
-                context_override=request.context_override
+                context_override=request.context_override,
+                history=request.history,
             ):
                 yield chunk
         except Exception as stream_err:

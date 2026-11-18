@@ -19,6 +19,7 @@ from pywebpush import webpush, WebPushException
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_der_private_key
 from cryptography.hazmat.primitives.asymmetric import ec
+from src.notifications.telegram_bot import send_telegram_alert
 
 logger = logging.getLogger("notifications.web_push")
 
@@ -399,8 +400,15 @@ def broadcast_push(
     Returns delivery statistics and any encountered errors.
     """
     subs = get_all_subscriptions()
+
+    # Always dispatch to Telegram if configured, even if browser subscriptions table is empty
+    try:
+        send_telegram_alert(title=title, body=body, url=url)
+    except Exception as te:
+        logger.debug(f"Telegram notification dispatch: {te}")
+
     if not subs:
-        logger.info("No active push subscriptions registered.")
+        logger.info("No active browser push subscriptions registered.")
         return {"total": 0, "sent": 0, "failed": 0, "errors": []}
 
     sent_count = 0

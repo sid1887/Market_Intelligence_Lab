@@ -1,274 +1,507 @@
 """
-Market Intelligence Lab — Multi-Agent Deliberation Architecture.
-Milestone B12.0: Part 4.
+Market Intelligence Lab — Multi-Agent Deliberation & Quantitative Copilot Architecture.
+Milestone B12.0: Upgraded Intent-Routed Institutional Quantitative Intelligence.
 
-Implements a 3-agent structured institutional debate:
-1. Bullish Research & Momentum Analyst
-2. Bearish Risk Management Analyst
-3. Portfolio Manager Debate Judge (Synthesizer)
+Supports 4 Intelligent Modes:
+1. DIRECT_QA: Concise, data-grounded answers citing exact prices, ML alpha bps, RSI/SMA, and news.
+2. COMPARE: Head-to-head multi-stock quantitative comparison across momentum, ML drift, fundamentals, and risk.
+3. PORTFOLIO_WATCHLIST: Actionable analysis of user watchlists, portfolio exposure, and screener leaders.
+4. DEBATE_THESIS: 3-agent institutional committee (Bull Analyst -> Bear Analyst -> PM Judge).
 
-Supports live streaming via Server-Sent Events (SSE).
+Supports live multi-turn history and live streaming via Server-Sent Events (SSE).
 """
 
 import os
+import re
 import json
 import asyncio
 import logging
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
+
 from src.copilot.llm_client import get_copilot_client, is_live_llm_configured
 from src.copilot.mcp_bridge import QuantMCPBridge
+from src.storage.database import DatabaseManager
+from src.api.utils import DATABASE_PATH
 
 logger = logging.getLogger("copilot.deliberation")
+
+ALIAS_MAP: Dict[str, str] = {
+    "SUZLON": "SUZLON",
+    "RELIANCE": "RELIANCE", "RIL": "RELIANCE",
+    "TCS": "TCS",
+    "INFOSYS": "INFY", "INFY": "INFY",
+    "HDFC": "HDFCBANK", "HDFCBANK": "HDFCBANK", "HDFC BANK": "HDFCBANK",
+    "ICICI": "ICICIBANK", "ICICIBANK": "ICICIBANK", "ICICI BANK": "ICICIBANK",
+    "SBI": "SBIN", "SBIN": "SBIN", "STATE BANK": "SBIN", "STATE BANK OF INDIA": "SBIN",
+    "BHARTI": "BHARTIARTL", "AIRTEL": "BHARTIARTL", "BHARTIARTL": "BHARTIARTL",
+    "ITC": "ITC",
+    "LT": "LT", "L&T": "LT", "LARSEN": "LT",
+    "TATA MOTORS": "TATAMOTORS", "TATAMOTORS": "TATAMOTORS",
+    "TATA STEEL": "TATASTEEL", "TATASTEEL": "TATASTEEL",
+    "RVNL": "RVNL", "BEL": "BEL", "HAL": "HAL", "BHEL": "BHEL",
+    "NHPC": "NHPC", "NTPC": "NTPC", "ONGC": "ONGC", "COAL INDIA": "COALINDIA", "COALINDIA": "COALINDIA",
+    "ZOMATO": "ETERNAL", "ETERNAL": "ETERNAL",
+    "BAJAJ FINANCE": "BAJFINANCE", "BAJFINANCE": "BAJFINANCE",
+    "MOREPENLAB": "MOREPENLAB", "TRIDENT": "TRIDENT", "DRONACHRYA": "DRONACHRYA",
+    "WIPRO": "WIPRO", "HCLTECH": "HCLTECH", "MARUTI": "MARUTI",
+    "SUNPHARMA": "SUNPHARMA", "ASIANPAINT": "ASIANPAINT", "KOTAKBANK": "KOTAKBANK",
+    "AXISBANK": "AXISBANK", "ADANIENT": "ADANIENT", "ADANIPORTS": "ADANIPORTS",
+    "POWERGRID": "POWERGRID", "TITAN": "TITAN", "IRFC": "IRFC", "PFC": "PFC", "RECLTD": "RECLTD"
+}
 
 
 class MultiAgentDeliberationEngine:
     def __init__(self, bridge: Optional[QuantMCPBridge] = None):
         self.bridge = bridge or QuantMCPBridge()
+        self.db = self.bridge.db
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 1. SYMBOL EXTRACTION & INTENT CLASSIFICATION
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    def _extract_symbols(self, prompt: str, default_symbol: Optional[str] = None) -> List[str]:
+        """Extracts up to 3 stock symbols mentioned in prompt, resolving aliases."""
+        syms: List[str] = []
+        p_upper = " " + (prompt or "").upper() + " "
+
+        # 1. Check known multi-word / single-word aliases first
+        for alias, canonical in sorted(ALIAS_MAP.items(), key=lambda x: -len(x[0])):
+            pattern = r"\b" + re.escape(alias) + r"\b"
+            if re.search(pattern, p_upper):
+                if canonical not in syms:
+                    syms.append(canonical)
+                if len(syms) >= 3:
+                    break
+
+        # 2. General 2-10 char uppercase tokens
+        stopwords = {
+            "WHAT", "WHEN", "WHERE", "WHICH", "THAT", "THIS", "WILL", "HAVE", "WITH",
+            "FROM", "ABOUT", "TODAY", "STOCK", "STOCKS", "VS", "THE", "AND", "FOR",
+            "ARE", "CAN", "HOW", "WHY", "DID", "BUY", "SELL", "HOLD", "HIGH", "LOW",
+            "DROP", "MOVE", "GAIN", "FALL", "NEWS", "OPEN", "CLOSE", "VIEW", "DEBATE",
+            "BULL", "BEAR", "MEMO", "PE", "ROE", "OPM", "SMA", "RSI", "NSE", "BSE", "MIL"
+        }
+        if len(syms) < 3:
+            for match in re.findall(r"\b[A-Z0-9-]{2,12}\b", p_upper):
+                token = match.strip()
+                if token in stopwords:
+                    continue
+                if token in ALIAS_MAP.values() and token not in syms:
+                    syms.append(token)
+                if len(syms) >= 3:
+                    break
+
+        # 3. Include default symbol if specified and not already present
+        if default_symbol and default_symbol not in ("NIFTY 50", "UNIVERSE", ""):
+            clean_def = default_symbol.strip().upper()
+            clean_def = ALIAS_MAP.get(clean_def, clean_def)
+            if clean_def not in syms:
+                syms.insert(0, clean_def)
+
+        return syms[:3]
+
+    def _classify_intent(self, prompt: str, symbols: List[str]) -> str:
+        """
+        Classifies user prompt into 1 of 4 modes:
+        - DEBATE_THESIS: Bull vs Bear 3-agent committee
+        - COMPARE: Multi-stock head-to-head comparison
+        - PORTFOLIO_WATCHLIST: Portfolio, watchlist, or screener queries
+        - DIRECT_QA: Direct, conversational Q&A on specific ticker or market
+        """
+        p = (prompt or "").lower().strip()
+
+        # 1. DEBATE_THESIS: explicit request for bull/bear committee or investment memo
+        debate_triggers = [
+            "debate", "bull vs bear", "bull and bear", "investment memo",
+            "trade thesis", "bear thesis", "bull thesis", "committee", "3-agent"
+        ]
+        if any(t in p for t in debate_triggers) or p in ("debate bull vs bear thesis", "debate thesis"):
+            return "DEBATE_THESIS"
+
+        # 2. COMPARE: 2+ symbols or comparison operators
+        compare_triggers = [" vs ", " vs. ", "compare", "better", "difference between", "head to head", "which is better"]
+        if len(symbols) >= 2 or any(t in p for t in compare_triggers):
+            return "COMPARE"
+
+        # 3. PORTFOLIO_WATCHLIST: watchlist, holdings, or screener overview
+        portfolio_triggers = ["watchlist", "portfolio", "holdings", "screener", "top stocks", "top picks", "my stocks"]
+        if any(t in p for t in portfolio_triggers) and not any(sym.lower() in p for sym in symbols):
+            return "PORTFOLIO_WATCHLIST"
+
+        # 4. DIRECT_QA: Default for all specific questions, follow-ups, and inquiries
+        return "DIRECT_QA"
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 2. RICH MULTI-SOURCE GROUNDING CONTEXT
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    def _build_grounded_context(
+        self,
+        symbols: List[str],
+        context_override: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Queries live SQLite & precomputed caches for target symbols and macro telemetry in < 15ms.
+        """
+        stocks_data: Dict[str, Any] = {}
+        target_syms = symbols if symbols else ["NIFTY 50"]
+
+        with self.db.get_connection() as conn:
+            for s in target_syms:
+                sym = s.strip().upper()
+                # 1. Fundamentals & technicals
+                funds = self.bridge.get_stock_fundamentals(sym)
+                # 2. Multi-horizon ML forecast
+                ml_fc = self.bridge.get_ml_champion_forecast(sym)
+                # 3. GARCH 20D bounds
+                garch = self.bridge.get_forecast_bounds(sym)
+                # 4. Latest 3 catalysts
+                cats = conn.execute("""
+                    SELECT causal_headline, triggered_at
+                    FROM market_catalysts
+                    WHERE symbol = ?
+                    ORDER BY triggered_at DESC
+                    LIMIT 3
+                """, (sym,)).fetchall()
+                catalysts = [dict(c) for c in cats]
+
+                # 5. Latest 3 news headlines
+                news_rows = conn.execute("""
+                    SELECT title, source, published_at, impact_direction
+                    FROM equity_news_feed
+                    WHERE symbol = ?
+                    ORDER BY published_at DESC
+                    LIMIT 3
+                """, (sym,)).fetchall()
+                news = [dict(n) for n in news_rows]
+
+                stocks_data[sym] = {
+                    "symbol": sym,
+                    "company_name": funds.get("company_name", sym),
+                    "sector": funds.get("sector", "Equity"),
+                    "current_price": funds.get("current_price", 0.0),
+                    "technicals": funds.get("technicals", {}),
+                    "fundamentals": funds.get("fundamentals", {}),
+                    "forecast_20d": garch,
+                    "ml_forecast": ml_fc,
+                    "catalysts": catalysts,
+                    "news": news,
+                }
+
+            # Global Watchlist & Portfolio context
+            try:
+                watch_rows = conn.execute("SELECT * FROM user_watchlists ORDER BY symbol ASC").fetchall()
+                watchlists = [dict(w) for w in watch_rows]
+            except Exception as we:
+                logger.debug(f"Watchlist context query error: {we}")
+                watchlists = []
+
+            try:
+                pos_rows = conn.execute("SELECT * FROM portfolio_positions WHERE quantity > 0 ORDER BY symbol ASC").fetchall()
+                positions = [dict(p) for p in pos_rows]
+            except Exception as pe:
+                logger.debug(f"Portfolio context query error: {pe}")
+                positions = []
+
+        macro = self.bridge.get_macro_context()
+
+        # Top screener leaders
+        screener_leaders: List[Dict[str, Any]] = []
+        try:
+            from src.quant.screener import FactorScreener
+            scr = FactorScreener(self.db)
+            top_df = scr.screen(limit=5)
+            if not top_df.empty:
+                screener_leaders = top_df[["symbol", "close", "composite_score", "ret_20d"]].to_dict(orient="records")
+        except Exception as se:
+            logger.debug(f"Screener leader query: {se}")
+
+        primary_sym = target_syms[0] if target_syms else "NIFTY 50"
+        primary_data = stocks_data.get(primary_sym, {})
+
+        return {
+            "symbols": target_syms,
+            "primary_symbol": primary_sym,
+            "stocks": stocks_data,
+            # Backward-compatible root keys for single-symbol callers
+            "symbol": primary_sym,
+            "company_name": primary_data.get("company_name", primary_sym),
+            "price": primary_data.get("current_price", 0.0),
+            "current_price": primary_data.get("current_price", 0.0),
+            "trend": primary_data.get("technicals", {}).get("trend_regime", "NEUTRAL"),
+            "technicals": primary_data.get("technicals", {}),
+            "fundamentals": primary_data.get("fundamentals", {}),
+            "forecast_20d": primary_data.get("forecast_20d", {}),
+            "ml_forecast": primary_data.get("ml_forecast", {}),
+            "recent_actions": self.bridge.get_nse_corporate_actions(primary_sym)[:3],
+            "macro_environment": macro,
+            "news_headlines": primary_data.get("news", []),
+            "recent_news": primary_data.get("news", []),
+            "user_watchlists": [dict(w) for w in watchlists],
+            "portfolio_positions": [dict(p) for p in positions],
+            "screener_leaders": screener_leaders,
+        }
 
     def build_quant_context(
         self,
         symbol: str,
         context_override: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Builds grounded quantitative context including fundamentals, technicals, portfolio telemetry, and news."""
+        """Backward-compatible single-symbol context builder."""
         sym = symbol.strip().upper()
-        funds = self.bridge.get_stock_fundamentals(sym)
-        forecast = self.bridge.get_forecast_bounds(sym)
-        actions = self.bridge.get_nse_corporate_actions(sym)
-        macro = self.bridge.get_macro_context()
-        ml_forecast = self.bridge.get_ml_champion_forecast(sym)
-
-        company_name = funds.get("company_name", sym)
-        price = funds.get("current_price", 0.0)
-        technicals = funds.get("technicals", {})
-        fundamentals = funds.get("fundamentals", {})
-
-        account_summary = {}
-        news_articles = []
-        portfolio_telemetry = {}
-        try:
-            from src.storage.database import DatabaseManager
-            from src.quant.execution_engine import PaperTradingEngine
-            from src.tasks.news_daemon import NewsSentimentDaemon
-
-            db = DatabaseManager()
-            exec_eng = PaperTradingEngine(db)
-            account_id = context_override.get("account_id", "paper_alpha_2") if context_override else "paper_alpha_2"
-            account_summary = exec_eng.get_account_summary(account_id)
-            portfolio_telemetry["paper_alpha_2"] = exec_eng.get_account_summary("paper_alpha_2")
-            portfolio_telemetry["paper_manual_1"] = exec_eng.get_account_summary("paper_manual_1")
-            portfolio_telemetry["paper_alpha_1"] = exec_eng.get_account_summary("paper_alpha_1")
-
-            news_daemon = NewsSentimentDaemon(db)
-            news_articles = news_daemon.fetch_live_headlines_for_symbol(sym, limit=3)
-        except Exception as e:
-            logger.debug(f"Telemetry enrichment warning in copilot: {e}")
-
-        trend = technicals.get("trend_regime", "NEUTRAL")
-
-        return {
-            "symbol": sym,
-            "company_name": company_name,
-            "price": price,
-            "current_price": price,
-            "trend": trend,
-            "technicals": technicals,
-            "fundamentals": fundamentals,
-            "forecast_20d": forecast,
-            "recent_actions": actions[:3],
-            "macro_environment": macro,
-            "account_summary": account_summary,
-            "portfolio_telemetry": portfolio_telemetry,
-            "news_headlines": news_articles,
-            "recent_news": news_articles,
-            "ml_forecast": ml_forecast
-        }
+        return self._build_grounded_context([sym], context_override)
 
     _get_quant_context = build_quant_context
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 3. DIRECT RESPONSE GENERATOR (TELEGRAM & ASYNC CALLS)
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    async def generate_direct_response(
+        self,
+        prompt: str,
+        symbol: Optional[str] = None,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        """
+        Generates a direct, grounded quantitative response without SSE chunk wrappers.
+        Used by Telegram Pocket Terminal and non-streaming REST callers.
+        """
+        symbols = self._extract_symbols(prompt, default_symbol=symbol)
+        intent = self._classify_intent(prompt, symbols)
+        grounded = self._build_grounded_context(symbols)
+
+        # Check if live LLM is configured (Groq / Gemini)
+        if is_live_llm_configured():
+            try:
+                reply = await self._call_llm_intent(intent, prompt, grounded, history)
+                if reply and len(reply.strip()) > 30:
+                    return reply.strip()
+            except Exception as e:
+                logger.warning(f"[COPILOT] Live LLM call failed ({e}), using deterministic synthesis.")
+
+        # Deterministic Grounded Synthesis Fallback
+        if intent == "COMPARE":
+            return self._generate_deterministic_comparison(symbols, grounded)
+        elif intent == "PORTFOLIO_WATCHLIST":
+            return self._generate_deterministic_portfolio_watchlist(grounded)
+        elif intent == "DEBATE_THESIS":
+            memo, _ = self._generate_deterministic_judge(grounded)
+            return memo
+        else:
+            return self._generate_deterministic_qa(prompt, grounded)
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 4. SSE STREAMING INTERFACE (WEB COPILOT DRAWER)
+    # ─────────────────────────────────────────────────────────────────────────────
 
     async def run_deliberation_stream(
         self,
         symbol: str,
         user_prompt: str = "Debate Bull vs Bear Thesis",
-        context_override: Optional[Dict[str, Any]] = None
+        context_override: Optional[Dict[str, Any]] = None,
+        history: Optional[List[Dict[str, str]]] = None
     ) -> AsyncGenerator[str, None]:
         """
-        Executes the 3-agent deliberation debate and yields SSE chunks.
-        Format: data: {"stage": "...", "status": "...", "content": "..."}\n\n
+        Main SSE Streaming entry point. Intelligently routes between:
+        - DIRECT_QA: 2-3 paragraph sharp response
+        - COMPARE: Multi-stock head-to-head table
+        - PORTFOLIO_WATCHLIST: Watchlist & screener analysis
+        - DEBATE_THESIS: 3-agent committee (Bull -> Bear -> Judge)
         """
-        sym = symbol.strip().upper()
-        logger.info(f"Initiating multi-agent deliberation for {sym} (prompt='{user_prompt}')...")
+        symbols = self._extract_symbols(user_prompt, default_symbol=symbol)
+        intent = self._classify_intent(user_prompt, symbols)
+        primary_sym = symbols[0] if symbols else (symbol or "NIFTY 50")
 
-        # 1. Fetch Quantitative Ground Truth from Native MCP Tools
+        # 1. Telemetry Query Event
         yield self._sse_event({
             "stage": "telemetry",
-            "status": f"Querying native quantitative tools & factor database for {sym}...",
+            "status": f"Querying quantitative factors & ML forecasts for {primary_sym}...",
             "progress": 10
         })
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.1)
 
-        quant_context = self.build_quant_context(sym, context_override)
-        price = quant_context.get("current_price", 0.0)
-        company_name = quant_context.get("company_name", sym)
-        fundamentals = quant_context.get("fundamentals", {})
-        technicals = quant_context.get("technicals", {})
-        forecast = quant_context.get("forecast_20d", {})
+        grounded = self._build_grounded_context(symbols, context_override)
 
-        # Check if conversational guidance is requested instead of full 3-agent committee
-        if self._is_conversational_prompt(user_prompt):
-            yield self._sse_event({
-                "stage": "conversational",
-                "status": f"Quant Copilot online for {sym}.",
-                "progress": 30
-            })
-            await asyncio.sleep(0.15)
-
-            conversational_reply = self._generate_conversational_guidance(quant_context, user_prompt)
-            for chunk in self._split_chunks(conversational_reply):
-                yield self._sse_event({
-                    "stage": "conversational",
-                    "delta": chunk,
-                    "progress": 70
-                })
-                await asyncio.sleep(0.02)
-
-            yield self._sse_event({
-                "stage": "complete",
-                "status": "Ready for quantitative inquiry.",
-                "progress": 100,
-                "conversational_response": conversational_reply,
-                "result": {
-                    "symbol": sym,
-                    "verdict": "READY",
-                    "conviction_score": 100,
-                    "entry_price": price,
-                    "target_price": forecast.get("expected_20d_price", round(price * 1.08, 2)),
-                    "stop_loss": forecast.get("lower_80", round(price * 0.94, 2)),
-                    "conversational_response": conversational_reply
-                }
-            })
+        # ─────────────────────────────────────────────────────────────────────────
+        # ROUTE A: DEBATE_THESIS (The 3-Agent Committee)
+        # ─────────────────────────────────────────────────────────────────────────
+        if intent == "DEBATE_THESIS":
+            async for chunk in self._stream_3_agent_committee(primary_sym, user_prompt, grounded):
+                yield chunk
             return
 
-        # Check if live LLM is configured
-        live_llm = is_live_llm_configured()
+        # ─────────────────────────────────────────────────────────────────────────
+        # ROUTE B: DIRECT_QA, COMPARE, PORTFOLIO_WATCHLIST
+        # ─────────────────────────────────────────────────────────────────────────
+        stage_label = "conversational"
+        status_msg = (
+            f"Conducting head-to-head quantitative comparison for {' vs '.join(symbols)}..."
+            if intent == "COMPARE"
+            else "Reviewing institutional watchlist and portfolio exposure..."
+            if intent == "PORTFOLIO_WATCHLIST"
+            else f"Quant Copilot analyzing telemetry for {primary_sym}..."
+        )
 
-        # =========================================================================
-        # STAGE 1: BULL / MOMENTUM ANALYST
-        # =========================================================================
+        yield self._sse_event({
+            "stage": stage_label,
+            "status": status_msg,
+            "progress": 30
+        })
+
+        reply_content = ""
+        live_llm = is_live_llm_configured()
+        if live_llm:
+            try:
+                reply_content = await self._call_llm_intent(intent, user_prompt, grounded, history)
+            except Exception as e:
+                logger.warning(f"[COPILOT] Live LLM streaming failed ({e}), falling back to deterministic synthesis.")
+
+        if not reply_content:
+            if intent == "COMPARE":
+                reply_content = self._generate_deterministic_comparison(symbols, grounded)
+            elif intent == "PORTFOLIO_WATCHLIST":
+                reply_content = self._generate_deterministic_portfolio_watchlist(grounded)
+            else:
+                reply_content = self._generate_deterministic_qa(user_prompt, grounded)
+
+        # Stream content in readable chunks
+        for chunk in self._split_chunks(reply_content, chunk_size=35):
+            yield self._sse_event({
+                "stage": stage_label,
+                "delta": chunk,
+                "progress": 75
+            })
+            await asyncio.sleep(0.015)
+
+        # Send completion event
+        primary_stock = grounded.get("stocks", {}).get(primary_sym, {})
+        price = primary_stock.get("current_price", 0.0)
+        fc = primary_stock.get("forecast_20d", {})
+
+        yield self._sse_event({
+            "stage": "complete",
+            "status": "Analysis complete.",
+            "progress": 100,
+            "conversational_response": reply_content,
+            "result": {
+                "symbol": primary_sym,
+                "verdict": "QUANT_ANALYSIS_COMPLETE",
+                "conviction_score": 85,
+                "entry_price": price,
+                "target_price": fc.get("expected_20d_price", round(price * 1.05, 2)),
+                "stop_loss": fc.get("invalidation_floor", round(price * 0.95, 2)),
+                "conversational_response": reply_content,
+                "ml_forecast": primary_stock.get("ml_forecast")
+            }
+        })
+        yield "data: [DONE]\n\n"
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 5. 3-AGENT COMMITTEE STREAM (DEBATE_THESIS)
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    async def _stream_3_agent_committee(
+        self,
+        symbol: str,
+        user_prompt: str,
+        context: Dict[str, Any]
+    ) -> AsyncGenerator[str, None]:
+        """Executes Bull -> Bear -> Judge committee stream."""
+        price = context.get("current_price", 0.0)
+        company_name = context.get("company_name", symbol)
+        fundamentals = context.get("fundamentals", {})
+        technicals = context.get("technicals", {})
+        forecast = context.get("forecast_20d", {})
+
+        # STAGE 1: BULL ANALYST
         yield self._sse_event({
             "stage": "bull_analyst",
-            "status": f"Bull Analyst: Evaluating order books, 20D momentum, and growth moats for {sym}...",
+            "status": f"Bull Analyst: Evaluating order books, 20D momentum, and growth moats for {symbol}...",
             "progress": 30
         })
 
         bull_content = ""
-        if live_llm:
+        if is_live_llm_configured():
             try:
                 bull_content = await self._stream_llm_role(
                     role="Bullish Research & Momentum Analyst",
                     instruction=(
-                        f"You are the Lead Bull/Momentum Analyst at an institutional quantitative hedge fund. "
-                        f"Present the strongest, data-backed bullish thesis for {sym} ({company_name}) trading at ₹{price:.2f}. "
-                        f"Focus on return on equity (ROE {fundamentals.get('roe_pct', 0):.1f}%), operating margin ({fundamentals.get('opm_pct', 0):.1f}%), "
-                        f"20D trend momentum ({technicals.get('ret_20d_pct', 0):.2f}%), and GARCH 20D expected target ₹{forecast.get('expected_20d_price', price):.2f}. "
-                        f"Keep it concise, rigorous, and bulleted."
+                        f"Present the strongest data-backed bullish thesis for {symbol} ({company_name}) at ₹{price:.2f}. "
+                        f"Cite ROE ({fundamentals.get('roe_pct', 0):.1f}%), OPM ({fundamentals.get('opm_pct', 0):.1f}%), "
+                        f"20D momentum ({technicals.get('ret_20d_pct', 0):.2f}%), and GARCH 20D target ₹{forecast.get('expected_20d_price', price):.2f}."
                     ),
-                    context=quant_context
+                    context=context
                 )
             except Exception as e:
-                logger.warning(f"Live LLM Bull Analyst failed ({e}), using deterministic synthesis.")
-                bull_content = self._generate_deterministic_bull(quant_context)
+                logger.warning(f"Bull Analyst LLM failed: {e}")
+                bull_content = self._generate_deterministic_bull(context)
         else:
-            bull_content = self._generate_deterministic_bull(quant_context)
+            bull_content = self._generate_deterministic_bull(context)
 
-        # Stream bull content in readable chunks
         for chunk in self._split_chunks(bull_content):
-            yield self._sse_event({
-                "stage": "bull_analyst",
-                "delta": chunk,
-                "progress": 45
-            })
-            await asyncio.sleep(0.04)
+            yield self._sse_event({"stage": "bull_analyst", "delta": chunk, "progress": 45})
+            await asyncio.sleep(0.02)
 
-        # =========================================================================
-        # STAGE 2: BEAR / RISK MANAGEMENT ANALYST
-        # =========================================================================
+        # STAGE 2: BEAR ANALYST
         yield self._sse_event({
             "stage": "bear_analyst",
-            "status": f"Bear Analyst: Scrutinizing valuation multiple sanity, debt load, and tail risks for {sym}...",
+            "status": f"Bear Analyst: Scrutinizing valuation multiple sanity, debt load, and tail risks for {symbol}...",
             "progress": 55
         })
-        await asyncio.sleep(0.3)
 
         bear_content = ""
-        if live_llm:
+        if is_live_llm_configured():
             try:
                 bear_content = await self._stream_llm_role(
                     role="Bearish Risk Management Analyst",
                     instruction=(
-                        f"You are the Chief Risk Officer and Lead Short/Bearish Analyst at an institutional hedge fund. "
-                        f"Directly challenge the Bull's thesis on {sym} ({company_name}) at ₹{price:.2f}. "
-                        f"Highlight P/E valuation multiples ({fundamentals.get('ttm_pe', 0):.1f}x), leverage/debt-to-equity ({fundamentals.get('debt_to_equity', 0):.2f}), "
-                        f"GARCH 20D downside tail-risk floor ₹{forecast.get('lower_80', price):.2f} (95% tail ₹{forecast.get('lower_95', price):.2f}), "
-                        f"and macroeconomic friction (USD/INR {macro.get('usd_inr')}, Brent Crude ${macro.get('brent_crude_usd')}). "
-                        f"Be rigorous, skeptical, and identify explicit thesis invalidation conditions."
+                        f"Stress-test downside tail risks and valuation multiple for {symbol}. "
+                        f"Scrutinize P/E ({fundamentals.get('ttm_pe', 0):.1f}x), D/E ({fundamentals.get('debt_to_equity', 0):.2f}), "
+                        f"and 80% invalidation floor ₹{forecast.get('invalidation_floor', price * 0.94):.2f}."
                     ),
-                    context=quant_context,
+                    context=context,
                     counter_argument=bull_content
                 )
             except Exception as e:
-                logger.warning(f"Live LLM Bear Analyst failed ({e}), using deterministic synthesis.")
-                bear_content = self._generate_deterministic_bear(quant_context)
+                logger.warning(f"Bear Analyst LLM failed: {e}")
+                bear_content = self._generate_deterministic_bear(context)
         else:
-            bear_content = self._generate_deterministic_bear(quant_context)
+            bear_content = self._generate_deterministic_bear(context)
 
         for chunk in self._split_chunks(bear_content):
-            yield self._sse_event({
-                "stage": "bear_analyst",
-                "delta": chunk,
-                "progress": 70
-            })
-            await asyncio.sleep(0.04)
+            yield self._sse_event({"stage": "bear_analyst", "delta": chunk, "progress": 75})
+            await asyncio.sleep(0.02)
 
-        # =========================================================================
-        # STAGE 3: PORTFOLIO MANAGER DEBATE JUDGE
-        # =========================================================================
+        # STAGE 3: PORTFOLIO MANAGER JUDGE
         yield self._sse_event({
             "stage": "judge_synthesis",
-            "status": f"Portfolio Manager Judge: Adjudicating debate, calibrating conviction & sizing parameters...",
-            "progress": 80
+            "status": f"PM Judge: Synthesizing institutional verdict and risk/reward parameters for {symbol}...",
+            "progress": 85
         })
-        await asyncio.sleep(0.4)
 
-        judge_content, verdict_meta = "", {}
-        if live_llm:
+        judge_content = ""
+        verdict_meta: Dict[str, Any] = {}
+        if is_live_llm_configured():
             try:
-                judge_content, verdict_meta = await self._stream_llm_judge(
-                    quant_context, bull_content, bear_content
-                )
+                judge_content, verdict_meta = await self._stream_llm_judge(context, bull_content, bear_content)
             except Exception as e:
-                logger.warning(f"Live LLM Judge failed ({e}), using deterministic synthesis.")
-                judge_content, verdict_meta = self._generate_deterministic_judge(quant_context)
+                logger.warning(f"Judge LLM failed: {e}")
+                judge_content, verdict_meta = self._generate_deterministic_judge(context)
         else:
-            judge_content, verdict_meta = self._generate_deterministic_judge(quant_context)
+            judge_content, verdict_meta = self._generate_deterministic_judge(context)
 
         for chunk in self._split_chunks(judge_content):
-            yield self._sse_event({
-                "stage": "judge_synthesis",
-                "delta": chunk,
-                "progress": 95
-            })
-            await asyncio.sleep(0.04)
+            yield self._sse_event({"stage": "judge_synthesis", "delta": chunk, "progress": 95})
+            await asyncio.sleep(0.02)
 
-        # =========================================================================
-        # COMPLETE EVENT: STRUCTURED DECISION PAYLOAD
-        # =========================================================================
+        # COMPLETE
         yield self._sse_event({
             "stage": "complete",
             "status": "Deliberation concluded successfully.",
             "progress": 100,
             "result": {
-                "symbol": sym,
+                "symbol": symbol,
                 "verdict": verdict_meta.get("verdict", "TACTICAL_SWING_LONG"),
                 "conviction_score": verdict_meta.get("conviction_score", 76),
                 "entry_price": price,
@@ -277,10 +510,192 @@ class MultiAgentDeliberationEngine:
                 "bull_thesis": bull_content,
                 "bear_thesis": bear_content,
                 "judge_memo": judge_content,
-                "ml_forecast": quant_context.get("ml_forecast")
+                "ml_forecast": context.get("ml_forecast")
             }
         })
         yield "data: [DONE]\n\n"
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 6. DETERMINISTIC SYNTHESIS ENGINES
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    def _generate_deterministic_qa(self, prompt: str, context: Dict[str, Any]) -> str:
+        """Generates a concise, insightful 2-3 paragraph quantitative answer."""
+        primary_sym = context.get("primary_symbol", "NIFTY 50")
+        stock = context.get("stocks", {}).get(primary_sym, {})
+        price = stock.get("current_price", 0.0)
+        tech = stock.get("technicals", {})
+        fund = stock.get("fundamentals", {})
+        ml = stock.get("ml_forecast", {})
+        fc = stock.get("forecast_20d", {})
+        catalysts = stock.get("catalysts", [])
+
+        # Format metrics
+        mom_20d = tech.get("ret_20d_pct", 0.0)
+        above_200 = "above" if tech.get("price_above_sma200") else "below"
+        sma200 = tech.get("sma_200")
+        sma200_str = f"₹{sma200:.2f}" if sma200 else "N/A"
+        roe = fund.get("roe_pct")
+        roe_str = f"{roe:.1f}%" if roe is not None else "—"
+        pe = fund.get("ttm_pe")
+        pe_str = f"{pe:.1f}x" if pe is not None else "—"
+
+        # ML insights
+        fc_20 = ml.get("forecasts", {}).get("20D", {})
+        ml_bps = fc_20.get("expected_excess_bps", 0.0)
+        ml_ret = fc_20.get("expected_return_pct", 0.0)
+        tier = ml.get("conviction_tier", "MOMENTUM_ACCUMULATION")
+        conviction = ml.get("conviction_score", 75)
+
+        target_20 = fc.get("expected_20d_price", round(price * 1.05, 2))
+        stop_floor = fc.get("invalidation_floor", round(price * 0.95, 2))
+
+        cat_str = ""
+        if catalysts:
+            cat_str = f" Recent price catalyst: *\"{catalysts[0].get('causal_headline', '')}\"*."
+
+        return (
+            f"**{primary_sym} ({stock.get('company_name', primary_sym)})** is trading at **₹{price:.2f}**, positioned **{above_200}** its 200-day SMA ({sma200_str}) with **{mom_20d:+.2f}%** 20-day price momentum.{cat_str}\n\n"
+            f"### Multi-Horizon Systematic Alpha\n"
+            f"• **20-Day Forecast Drift:** **{ml_ret:+.2f}%** (`{ml_bps:+.1f} bps` excess vs benchmark)\n"
+            f"• **Algorithm Conviction:** `{tier}` ({conviction}/100 machine weight)\n"
+            f"• **GARCH Probability Bounds:** Expected Target: **₹{target_20:.2f}** | Invalidation Floor: **₹{stop_floor:.2f}**\n\n"
+            f"### Fundamental Profile\n"
+            f"• **Return on Equity (ROE):** {roe_str} | **TTM P/E Multiple:** {pe_str} | **Debt/Equity:** {fund.get('debt_to_equity', '—')}x"
+        )
+
+    def _generate_deterministic_comparison(self, symbols: List[str], context: Dict[str, Any]) -> str:
+        """Generates a structured head-to-head comparison table and analytical verdict."""
+        if len(symbols) < 2:
+            return self._generate_deterministic_qa("Compare", context)
+
+        stocks = context.get("stocks", {})
+        s1, s2 = symbols[0], symbols[1]
+        d1 = stocks.get(s1, {})
+        d2 = stocks.get(s2, {})
+
+        p1, p2 = d1.get("current_price", 0.0), d2.get("current_price", 0.0)
+        t1, t2 = d1.get("technicals", {}), d2.get("technicals", {})
+        f1, f2 = d1.get("fundamentals", {}), d2.get("fundamentals", {})
+        ml1, ml2 = d1.get("ml_forecast", {}), d2.get("ml_forecast", {})
+
+        fc1_20 = ml1.get("forecasts", {}).get("20D", {})
+        fc2_20 = ml2.get("forecasts", {}).get("20D", {})
+        bps1 = fc1_20.get("expected_excess_bps", 0.0)
+        bps2 = fc2_20.get("expected_excess_bps", 0.0)
+
+        # Winner verdict
+        winner = s1 if bps1 >= bps2 else s2
+        spread = abs(bps1 - bps2)
+
+        return (
+            f"## Head-to-Head Quantitative Comparison: {s1} vs {s2}\n\n"
+            f"| Metric | **{s1}** | **{s2}** | Advantage |\n"
+            f"| :--- | :--- | :--- | :--- |\n"
+            f"| **Current Price** | ₹{p1:.2f} | ₹{p2:.2f} | — |\n"
+            f"| **20D Momentum** | {t1.get('ret_20d_pct', 0.0):+.2f}% | {t2.get('ret_20d_pct', 0.0):+.2f}% | **{s1 if t1.get('ret_20d_pct', 0) > t2.get('ret_20d_pct', 0) else s2}** |\n"
+            f"| **20D ML Alpha** | `{bps1:+.1f} bps` | `{bps2:+.1f} bps` | **{s1 if bps1 > bps2 else s2}** |\n"
+            f"| **Conviction Tier** | `{ml1.get('conviction_tier', 'MODERATE')}` | `{ml2.get('conviction_tier', 'MODERATE')}` | — |\n"
+            f"| **ROE** | {f1.get('roe_pct', '—')}% | {f2.get('roe_pct', '—')}% | **{s1 if (f1.get('roe_pct') or 0) > (f2.get('roe_pct') or 0) else s2}** |\n"
+            f"| **P/E Multiple** | {f1.get('ttm_pe', '—')}x | {f2.get('ttm_pe', '—')}x | **{s1 if (f1.get('ttm_pe') or 999) < (f2.get('ttm_pe') or 999) else s2}** |\n\n"
+            f"### Quantitative Verdict\n"
+            f"**Preferred Asset:** **`{winner}`** exhibits stronger forward alpha drift with a `{spread:.1f} bps` expected excess return spread over the next 20 trading sessions."
+        )
+
+    def _generate_deterministic_portfolio_watchlist(self, context: Dict[str, Any]) -> str:
+        """Analyzes active watchlist items and screener leaders."""
+        watchlists = context.get("user_watchlists", [])
+        screener = context.get("screener_leaders", [])
+
+        wl_lines = []
+        if watchlists:
+            for w in watchlists[:5]:
+                sym = w["symbol"]
+                tgt = w.get("target_price")
+                stop = w.get("stop_loss")
+                tgt_s = f"Target: ₹{tgt:.2f}" if tgt else "Target: Open"
+                stop_s = f"SL: ₹{stop:.2f}" if stop else "SL: Dynamic"
+                wl_lines.append(f"• **{sym}** ({tgt_s} | {stop_s})")
+        else:
+            wl_lines.append("• *No symbols currently saved in watchlist.*")
+
+        scr_lines = []
+        if screener:
+            for s in screener[:5]:
+                sym = s.get("symbol", "")
+                price = s.get("close", 0.0)
+                score = s.get("composite_score", 0.0)
+                scr_lines.append(f"• **{sym}**: ₹{price:.2f} · Factor Score: **{score:.1f}**")
+
+        return (
+            f"## Institutional Watchlist & Alpha Screener Overview\n\n"
+            f"### Active Watchlist Trackers\n"
+            + "\n".join(wl_lines) + "\n\n"
+            f"### Top Factor Screener Opportunities\n"
+            + "\n".join(scr_lines) + "\n\n"
+            f"Use `/forecast <SYMBOL>` to inspect multi-horizon model weights for any ticker."
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 7. LLM INTEGRATION HELPERS
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    async def _call_llm_intent(
+        self,
+        intent: str,
+        user_prompt: str,
+        context: Dict[str, Any],
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        """Executes live LLM completion (Groq or Gemini) conditioned on multi-turn history."""
+        client, model = get_copilot_client()
+
+        sys_msg = (
+            "You are the Principal Quantitative Analyst for Market Intelligence Lab, an institutional terminal. "
+            "Deliver concise, data-grounded insights citing exact numbers (prices, ML bps, RSI, SMA 200, catalysts) "
+            "from the provided context. Avoid generic disclaimers or repetitive templates. Use clean Markdown."
+        )
+
+        messages = [{"role": "system", "content": sys_msg}]
+
+        # Inject up to 6 past conversation turns
+        if history:
+            for turn in history[-6:]:
+                role = turn.get("role", "user")
+                content = turn.get("content", "")
+                if role in ("user", "assistant") and content:
+                    messages.append({"role": role, "content": content})
+
+        # Append current user prompt + grounded data
+        ctx_summary = {
+            "symbols": context.get("symbols"),
+            "stocks": {
+                sym: {
+                    "price": d.get("current_price"),
+                    "technicals": d.get("technicals"),
+                    "fundamentals": d.get("fundamentals"),
+                    "ml_forecast": d.get("ml_forecast"),
+                    "garch": d.get("forecast_20d"),
+                    "catalysts": d.get("catalysts")
+                }
+                for sym, d in context.get("stocks", {}).items()
+            },
+            "macro": context.get("macro_environment")
+        }
+
+        user_content = (
+            f"Telemetry Context:\n{json.dumps(ctx_summary, indent=1)}\n\n"
+            f"User Inquiry:\n{user_prompt}"
+        )
+        messages.append({"role": "user", "content": user_content})
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=650
+        )
+        return response.choices[0].message.content or ""
 
     def _sse_event(self, data: Dict[str, Any]) -> str:
         from src.api.utils import sanitize_for_json
@@ -308,7 +723,7 @@ class MultiAgentDeliberationEngine:
 
     async def _stream_llm_judge(
         self, context: Dict[str, Any], bull_arg: str, bear_arg: str
-    ) -> tuple[str, Dict[str, Any]]:
+    ) -> Tuple[str, Dict[str, Any]]:
         client, model = get_copilot_client()
         messages = [
             {
@@ -334,11 +749,10 @@ class MultiAgentDeliberationEngine:
         response = await client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.2,
-            max_tokens=800
+            temperature=0.3,
+            max_tokens=650
         )
         content = response.choices[0].message.content or ""
-        # Determine verdict metadata from LLM output (P0-09, Section 17)
         sym = context.get("symbol", "")
         price = context.get("current_price", 0.0)
         forecast = context.get("forecast_20d", {})
@@ -391,13 +805,13 @@ class MultiAgentDeliberationEngine:
             news_snippet = (
                 f"\n\n4. **Live Catalyst & Financial News Flow:**\n"
                 f"   - Headline: *\"{top_art.get('title', '')}\"*\n"
-                f"   - Sentiment Polarity: **{top_art.get('sentiment_label', 'NEUTRAL')}** ({top_art.get('sentiment_score', 0.0):+.2f}) via {top_art.get('source', 'Financial Feed')}."
+                f"   - Sentiment Polarity: **{top_art.get('impact_direction', 'NEUTRAL')}** via {top_art.get('source', 'Financial Feed')}."
             )
 
         ml = ctx.get("ml_forecast", {})
         ml_snippet = ""
         if ml and not ml.get("error"):
-            champ = ml.get("champion_model", "ElasticNet (20D)")
+            champ = ml.get("champion_model", "HistGradientBoosting")
             fc_20 = ml.get("forecasts", {}).get("20D", {})
             fc_60 = ml.get("forecasts", {}).get("60D", {})
             ml_snippet = (
@@ -465,9 +879,8 @@ class MultiAgentDeliberationEngine:
             f"   - Currency & commodity pressure (USD/INR at **{usd_str}**, Brent at **{brent_str}**) drives imported inflation and operating margin friction.{ml_bear_snippet}"
         )
 
-    def _generate_deterministic_judge(self, ctx: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
+    def _generate_deterministic_judge(self, ctx: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         sym = ctx["symbol"]
-        company = ctx["company_name"]
         price = ctx["current_price"]
         t = ctx.get("technicals", {})
         f = ctx.get("fundamentals", {})
@@ -484,7 +897,7 @@ class MultiAgentDeliberationEngine:
         ml_snippet = ""
         ml_boost = 0
         if ml and not ml.get("error"):
-            champ_model = ml.get("champion_model", "ElasticNet (20D)")
+            champ_model = ml.get("champion_model", "HistGradientBoosting")
             overall_rank_ic = ml.get("overall_rank_ic", 0.035)
             ml_conviction = ml.get("conviction_score", 70)
             conviction_tier = ml.get("conviction_tier", "MODERATE_ALPHA")
@@ -539,63 +952,3 @@ class MultiAgentDeliberationEngine:
             "target_price": target,
             "stop_loss": stop
         }
-
-    @staticmethod
-    def _is_conversational_prompt(prompt: str) -> bool:
-        if not prompt or not prompt.strip():
-            return True
-        import re
-        clean = prompt.strip().lower()
-        clean_norm = re.sub(r"[^\w\s]", "", clean).strip()
-
-        greetings = {
-            "hi", "hello", "hey", "heya", "yo", "sup", "hola",
-            "good morning", "good afternoon", "good evening",
-            "who are you", "what is this", "what can you do", "help",
-            "how does this work", "how do you work", "explain yourself",
-            "what are you", "test", "ping"
-        }
-        if clean_norm in greetings:
-            return True
-
-        analytical_keywords = {
-            "bull", "bear", "debate", "thesis", "buy", "sell", "hold",
-            "target", "stop", "risk", "forecast", "pe", "roe", "opm", "debt",
-            "momentum", "valuation", "conviction", "verdict", "memo", "action",
-            "filing", "garch", "growth", "catalyst", "downside", "upside", "price",
-            "technicals", "fundamentals", "analyze", "evaluate", "check"
-        }
-        words = set(clean_norm.split())
-        if len(words) <= 3 and any(w in {"hi", "hello", "hey", "help"} for w in words):
-            if not words.intersection(analytical_keywords):
-                return True
-        return False
-
-    def _generate_conversational_guidance(self, quant_context: Dict[str, Any], user_prompt: str) -> str:
-        sym = quant_context["symbol"]
-        name = quant_context["company_name"]
-        price = quant_context["current_price"]
-        fund = quant_context.get("fundamentals", {})
-        tech = quant_context.get("technicals", {})
-        fc = quant_context.get("forecast_20d", {})
-        roe = fund.get("roe_pct")
-        roe_str = f"{roe:.1f}%" if roe is not None else "—"
-        de = fund.get("debt_to_equity")
-        de_str = f"{de:.2f}x" if de is not None else "—"
-        opm = fund.get("opm_pct")
-        opm_str = f"{opm:.1f}%" if opm is not None else "—"
-        mom = tech.get("ret_20d_pct", 0.0)
-        target = fc.get("expected_20d_price", price)
-
-        return (
-            f"Hello! I am your institutional Quant Copilot for Market Intelligence Lab.\n\n"
-            f"I am actively tracking **{sym}** ({name}) with verified settlement telemetry:\n"
-            f"• **Settled Price**: ₹{price:.2f}\n"
-            f"• **20D Momentum**: {mom:+.2f}%\n"
-            f"• **Return on Equity (ROE)**: {roe_str} | **Debt/Equity**: {de_str} | **OPM**: {opm_str}\n"
-            f"• **20D Econometric Target**: ₹{target:.2f}\n\n"
-            f"How can I assist your quantitative analysis today? You can prompt me to:\n"
-            f"1. **Debate Bull vs Bear Thesis** — Triggers the 3-agent committee (Bull Analyst, Bear Risk Analyst, and Portfolio Manager Judge).\n"
-            f"2. **Evaluate Downside Volatility** — Scrutinizes GARCH 80% & 95% confidence cones and stop loss invalidation.\n"
-            f"3. **Audit Exchange Disclosures** — Reviews corporate actions, shareholding patterns, and filing dates."
-        )

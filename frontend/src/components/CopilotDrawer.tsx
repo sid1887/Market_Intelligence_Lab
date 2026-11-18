@@ -361,6 +361,7 @@ export default function CopilotDrawer({
 
   const [prompt, setPrompt] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
+  const [chatHistory, setChatHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [expandedSections, setExpandedSections] = useState<{ bull: boolean; bear: boolean; judge: boolean }>({
     bull: true,
     bear: true,
@@ -482,6 +483,9 @@ export default function CopilotDrawer({
       judgeText: ""
     });
 
+    let streamConversational = "";
+    let streamJudge = "";
+
     try {
       const response = await fetch(`${API_BASE}/copilot/stream`, {
         method: "POST",
@@ -492,7 +496,8 @@ export default function CopilotDrawer({
         },
         body: JSON.stringify({
           symbol: targetSymbol,
-          prompt: userInstruction
+          prompt: userInstruction,
+          history: chatHistory.slice(-8)
         }),
         signal: controller.signal
       });
@@ -529,7 +534,10 @@ export default function CopilotDrawer({
 
             if (data.stage === "conversational") {
               next.stage = "conversational";
-              if (data.delta) next.conversationalText = (prev.conversationalText || "") + data.delta;
+              if (data.delta) {
+                streamConversational += data.delta;
+                next.conversationalText = (prev.conversationalText || "") + data.delta;
+              }
             } else if (data.stage === "bull_analyst") {
               next.stage = "bull_analyst";
               if (data.delta) next.bullText = prev.bullText + data.delta;
@@ -538,7 +546,10 @@ export default function CopilotDrawer({
               if (data.delta) next.bearText = prev.bearText + data.delta;
             } else if (data.stage === "judge_synthesis") {
               next.stage = "judge_synthesis";
-              if (data.delta) next.judgeText = prev.judgeText + data.delta;
+              if (data.delta) {
+                streamJudge += data.delta;
+                next.judgeText = prev.judgeText + data.delta;
+              }
             } else if (data.stage === "complete") {
               next.stage = "complete";
               next.progressPct = 100;
@@ -549,8 +560,14 @@ export default function CopilotDrawer({
                 }
                 if (data.result.bull_thesis) next.bullText = data.result.bull_thesis;
                 if (data.result.bear_thesis) next.bearText = data.result.bear_thesis;
-                if (data.result.judge_memo) next.judgeText = data.result.judge_memo;
-                if (data.result.conversational_response) next.conversationalText = data.result.conversational_response;
+                if (data.result.judge_memo) {
+                  next.judgeText = data.result.judge_memo;
+                  streamJudge = data.result.judge_memo;
+                }
+                if (data.result.conversational_response) {
+                  next.conversationalText = data.result.conversational_response;
+                  streamConversational = data.result.conversational_response;
+                }
               }
             }
             return next;
@@ -573,6 +590,15 @@ export default function CopilotDrawer({
         }
         const textChunk = decoder.decode(value, { stream: true });
         parser.feed(textChunk, handleParsedEvent);
+      }
+
+      const reply = streamConversational.trim() || (streamJudge.trim() ? `**Portfolio Manager Synthesis:**\n${streamJudge.trim()}` : "");
+      if (reply) {
+        setChatHistory(prev => [
+          ...prev,
+          { role: "user", content: userInstruction },
+          { role: "assistant", content: reply }
+        ]);
       }
     } catch (err: unknown) {
       if ((err as Error)?.name === "AbortError") {
@@ -744,6 +770,36 @@ export default function CopilotDrawer({
                   <span className="text-slate-300 flex-1 truncate">{state.statusText}</span>
                   <span className="text-[10px] text-cyan-400 font-semibold tabular-nums shrink-0">{state.progressPct}%</span>
                 </div>
+
+                {/* Conversation History (Multi-turn Context) */}
+                {chatHistory.length > 0 && (
+                  <div className="space-y-3 pb-2 border-b border-white/[0.08]">
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider px-1">
+                      <span>Conversation History ({Math.ceil(chatHistory.length / 2)} turns)</span>
+                      <button
+                        onClick={() => setChatHistory([])}
+                        className="text-slate-400 hover:text-rose-400 underline transition-colors"
+                      >
+                        Clear History
+                      </button>
+                    </div>
+                    {chatHistory.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`p-3 rounded-xl text-xs font-sans leading-relaxed ${
+                          msg.role === "user"
+                            ? "bg-cyan-950/30 border border-cyan-800/40 text-cyan-200 ml-4"
+                            : "bg-slate-900/60 border border-white/[0.06] text-slate-200 mr-4"
+                        }`}
+                      >
+                        <span className="font-mono text-[10px] font-bold block mb-1 uppercase tracking-wider text-slate-400">
+                          {msg.role === "user" ? "You" : "Quant Copilot"}
+                        </span>
+                        <FormattedMarkdown content={msg.content} role="general" />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* ───────────────────────────────────────────────────────────── */}
                 {/* MACHINE LEARNING ALPHA FORECAST CARD                         */}
@@ -987,30 +1043,39 @@ export default function CopilotDrawer({
                 {/* 1-Click Action Chips */}
                 <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => runDeliberation("Debate Bull vs Bear Thesis")}
+                    onClick={() => runDeliberation(activeSymbol ? `Direct Alpha Brief for ${activeSymbol}` : "Direct Alpha Brief")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
                     className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-500/10 border border-white/[0.08] hover:border-cyan-500/40 text-[11px] font-mono text-cyan-300 transition-all flex items-center space-x-1.5"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Debate Bull vs Bear Thesis</span>
+                    <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Direct Alpha Brief</span>
                   </button>
 
                   <button
-                    onClick={() => runDeliberation("Check Corporate Actions & Shareholding Filings")}
+                    onClick={() => runDeliberation("Debate Bull vs Bear Thesis")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11px] font-mono text-slate-300 transition-all flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-emerald-500/10 border border-white/[0.08] hover:border-emerald-500/40 text-[11px] font-mono text-emerald-300 transition-all flex items-center space-x-1.5"
                   >
-                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Corporate Actions</span>
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Bull vs Bear Debate</span>
                   </button>
 
                   <button
-                    onClick={() => runDeliberation("Evaluate GARCH Cone & Risk/Reward Profile")}
+                    onClick={() => runDeliberation(activeSymbol ? `Compare ${activeSymbol} vs sector peer` : "Compare top market leaders")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11px] font-mono text-slate-300 transition-all flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-purple-500/10 border border-white/[0.08] hover:border-purple-500/40 text-[11px] font-mono text-purple-300 transition-all flex items-center space-x-1.5"
                   >
-                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Risk/Reward Profile</span>
+                    <Layers className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Compare vs Sector Peer</span>
+                  </button>
+
+                  <button
+                    onClick={() => runDeliberation("Review my watchlist")}
+                    disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-amber-500/10 border border-white/[0.08] hover:border-amber-500/40 text-[11px] font-mono text-amber-300 transition-all flex items-center space-x-1.5"
+                  >
+                    <Activity className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Review My Watchlist</span>
                   </button>
                 </div>
 
