@@ -224,7 +224,7 @@ export default function CockpitPage() {
           setShowShortcutModal((prev) => !prev);
         } else if (e.key.toLowerCase() === "v" && !e.metaKey && !e.ctrlKey) {
           e.preventDefault();
-          setViewMode((prev) => (prev === "table" ? "heatmap" : "table"));
+          setViewMode((prev) => (prev === "table" ? "heatmap" : prev === "heatmap" ? "cards" : "table"));
         }
       }
     };

@@ -418,7 +418,7 @@ class MultiAgentDeliberationEngine:
             "result": {
                 "symbol": primary_sym,
                 "verdict": "QUANT_ANALYSIS_COMPLETE",
-                "conviction_score": 85,
+                "conviction_score": primary_stock.get("ml_forecast", {}).get("conviction_score", 75),
                 "entry_price": price,
                 "target_price": fc.get("expected_20d_price", round(price * 1.05, 2)),
                 "stop_loss": fc.get("invalidation_floor", round(price * 0.95, 2)),
@@ -569,7 +569,7 @@ class MultiAgentDeliberationEngine:
         if p_lower in ("hi", "hello", "hey", "hola", "greetings") or p_lower.startswith(("hi ", "hello ", "hey ")):
             drift_lbl = "Bullish" if tech.get("ret_20d_pct", 0) > 0 else "Consolidating"
             roe_val = fund.get("roe_pct")
-            roe_txt = f"{roe_val:.1f}%" if roe_val is not None else "63.1%" if primary_sym == "COLPAL" else "Solid"
+            roe_txt = f"{roe_val:.1f}%" if roe_val is not None else "Solid"
             return (
                 f"Hello! I am your institutional Quant Copilot. I have live telemetry loaded for **{primary_sym}** ({comp}) "
                 f"currently trading at **₹{price:.2f}** (as of {as_of}).\n\n"
@@ -614,7 +614,7 @@ class MultiAgentDeliberationEngine:
         fund_words = ["roe", "opm", "margin", "valuation", "pe", "debt", "fundamental", "earnings", "ratio"]
         if any(w in p_lower for w in fund_words):
             roe_val = fund.get("roe_pct")
-            roe_str = f"{roe_val:.1f}%" if roe_val is not None else "63.1%" if primary_sym == "COLPAL" else "—"
+            roe_str = f"{roe_val:.1f}%" if roe_val is not None else "—"
             opm_val = fund.get("opm_pct")
             opm_str = f"{opm_val:.1f}%" if opm_val is not None else "—"
             pe_val = fund.get("ttm_pe")
@@ -638,7 +638,7 @@ class MultiAgentDeliberationEngine:
         sma200 = tech.get("sma_200")
         sma200_str = f"₹{sma200:.2f}" if sma200 else "N/A"
         roe = fund.get("roe_pct")
-        roe_str = f"{roe:.1f}%" if roe is not None else "63.1%" if primary_sym == "COLPAL" else "—"
+        roe_str = f"{roe:.1f}%" if roe is not None else "—"
         pe = fund.get("ttm_pe")
         pe_str = f"{pe:.1f}x" if pe is not None else "—"
 

@@ -30,7 +30,7 @@ export default function IngestionProgressBanner({
           records_processed: data.progress,
           records_total: data.total,
           symbol: data.last_symbol || undefined,
-          message: `Batch ${data.current_batch || 1}/${data.total_batches || 6} • ${data.progress}/${data.total} equities (${data.elapsed_sec?.toFixed(1) || 0}s)`,
+          message: `Batch ${data.current_batch || 1}/${data.total_batches || 8} • ${data.progress}/${data.total} equities (${data.elapsed_sec?.toFixed(1) || 0}s)`,
         });
       } else if (data.status === "completed") {
         setLiveBatchJob({

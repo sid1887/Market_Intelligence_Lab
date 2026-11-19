@@ -22,6 +22,9 @@ import {
   Cpu,
   BarChart3,
   Download,
+  RotateCcw,
+  Copy,
+  Check,
 } from "lucide-react";
 import { RobustSSEParser, ServerSentEvent } from "@/lib/sseParser";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
@@ -420,7 +423,9 @@ export default function CopilotDrawer({
 
   const [prompt, setPrompt] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
-  const [chatHistory, setChatHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [chatHistory, setChatHistory] = useState<
+    Array<{ role: "user" | "assistant"; content: string; timestamp?: string }>
+  >([]);
   const [expandedSections, setExpandedSections] = useState<{ bull: boolean; bear: boolean; judge: boolean }>({
     bull: true,
     bear: true,
@@ -437,7 +442,18 @@ export default function CopilotDrawer({
   });
 
   const [mlForecast, setMlForecast] = useState<MLForecastData | null>(null);
-  const [mlExpanded, setMlExpanded] = useState(true);
+  const [showMlPanel, setShowMlPanel] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const handleCopyMessage = useCallback((content: string, idx: number) => {
+    try {
+      navigator.clipboard.writeText(content);
+      setCopiedIndex(idx);
+      setTimeout(() => setCopiedIndex(null), 2000);
+    } catch (e) {
+      console.error("Failed to copy message:", e);
+    }
+  }, []);
 
   // Eagerly fetch ML Alpha Forecast when context symbol changes and drawer is open
   useEffect(() => {
@@ -691,13 +707,28 @@ export default function CopilotDrawer({
         parser.feed(textChunk, handleParsedEvent);
       }
 
-      const reply = streamConversational.trim() || (streamJudge.trim() ? `**Portfolio Manager Synthesis:**\n${streamJudge.trim()}` : "");
-      if (reply) {
+      const nowStr = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+      if (streamConversational.trim()) {
+        const reply = streamConversational.trim();
         setChatHistory(prev => [
           ...prev,
-          { role: "user", content: userInstruction },
-          { role: "assistant", content: reply }
+          { role: "user", content: userInstruction, timestamp: nowStr },
+          { role: "assistant", content: reply, timestamp: nowStr }
         ]);
+        // Clear conversationalText so completed turns render exclusively inside chatHistory (zero duplication)
+        setState(prev => ({
+          ...prev,
+          conversationalText: "",
+          stage: "complete",
+          statusText: "Analysis complete."
+        }));
+      } else if (streamJudge.trim() || state.bullText || state.bearText) {
+        // 3-Agent committee debate: kept in active accordion cards, not duplicated into chatHistory
+        setState(prev => ({
+          ...prev,
+          stage: "complete",
+          statusText: "Deliberation complete."
+        }));
       }
     } catch (err: unknown) {
       if ((err as Error)?.name === "AbortError") {
@@ -716,6 +747,16 @@ export default function CopilotDrawer({
   const toggleSection = (section: "bull" | "bear" | "judge") => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
+
+  // Auto-scroll whenever chat history or live streaming telemetry updates
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
+  }, [chatHistory.length, state.conversationalText, state.judgeText, state.bullText, state.bearText, state.stage]);
 
   return (
     <>
@@ -801,6 +842,24 @@ export default function CopilotDrawer({
 
                 {/* Right controls */}
                 <div className="flex items-center space-x-1.5">
+                  <button
+                    onClick={() => {
+                      setChatHistory([]);
+                      setState({
+                        stage: "idle",
+                        statusText: "Ready for multi-agent quantitative deliberation.",
+                        progressPct: 0,
+                        bullText: "",
+                        bearText: "",
+                        judgeText: "",
+                        conversationalText: "",
+                      });
+                    }}
+                    title="Clear Chat Thread"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={handleExportMarkdown}
                     title="Export deliberation transcript to Markdown (.md)"
@@ -890,159 +949,122 @@ export default function CopilotDrawer({
                   <span className="text-[10px] text-cyan-400 font-semibold tabular-nums shrink-0">{state.progressPct}%</span>
                 </div>
 
-                {/* Conversation History (Multi-turn Context) */}
-                {chatHistory.length > 0 && (
-                  <div className="space-y-3 pb-2 border-b border-white/[0.08]">
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 uppercase tracking-wider px-1">
-                      <span>Conversation History ({Math.ceil(chatHistory.length / 2)} turns)</span>
-                      <button
-                        onClick={() => setChatHistory([])}
-                        className="text-slate-400 hover:text-rose-400 underline transition-colors"
-                      >
-                        Clear History
-                      </button>
+                {/* Empty State Welcome Card */}
+                {chatHistory.length === 0 && state.stage === "idle" && !state.judgeText && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-b from-[#080d1a] to-[#04060c] border border-white/[0.08] space-y-3.5 shadow-lg">
+                    <div className="flex items-center space-x-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.25)]">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white font-mono">Quant Copilot Ready</h4>
+                        <p className="text-[11px] text-slate-400 font-sans">
+                          Grounded multi-turn intelligence for {activeSymbol || "NSE Equities"}.
+                        </p>
+                      </div>
                     </div>
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
+                        Suggested Inquiries
+                      </span>
+                      <div className="grid gap-1.5">
+                        {[
+                          `What was ${activeSymbol || "NIFTY 50"}'s last major dip?`,
+                          `Compare ${activeSymbol || "NIFTY 50"} vs sector peers`,
+                          `Summarize ${activeSymbol || "NIFTY 50"}'s 20D risk/reward profile`
+                        ].map((q, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => runDeliberation(q)}
+                            className="text-left px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-cyan-500/10 border border-white/[0.06] hover:border-cyan-500/30 text-xs font-mono text-slate-300 hover:text-cyan-200 transition-colors flex items-center justify-between group"
+                          >
+                            <span>{q}</span>
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-cyan-400 transition-colors shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conversation History Stream (Multi-turn Context) */}
+                {chatHistory.length > 0 && (
+                  <div className="space-y-3.5">
                     {chatHistory.map((msg, idx) => (
-                      <div
-                        key={idx}
-                        className={`p-3 rounded-xl text-xs font-sans leading-relaxed ${
-                          msg.role === "user"
-                            ? "bg-cyan-950/30 border border-cyan-800/40 text-cyan-200 ml-4"
-                            : "bg-slate-900/60 border border-white/[0.06] text-slate-200 mr-4"
-                        }`}
-                      >
-                        <span className="font-mono text-[10px] font-bold block mb-1 uppercase tracking-wider text-slate-400">
-                          {msg.role === "user" ? "You" : "Quant Copilot"}
-                        </span>
-                        <FormattedMarkdown content={msg.content} role="general" />
+                      <div key={idx} className="space-y-1">
+                        {msg.role === "user" ? (
+                          <div className="flex flex-col items-end">
+                            <div className="ml-auto max-w-[85%] bg-cyan-950/50 border border-cyan-500/30 rounded-2xl rounded-br-sm p-3 text-xs font-sans text-cyan-100 shadow-sm">
+                              <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                            </div>
+                            {msg.timestamp && (
+                              <span className="text-[9px] font-mono text-slate-500 mt-1 mr-1">
+                                {msg.timestamp}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-start w-full">
+                            <div className="w-full bg-[#090e1a] border border-white/[0.08] rounded-2xl rounded-bl-sm p-4 text-xs font-sans text-slate-200 shadow-md space-y-2">
+                              {/* Assistant Header */}
+                              <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+                                <div className="flex items-center space-x-2">
+                                  <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
+                                  <span className="font-bold font-mono text-[11px] text-white">Quant Copilot</span>
+                                  {activeSymbol && (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-semibold">
+                                      {activeSymbol}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  {msg.timestamp && (
+                                    <span className="text-[9px] font-mono text-slate-500">
+                                      {msg.timestamp}
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyMessage(msg.content, idx)}
+                                    title="Copy response to clipboard"
+                                    className="p-1 rounded hover:bg-white/[0.06] text-slate-400 hover:text-white transition-colors"
+                                  >
+                                    {copiedIndex === idx ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                              <FormattedMarkdown content={msg.content} role="general" />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* ───────────────────────────────────────────────────────────── */}
-                {/* MACHINE LEARNING ALPHA FORECAST CARD                         */}
-                {/* ───────────────────────────────────────────────────────────── */}
-                {mlForecast && !mlForecast.error && (
-                  <div className="border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/70 to-slate-950/90 rounded-xl overflow-hidden shadow-lg">
-                    <button
-                      onClick={() => setMlExpanded(prev => !prev)}
-                      className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-indigo-950/40 transition-colors font-mono text-xs border-b border-indigo-500/20"
-                    >
+                {/* Active Live Streaming Bubble (Only while streaming conversational response) */}
+                {state.stage === "conversational" && state.conversationalText && (
+                  <div className="w-full bg-[#090e1a] border border-cyan-500/30 rounded-2xl rounded-bl-sm p-4 text-xs font-sans text-slate-200 shadow-md space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
                       <div className="flex items-center space-x-2">
-                        {mlExpanded ? <ChevronDown className="w-3.5 h-3.5 text-indigo-400" /> : <ChevronRight className="w-3.5 h-3.5 text-indigo-400" />}
-                        <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-                        <span className="font-bold text-indigo-200">ML Multi-Horizon Alpha Forecast</span>
-                        <span className="text-[10px] text-indigo-400/70 hidden sm:inline">
-                          ({mlForecast.champion_model || "Champion Model"})
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-1.5">
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">
-                          Rank IC +{(mlForecast.overall_rank_ic ?? 0.035).toFixed(4)}
-                        </span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                          mlForecast.conviction_tier === "STRONG_ALPHA"
-                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                            : mlForecast.conviction_tier === "MODERATE_ALPHA"
-                            ? "bg-cyan-950 text-cyan-300 border border-cyan-800"
-                            : mlForecast.conviction_tier === "NEUTRAL_ALPHA"
-                            ? "bg-amber-950 text-amber-300 border border-amber-800"
-                            : "bg-rose-950 text-rose-300 border border-rose-800"
-                        }`}>
-                          {mlForecast.conviction_tier?.replace(/_/g, " ") || "ALPHA"} ({mlForecast.conviction_score ?? 70}/100)
-                        </span>
-                      </div>
-                    </button>
-
-                    {mlExpanded && (
-                      <div className="p-3.5 space-y-3 font-mono text-xs">
-                        {/* Multi-Horizon Return Grid */}
-                        <div className="grid grid-cols-3 gap-2">
-                          {(["5D", "20D", "60D"] as const).map(horizon => {
-                            const fc = mlForecast.forecasts?.[horizon];
-                            if (!fc) return null;
-                            const isPos = (fc.expected_return_pct ?? 0) >= 0;
-                            return (
-                              <div
-                                key={horizon}
-                                className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2.5 flex flex-col items-center justify-between text-center relative overflow-hidden"
-                              >
-                                <div className="flex items-center justify-between w-full text-[10px] text-slate-400 mb-1">
-                                  <span className="font-semibold text-slate-300">{horizon} Horizon</span>
-                                  <span className="text-[9px] text-indigo-400/80">{fc.model}</span>
-                                </div>
-                                <div className={`text-sm font-bold my-0.5 ${isPos ? "text-emerald-400" : "text-rose-400"}`}>
-                                  {isPos ? "+" : ""}{(fc.expected_return_pct ?? 0).toFixed(2)}%
-                                </div>
-                                <div className="text-[10px] text-slate-500">
-                                  {isPos ? "+" : ""}{(fc.expected_excess_bps ?? 0).toFixed(1)} bps
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Top Feature Attributions */}
-                        {mlForecast.feature_attributions && mlForecast.feature_attributions.length > 0 && (
-                          <div className="space-y-1.5 pt-1 border-t border-indigo-900/30">
-                            <div className="flex items-center justify-between text-[10px] text-slate-400">
-                              <span className="flex items-center space-x-1">
-                                <BarChart3 className="w-3 h-3 text-indigo-400" />
-                                <span>Primary Walk-Forward Factor Drivers</span>
-                              </span>
-                              <span className="text-[9px] text-slate-500">Normalized Weight</span>
-                            </div>
-                            <div className="space-y-1">
-                              {mlForecast.feature_attributions.slice(0, 3).map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-[11px] bg-slate-900/70 px-2 py-1 rounded border border-white/[0.04]">
-                                  <span className="text-slate-300 capitalize">
-                                    {item.feature.replace(/_/g, " ")}
-                                  </span>
-                                  <div className="flex items-center space-x-2">
-                                    <div className="w-16 bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                                      <div
-                                        className="bg-indigo-400 h-full rounded-full"
-                                        style={{ width: `${Math.min(100, Math.max(5, item.weight_pct))}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-indigo-300 font-bold text-[10px] w-9 text-right">
-                                      {item.weight_pct.toFixed(1)}%
-                                    </span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                        <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="font-bold font-mono text-[11px] text-white">Quant Copilot</span>
+                        {activeSymbol && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-semibold">
+                            {activeSymbol}
+                          </span>
                         )}
                       </div>
-                    )}
-                  </div>
-                )}
-
-                {/* CONVERSATIONAL ASSISTANT GUIDANCE */}
-                {state.conversationalText && (
-                  <div className="border border-cyan-500/30 bg-slate-900/80 rounded-xl p-4 space-y-3 shadow-md animate-in fade-in duration-300">
-                    <div className="flex items-center space-x-2 pb-2 border-b border-white/[0.08]">
-                      <div className="w-6 h-6 rounded-md bg-cyan-950 flex items-center justify-center text-cyan-400">
-                        <BrainCircuit className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="font-bold text-xs text-white font-mono">
-                        Quant Copilot · Verified Telemetry Context
+                      <span className="flex items-center space-x-1 text-[10px] font-mono text-cyan-400">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Streaming...</span>
                       </span>
                     </div>
-                    <div className="text-xs text-slate-200 font-sans leading-relaxed">
-                      <FormattedMarkdown content={state.conversationalText} role="general" />
-                    </div>
-                    <div className="pt-2 flex flex-wrap gap-1.5 border-t border-white/[0.06]">
-                      <button
-                        onClick={() => runDeliberation("Debate Bull vs Bear Thesis")}
-                        className="px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-800/60 text-[10px] font-mono text-cyan-300 transition-colors flex items-center space-x-1"
-                      >
-                        <Sparkles className="w-3 h-3 text-cyan-400" />
-                        <span>Launch 3-Agent Committee Debate</span>
-                      </button>
-                    </div>
+                    <FormattedMarkdown content={state.conversationalText} role="general" />
                   </div>
                 )}
 
@@ -1158,13 +1180,138 @@ export default function CopilotDrawer({
               {/* ───────────────────────────────────────────────────────────── */}
               {/* 4. ACTIONABLE PROMPT CHIPS & INPUT BOX                        */}
               {/* ───────────────────────────────────────────────────────────── */}
-              <div className="p-4 border-t border-white/[0.08] bg-[#06090f]/95 space-y-3 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                {/* 1-Click Action Chips */}
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="p-4 border-t border-white/[0.08] bg-[#06090f]/95 space-y-2.5 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                {/* Expandable ML Forecast Card Docked Above Input Dock */}
+                <AnimatePresence>
+                  {showMlPanel && mlForecast && !mlForecast.error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                      transition={{ duration: 0.16 }}
+                      className="border border-indigo-500/30 bg-[#070b16] rounded-xl p-3 shadow-2xl space-y-3 font-mono text-xs max-h-72 overflow-y-auto"
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-indigo-500/20">
+                        <div className="flex items-center space-x-2">
+                          <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                          <span className="font-bold text-indigo-200 text-xs">ML Multi-Horizon Alpha Forecast</span>
+                          <span className="text-[10px] text-indigo-400/80">
+                            ({mlForecast.champion_model || "Champion Model"})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowMlPanel(false)}
+                          className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/[0.06]"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Multi-Horizon Return Grid */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {(["5D", "20D", "60D"] as const).map((horizon) => {
+                          const fc = mlForecast.forecasts?.[horizon];
+                          if (!fc) return null;
+                          const isPos = (fc.expected_return_pct ?? 0) >= 0;
+                          return (
+                            <div
+                              key={horizon}
+                              className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2 flex flex-col items-center justify-between text-center"
+                            >
+                              <div className="flex items-center justify-between w-full text-[10px] text-slate-400 mb-0.5">
+                                <span className="font-semibold text-slate-300">{horizon}</span>
+                                <span className="text-[9px] text-indigo-400/80 truncate max-w-[60px]">{fc.model}</span>
+                              </div>
+                              <div className={`text-xs font-bold my-0.5 ${isPos ? "text-emerald-400" : "text-rose-400"}`}>
+                                {isPos ? "+" : ""}{(fc.expected_return_pct ?? 0).toFixed(2)}%
+                              </div>
+                              <div className="text-[9px] text-slate-500">
+                                {isPos ? "+" : ""}{(fc.expected_excess_bps ?? 0).toFixed(1)} bps
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 text-[10px] border-t border-indigo-900/40">
+                        <span className="text-slate-400">
+                          Rank IC: <strong className="text-indigo-300">+{(mlForecast.overall_rank_ic ?? 0.035).toFixed(4)}</strong>
+                        </span>
+                        <span className={`px-2 py-0.5 rounded font-bold ${
+                          mlForecast.conviction_tier === "STRONG_ALPHA"
+                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                            : mlForecast.conviction_tier === "MODERATE_ALPHA"
+                            ? "bg-cyan-950 text-cyan-300 border border-cyan-800"
+                            : mlForecast.conviction_tier === "NEUTRAL_ALPHA"
+                            ? "bg-amber-950 text-amber-300 border border-amber-800"
+                            : "bg-rose-950 text-rose-300 border border-rose-800"
+                        }`}>
+                          {mlForecast.conviction_tier?.replace(/_/g, " ") || "ALPHA"} ({mlForecast.conviction_score ?? 70}/100)
+                        </span>
+                      </div>
+
+                      {/* Top Feature Attributions */}
+                      {mlForecast.feature_attributions && mlForecast.feature_attributions.length > 0 && (
+                        <div className="space-y-1 pt-1 border-t border-indigo-900/30">
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span className="flex items-center space-x-1">
+                              <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Top Walk-Forward Factor Drivers</span>
+                            </span>
+                            <span className="text-[9px] text-slate-500">Weight</span>
+                          </div>
+                          <div className="space-y-1">
+                            {mlForecast.feature_attributions.slice(0, 3).map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between text-[10px] bg-slate-900/70 px-2 py-0.5 rounded border border-white/[0.04]">
+                                <span className="text-slate-300 capitalize truncate max-w-[160px]">
+                                  {item.feature.replace(/_/g, " ")}
+                                </span>
+                                <span className="text-indigo-300 font-bold">
+                                  {item.weight_pct.toFixed(1)}%
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* 1-Click Action Chips (Single Horizontal Scrollable Row) */}
+                <div className="overflow-x-auto no-scrollbar flex items-center gap-2 py-0.5 flex-nowrap">
+                  {/* ML Forecast Dock Toggle Pill */}
+                  {mlForecast && !mlForecast.error && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMlPanel((prev) => !prev)}
+                      className="px-2.5 py-1.5 rounded-xl bg-indigo-950/60 hover:bg-indigo-950/90 border border-indigo-500/40 hover:border-indigo-400/70 text-[11px] font-mono text-indigo-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 shadow-sm"
+                    >
+                      <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                      <span className="font-bold">ML Forecast</span>
+                      {(() => {
+                        const fc20 = mlForecast.forecasts?.["20D"];
+                        const ret20 = fc20?.expected_return_pct;
+                        const retStr = ret20 !== undefined ? `${ret20 >= 0 ? "+" : ""}${ret20.toFixed(2)}%` : null;
+                        return (
+                          <span className="text-[10px] text-indigo-200 font-semibold px-1 py-0.2 rounded bg-indigo-900/50">
+                            {retStr ? `20D: ${retStr}` : ""} · {mlForecast.conviction_score ?? 70}/100
+                          </span>
+                        );
+                      })()}
+                      {showMlPanel ? (
+                        <ChevronDown className="w-3 h-3 text-indigo-400" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3 text-indigo-400" />
+                      )}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => runDeliberation(activeSymbol ? `Direct Alpha Brief for ${activeSymbol}` : "Direct Alpha Brief")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-500/10 border border-white/[0.08] hover:border-cyan-500/40 text-[11px] font-mono text-cyan-300 transition-all flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-500/10 border border-white/[0.08] hover:border-cyan-500/40 text-[11px] font-mono text-cyan-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0"
                   >
                     <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Direct Alpha Brief</span>
@@ -1173,7 +1320,7 @@ export default function CopilotDrawer({
                   <button
                     onClick={() => runDeliberation("Debate Bull vs Bear Thesis")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-emerald-500/10 border border-white/[0.08] hover:border-emerald-500/40 text-[11px] font-mono text-emerald-300 transition-all flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-emerald-500/10 border border-white/[0.08] hover:border-emerald-500/40 text-[11px] font-mono text-emerald-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Bull vs Bear Debate</span>
@@ -1182,7 +1329,7 @@ export default function CopilotDrawer({
                   <button
                     onClick={() => runDeliberation(activeSymbol ? `Compare ${activeSymbol} vs sector peer` : "Compare top market leaders")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-purple-500/10 border border-white/[0.08] hover:border-purple-500/40 text-[11px] font-mono text-purple-300 transition-all flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-purple-500/10 border border-white/[0.08] hover:border-purple-500/40 text-[11px] font-mono text-purple-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0"
                   >
                     <Layers className="w-3.5 h-3.5 text-purple-400" />
                     <span>Compare vs Sector Peer</span>
@@ -1191,10 +1338,10 @@ export default function CopilotDrawer({
                   <button
                     onClick={() => runDeliberation("Review my watchlist")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
-                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-amber-500/10 border border-white/[0.08] hover:border-amber-500/40 text-[11px] font-mono text-amber-300 transition-all flex items-center space-x-1.5"
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-amber-500/10 border border-white/[0.08] hover:border-amber-500/40 text-[11px] font-mono text-amber-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0"
                   >
                     <Activity className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Review My Watchlist</span>
+                    <span>Review Watchlist</span>
                   </button>
                 </div>
 
