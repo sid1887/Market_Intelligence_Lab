@@ -2,10 +2,8 @@ name: Cloud News Radar & Causal Catalyst Engine
 
 on:
   schedule:
-    # Every 10 minutes during NSE trading hours (08:30 AM - 04:00 PM IST / 03:00 - 10:30 UTC), Mon-Fri
-    - cron: "*/10 3-10 * * 1-5"
-    # Every 3 hours during off-market hours and weekends
-    - cron: "0 0,12,15,18,21 * * *"
+    # 24/7 autonomous news, corporate disclosures & causal anomaly radar (every 15 minutes)
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -30,8 +28,10 @@ jobs:
 
       - name: Execute Parallel News & Causal Catalyst Worker
         env:
-          RENDER_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
-          INTERNAL_SYNC_TOKEN: ${{ secrets.INTERNAL_SYNC_TOKEN }}
+          RENDER_API_URL: ${{ secrets.RENDER_API_URL || secrets.RENDER_BACKEND_URL }}
+          RENDER_BACKEND_URL: ${{ secrets.RENDER_API_URL || secrets.RENDER_BACKEND_URL }}
+          MIL_INTERNAL_SYNC_SECRET: ${{ secrets.MIL_INTERNAL_SYNC_SECRET || secrets.INTERNAL_SYNC_TOKEN }}
+          INTERNAL_SYNC_TOKEN: ${{ secrets.MIL_INTERNAL_SYNC_SECRET || secrets.INTERNAL_SYNC_TOKEN }}
           PYTHONUNBUFFERED: "1"
         run: |
           python scripts/cloud_worker.py --mode news

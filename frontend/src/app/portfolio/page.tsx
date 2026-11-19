@@ -421,9 +421,9 @@ export default function PortfolioPage() {
                 <Wallet className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-                  Portfolio Command Center
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 font-mono shadow-[0_0_10px_rgba(6,182,212,0.2)]">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex flex-wrap items-center gap-2">
+                  <span>Portfolio Command Center</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 font-mono shadow-[0_0_10px_rgba(6,182,212,0.2)] shrink-0">
                     MIL V8 Engine
                   </span>
                 </h1>

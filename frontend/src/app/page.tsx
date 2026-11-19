@@ -65,6 +65,23 @@ export default function CockpitPage() {
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
 
+  // Responsive Breakpoint Detection (< 1024px mobile/tablet vs >= 1024px desktop)
+  const [isDesktopLg, setIsDesktopLg] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(min-width: 1024px)");
+    const handler = (e: MediaQueryListEvent) => setIsDesktopLg(e.matches);
+    setIsDesktopLg(mql.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
   // Resizable Split-Pane Ratio (M3)
   const [splitPct, setSplitPct] = useState<number>(() => {
     if (typeof window !== "undefined") {
@@ -191,7 +208,25 @@ export default function CockpitPage() {
       void loadPageData(true);
     };
     window.addEventListener("mil:screener-refresh", handleRefresh);
-    return () => window.removeEventListener("mil:screener-refresh", handleRefresh);
+
+    const handleSwrRevalidate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.url && detail.url.includes("/screener")) {
+        const payload = detail.data as ScreenerResponse;
+        if (payload?.results && payload.results.length > 0) {
+          setCandidates(payload.results);
+        }
+        if (payload?.as_of_date) {
+          setAsOfDate(payload.as_of_date);
+        }
+      }
+    };
+    window.addEventListener("mil:swr-revalidated", handleSwrRevalidate);
+
+    return () => {
+      window.removeEventListener("mil:screener-refresh", handleRefresh);
+      window.removeEventListener("mil:swr-revalidated", handleSwrRevalidate);
+    };
   }, [loadPageData]);
 
   // 4. URL State Synchronization (Non-reloading history replace)
@@ -399,9 +434,9 @@ export default function CockpitPage() {
 
       {/* ──────────────── 3. RESPONSIVE MASTER-DETAIL SPLIT-PANE ──────────────── */}
       <div className="flex flex-1 overflow-hidden relative z-10 min-h-0 h-full pb-14 md:pb-0">
-        {/* Master: Screener Workspace (Adjustable desktop width via splitPct, full-width on mobile or collapsed) */}
+        {/* Master: Screener Workspace (Adjustable desktop width via splitPct on >= 1024px, 100% full width on mobile/tablet or collapsed) */}
         <div
-          style={{ width: isInspectorCollapsed ? "100%" : `${splitPct}%` }}
+          style={{ width: isDesktopLg && !isInspectorCollapsed ? `${splitPct}%` : "100%" }}
           className="w-full flex flex-col h-full overflow-hidden shrink-0 min-h-0 bg-[#040609] transition-all duration-75 ease-out"
         >
           <PanelErrorBoundary panelName="Screener Workspace">

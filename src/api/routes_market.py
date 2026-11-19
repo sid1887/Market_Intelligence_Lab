@@ -1004,9 +1004,9 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
         except Exception:
             pass
             
-        # Scan for real-time catalysts and dispatch push
+        # Scan for real-time catalysts and dispatch burst-capped push (max 2 individual + 1 digest)
         try:
-            catalyst_engine.run_intraday_scan()
+            catalyst_engine.run_intraday_scan(max_push_alerts=2)
         except Exception as e:
             logger.warning(f"Catalyst scan post-ingest error: {e}")
             

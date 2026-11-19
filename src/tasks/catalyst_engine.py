@@ -11,6 +11,8 @@ Persists events to SQLite and broadcasts instant native Web Push notifications.
 """
 
 import os
+import re
+import time
 import json
 import logging
 import sqlite3
@@ -22,6 +24,27 @@ from typing import Dict, Any, List, Optional
 from src.notifications.web_push import broadcast_push
 
 logger = logging.getLogger("tasks.catalyst_engine")
+
+
+def clean_notification_headline(text: str) -> str:
+    """
+    Strips raw scraper tags and boilerplate from push notification headlines.
+    E.g. '(NSEI:VOLTAS)', '(Simply Wall St)', '(scanx.trade)', 'Share Price Today'.
+    """
+    if not text:
+        return ""
+    cleaned = text
+    # Strip exchange symbols like (NSEI:VOLTAS), (NSE:VOLTAS), (BSE:500124)
+    cleaned = re.sub(r"\((?:NSEI|NSE|BSE):[A-Za-z0-9_.-]+\)", "", cleaned, flags=re.IGNORECASE)
+    # Strip scraper / wire brand suffixes and brackets
+    cleaned = re.sub(r"\((?:Simply Wall St|scanx\.trade|scanx\.tr\.\.\.|Moneycontrol|Livemint|Economic Times|Reuters|Bloomberg)\)", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"-\s*(?:Simply Wall St|scanx\.trade|scanx\.tr\.\.\.|Moneycontrol|Livemint|The Economic Times)\b", "", cleaned, flags=re.IGNORECASE)
+    # Strip 'Share Price Today' boilerplate
+    cleaned = re.sub(r"\bShare Price Today\b", "", cleaned, flags=re.IGNORECASE)
+    # Strip double spaces and trailing punctuation
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(r"[\s\-\.:,]+$", "", cleaned).strip()
+    return cleaned
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
@@ -493,8 +516,10 @@ class CausalCatalystEngine:
         # Broadcast Web Push Notification to mobile & desktop subscribers if enabled
         should_push = self.auto_push if dispatch_push is None else dispatch_push
         if should_push:
-            push_title = synth.get("push_title") or synth["causal_headline"]
-            push_body = synth.get("push_body") or (synth["causal_bullets"][0][:140] + "..." if synth["causal_bullets"] else synth["causal_headline"])
+            raw_title = synth.get("push_title") or synth["causal_headline"]
+            raw_body = synth.get("push_body") or (synth["causal_bullets"][0][:140] + "..." if synth["causal_bullets"] else synth["causal_headline"])
+            push_title = clean_notification_headline(raw_title)
+            push_body = clean_notification_headline(raw_body)
             try:
                 broadcast_push(
                     title=push_title,
@@ -511,19 +536,82 @@ class CausalCatalystEngine:
     def run_intraday_scan(
         self,
         force_symbol: Optional[str] = None,
-        dispatch_push: Optional[bool] = None
+        dispatch_push: Optional[bool] = None,
+        max_push_alerts: int = 2
     ) -> List[Dict[str, Any]]:
-        """Scans universe for anomalies and returns any newly synthesized catalysts."""
+        """Scans universe for anomalies and returns any newly synthesized catalysts with smart burst pacing."""
         if force_symbol:
             res = self.investigate_symbol(force_symbol, force=True, dispatch_push=dispatch_push)
             return [res] if res else []
 
+        should_push = self.auto_push if dispatch_push is None else dispatch_push
         symbols = self.get_watchlist_and_priority_symbols()
         results = []
+        # 1. Investigate and persist all catalysts to DB without firing individual burst pushes inside the loop
         for sym in symbols:
-            cat = self.investigate_symbol(sym, force=False, dispatch_push=dispatch_push)
+            cat = self.investigate_symbol(sym, force=False, dispatch_push=False)
             if cat:
                 results.append(cat)
+
+        # 2. Smart burst-capped notification dispatch (at most max_push_alerts individual + 1 digest)
+        if should_push and results:
+            now_ts = int(time.time())
+            # Sort newly detected anomalies by abs(move_pct) * rvol descending
+            sorted_cats = sorted(
+                results,
+                key=lambda x: abs(float(x.get("move_pct") or 0.0)) * float(x.get("rvol") or 1.0),
+                reverse=True
+            )
+
+            top_alerts = sorted_cats[:max_push_alerts]
+            overflow_alerts = sorted_cats[max_push_alerts:]
+
+            for i, cat in enumerate(top_alerts):
+                if i > 0:
+                    time.sleep(1.5)
+                sym = cat.get("symbol", "")
+                m_pct = float(cat.get("move_pct") or 0.0)
+                rv = float(cat.get("rvol") or 1.0)
+                icon = "🚀" if m_pct > 0 else "📉"
+                default_title = f"{icon} {sym} {m_pct:+.1f}% ({rv:.1f}x Vol)"
+                raw_title = cat.get("push_title") or default_title
+                raw_body = cat.get("push_body") or (cat["causal_bullets"][0][:140] if cat.get("causal_bullets") else cat.get("causal_headline", ""))
+                clean_title = clean_notification_headline(raw_title)
+                clean_body = clean_notification_headline(raw_body)
+                try:
+                    broadcast_push(
+                        title=clean_title,
+                        body=clean_body,
+                        url=f"/stocks/{sym}",
+                        tag=f"catalyst-{sym}-{now_ts}"
+                    )
+                except Exception as pe:
+                    logger.warning(f"Error dispatching web push for {sym}: {pe}")
+
+            # Consolidate remaining anomalies into 1 summary digest notification
+            if overflow_alerts:
+                time.sleep(1.5)
+                overflow_summaries = []
+                for c in overflow_alerts[:4]:
+                    s = c.get("symbol", "")
+                    m = float(c.get("move_pct") or 0.0)
+                    sign = "+" if m >= 0 else ""
+                    overflow_summaries.append(f"{s} {sign}{m:.1f}%")
+                movers_str = ", ".join(overflow_summaries)
+                if len(overflow_alerts) > 4:
+                    movers_str += f" +{len(overflow_alerts) - 4} more"
+
+                digest_title = f"⚡ +{len(overflow_alerts)} More Market Movers"
+                digest_body = f"High-volume intraday momentum: {movers_str}. Tap to inspect screener."
+                try:
+                    broadcast_push(
+                        title=clean_notification_headline(digest_title),
+                        body=clean_notification_headline(digest_body),
+                        url="/",
+                        tag=f"catalyst-digest-{now_ts}"
+                    )
+                except Exception as pe:
+                    logger.warning(f"Error dispatching consolidated catalyst web push: {pe}")
 
         return results
 

@@ -39,7 +39,7 @@ export function AnimatedTabs<T extends string = string>({
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "relative group overflow-hidden p-4 sm:p-5 rounded-2xl text-left border transition-all duration-200 active:scale-[0.98] flex flex-col justify-between min-h-[105px]",
+                "relative group overflow-hidden p-3.5 sm:p-5 rounded-2xl text-left border transition-all duration-200 active:scale-[0.98] flex flex-col justify-between min-h-[105px] min-w-0",
                 isActive
                   ? "bg-[#091122]/90 border-cyan-500/70 shadow-lg shadow-cyan-950/30 ring-1 ring-cyan-500/40"
                   : "bg-[#06090f]/75 border-white/[0.08] hover:border-cyan-500/30 hover:bg-[#09101d]/90 hover:-translate-y-0.5 hover:shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
@@ -57,13 +57,13 @@ export function AnimatedTabs<T extends string = string>({
               {/* Ambient gradient hover backlight */}
               <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-              <div className="relative z-10 flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  {tab.icon && <span className="text-cyan-400">{tab.icon}</span>}
+              <div className="relative z-10 flex flex-wrap items-center justify-between gap-1.5 w-full min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                  {tab.icon && <span className="text-cyan-400 shrink-0">{tab.icon}</span>}
                   <span className="font-bold text-sm text-white tracking-tight">{tab.label}</span>
                   <span
                     className={cn(
-                      "text-[10px] px-2 py-0.5 rounded-full font-mono font-bold tabular-nums",
+                      "text-[10px] px-2 py-0.5 rounded-full font-mono font-bold tabular-nums shrink-0",
                       isActive
                         ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                         : "bg-white/[0.05] text-slate-400 border border-white/[0.06]"
@@ -73,7 +73,7 @@ export function AnimatedTabs<T extends string = string>({
                   </span>
                 </div>
                 {tab.badge && (
-                  <span className="text-[10px] font-mono tabular-nums text-slate-400 font-semibold">{tab.badge}</span>
+                  <span className="text-[10px] font-mono tabular-nums text-slate-400 font-semibold shrink-0">{tab.badge}</span>
                 )}
               </div>
               {tab.desc && (

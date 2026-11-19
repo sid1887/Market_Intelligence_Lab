@@ -50,11 +50,23 @@ logger = logging.getLogger("MIL.CloudWorker")
 
 
 def get_default_backend_url() -> str:
-    return os.getenv("RENDER_BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
+    url = os.getenv("RENDER_API_URL") or os.getenv("RENDER_BACKEND_URL") or "http://127.0.0.1:8000"
+    return url.rstrip("/")
 
 
 def get_default_sync_token() -> str:
-    return os.getenv("INTERNAL_SYNC_TOKEN", "")
+    return os.getenv("MIL_INTERNAL_SYNC_SECRET") or os.getenv("INTERNAL_SYNC_TOKEN", "")
+
+
+def is_nse_market_hours() -> bool:
+    """Checks whether current time is within NSE trading hours (Mon-Fri 09:15-15:30 IST)."""
+    # IST is UTC+5:30
+    ist_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
+    if ist_now.weekday() >= 5:  # Saturday or Sunday
+        return False
+    market_open = ist_now.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_close = ist_now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return market_open <= ist_now <= market_close
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -308,6 +320,18 @@ def run_parallel_news_pipeline(
         except Exception as e:
             logger.debug(f"Catalyst check error for {sym}: {e}")
 
+    # During NSE Market Hours, run lightweight intraday price & volume anomaly scan
+    if is_nse_market_hours():
+        logger.info("[NEWS-RADAR] NSE Market Hours active (09:15-15:30 IST) -> Running intraday anomaly scan...")
+        try:
+            intraday_catalysts = catalyst_engine.run_intraday_scan(dispatch_push=False, max_push_alerts=2)
+            for ic in intraday_catalysts:
+                if not any(dc.get("symbol") == ic.get("symbol") for dc in detected_catalysts):
+                    detected_catalysts.append(ic)
+            logger.info(f"[NEWS-RADAR] Intraday scan detected {len(intraday_catalysts)} catalysts.")
+        except Exception as ie:
+            logger.warning(f"[NEWS-RADAR] Error running intraday catalyst scan: {ie}")
+
     logger.info(f"Causal Radar identified {len(detected_catalysts)} active catalysts.")
 
     # Prepare sync payload (explicitly instruct Render backend to dispatch push for catalysts & breaking filings)
@@ -343,7 +367,11 @@ def run_parallel_news_pipeline(
             resp = requests.post(
                 sync_url,
                 json=payload,
-                headers={"X-Internal-Token": token},
+                headers={
+                    "X-Internal-Token": token,
+                    "X-Internal-Sync-Secret": token,
+                    "Content-Type": "application/json",
+                },
                 timeout=45
             )
             if resp.status_code == 200:
@@ -530,9 +558,9 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=["news", "ml", "all"],
+        choices=["news", "news_radar", "ml", "all"],
         default="all",
-        help="Pipeline mode to execute: 'news', 'ml', or 'all' (default: all)"
+        help="Pipeline mode to execute: 'news'/'news_radar', 'ml', or 'all' (default: all)"
     )
     parser.add_argument(
         "--dry-run",
@@ -576,7 +604,7 @@ def main():
     results: Dict[str, Any] = {}
 
     # 2. Execute selected pipeline
-    if args.mode in ("news", "all"):
+    if args.mode in ("news", "news_radar", "all"):
         results["news"] = run_parallel_news_pipeline(
             state=state,
             backend_url=args.backend_url,

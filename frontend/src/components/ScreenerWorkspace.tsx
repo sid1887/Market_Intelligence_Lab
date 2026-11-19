@@ -332,7 +332,7 @@ const MobileScreenerRow = React.memo(function MobileScreenerRow({
       onClick={() => onSelect(cand.symbol)}
       onContextMenu={(e) => onContextMenu?.(e, cand)}
       className={cn(
-        "grid grid-cols-12 items-center gap-2 px-3 h-[64px] cursor-pointer text-xs font-mono transition-colors border-b border-white/[0.05] select-none",
+        "grid grid-cols-12 items-center gap-2 px-3 h-[68px] cursor-pointer text-xs font-mono transition-colors border-b border-white/[0.05] select-none overflow-hidden",
         isSelected
           ? "bg-cyan-950/40 text-white font-medium"
           : "text-slate-300 hover:bg-white/[0.03]"
@@ -340,28 +340,28 @@ const MobileScreenerRow = React.memo(function MobileScreenerRow({
     >
       {/* Cols 1–6 (Left - Instrument) */}
       <div className="col-span-6 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] font-mono text-slate-400">#{cand.rank || idx + 1}</span>
-          <span className="text-sm font-bold text-slate-100">{cand.symbol}</span>
+        <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
+          <span className="text-[11px] font-mono text-slate-400 shrink-0">#{cand.rank || idx + 1}</span>
+          <span className="text-sm font-bold text-slate-100 truncate">{cand.symbol}</span>
           {Boolean(cand.target_allocation_pct && cand.target_allocation_pct > 0) && (
-            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400">
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
               {cand.target_allocation_pct!.toFixed(1)}%
             </span>
           )}
         </div>
-        <div className="text-xs text-slate-400 truncate mt-0.5 max-w-[170px]">
+        <span className="truncate block text-[11px] text-slate-400 mt-0.5 max-w-full">
           {cand.company_name || cand.sector || "Equity"}
-        </div>
+        </span>
       </div>
 
-      {/* Cols 7–9 (Middle - Price & 20D Return, text-right) */}
-      <div className="col-span-3 text-right tabular-nums">
-        <div className="text-sm font-mono font-semibold text-slate-100">
+      {/* Cols 7–9 (Middle - Price & 20D Return, text-right shrink-0) */}
+      <div className="col-span-3 text-right shrink-0 tabular-nums">
+        <div className="text-sm font-mono font-semibold text-slate-100 truncate">
           ₹{cand.close !== null ? cand.close.toFixed(2) : "—"}
         </div>
         <div
           className={cn(
-            "text-[11px] font-mono font-medium",
+            "text-[11px] font-mono font-medium truncate",
             isPositiveRet ? "text-emerald-400" : isNegativeRet ? "text-rose-400" : "text-slate-400"
           )}
         >
@@ -370,9 +370,9 @@ const MobileScreenerRow = React.memo(function MobileScreenerRow({
         </div>
       </div>
 
-      {/* Cols 10–12 (Right - Score Pill, flex justify-end) */}
-      <div className="col-span-3 flex justify-end items-center">
-        <div className="min-w-[48px] px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-center font-mono text-xs font-bold text-cyan-300">
+      {/* Cols 10–12 (Right - Score Pill, flex justify-end shrink-0) */}
+      <div className="col-span-3 flex justify-end shrink-0 items-center">
+        <div className="min-w-[44px] px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-center font-mono text-xs font-bold text-cyan-300">
           {score !== null ? score.toFixed(1) : "—"}
         </div>
       </div>
@@ -559,7 +559,7 @@ function ScreenerWorkspaceComponent({
   const mobileVirtualizer = useVirtualizer({
     count: filteredCandidates.length,
     getScrollElement: () => mobileParentRef.current,
-    estimateSize: () => 64,
+    estimateSize: () => 68,
     overscan: 12,
   });
 
@@ -810,7 +810,7 @@ function ScreenerWorkspaceComponent({
       </div>
 
       {/* Sector Filter Chips with Live Quantitative Counts */}
-      <div className="shrink-0 border-b border-white/[0.04] px-3.5 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar bg-[#020406]">
+      <div className="shrink-0 border-b border-white/[0.04] px-3.5 py-1.5 flex items-center gap-1.5 overflow-x-auto thin-scrollbar pb-1.5 bg-[#020406]">
         {SECTOR_FILTERS.map((sec) => (
           <button
             key={sec}

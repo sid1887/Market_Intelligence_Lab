@@ -246,9 +246,21 @@ class FactorScreener:
             ) ff ON q.symbol = ff.symbol AND ff.r_num = 1
             """ if has_ff else ""
 
-            roe_expr = "COALESCE(q.roe_pct, " + (("ff.roe_pct, " if has_ff else "") + ("fa.calc_roe, " if has_fa else "") + "12.0) AS roe_pct")
-            de_expr = "COALESCE(q.debt_to_equity, " + (("ff.debt_to_equity, " if has_ff else "") + ("fa.calc_de, " if has_fa else "") + "0.5) AS debt_to_equity")
-            opm_expr = "COALESCE(q.opm_pct, " + (("ff.operating_margin_ttm, " if has_ff else "") + ("fa.calc_opm, " if has_fa else "") + "15.0) AS opm_pct")
+            # Join each symbol's latest valid verified fundamental record from quant_factors_daily
+            qf_join = """
+            LEFT JOIN (
+                SELECT symbol, roe_pct AS qf_roe, opm_pct AS qf_opm, debt_to_equity AS qf_de,
+                       ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) as r_num
+                FROM quant_factors_daily
+                WHERE roe_pct IS NOT NULL AND ABS(roe_pct - 12.0) > 1e-6
+            ) qf ON q.symbol = qf.symbol AND qf.r_num = 1
+            """
+
+            # Build honest fundamental expressions coalescing verified metrics, falling back to NULL (never synthetic 12.0)
+            valid_q_roe = "CASE WHEN q.roe_pct IS NOT NULL AND ABS(q.roe_pct - 12.0) > 1e-6 THEN q.roe_pct ELSE NULL END"
+            roe_expr = f"COALESCE({valid_q_roe}, qf.qf_roe" + (", ff.roe_pct" if has_ff else "") + (", fa.calc_roe" if has_fa else "") + ", NULL) AS roe_pct"
+            de_expr = "COALESCE(q.debt_to_equity, qf.qf_de" + (", ff.debt_to_equity" if has_ff else "") + (", fa.calc_de" if has_fa else "") + ", NULL) AS debt_to_equity"
+            opm_expr = "COALESCE(q.opm_pct, qf.qf_opm" + (", ff.operating_margin_ttm" if has_ff else "") + (", fa.calc_opm" if has_fa else "") + ", NULL) AS opm_pct"
 
             select_cols = f"""
                 q.symbol,
@@ -295,6 +307,7 @@ class FactorScreener:
                 JOIN ohlcv_daily o 
                   ON q.symbol = o.symbol AND q.trading_date = o.trading_date
                 {fd_join}
+                {qf_join}
                 {fa_join}
                 {ff_join}
                 LEFT JOIN securities_master s 
@@ -340,6 +353,7 @@ class FactorScreener:
                 JOIN ohlcv_daily o 
                   ON q.symbol = o.symbol AND q.trading_date = o.trading_date
                 {fd_join}
+                {qf_join}
                 {fa_join}
                 {ff_join}
                 LEFT JOIN securities_master s 

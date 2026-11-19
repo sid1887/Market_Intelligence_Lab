@@ -270,6 +270,16 @@ class DatabaseManager:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_intent ON copilot_distillation_corpus(intent);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_symbol ON copilot_distillation_corpus(symbol);")
 
+            # 11b. Cleanup legacy synthetic 12.0% default ROE records from quant_factors_daily
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='quant_factors_daily';")
+            if cursor.fetchone():
+                conn.execute("""
+                    UPDATE quant_factors_daily
+                    SET roe_pct = NULL
+                    WHERE roe_pct = 12.0 AND opm_pct IS NULL AND debt_to_equity IS NULL;
+                """)
+                conn.commit()
+
             # 12. Run Numbered Migrations & Truth Quarantine (P1-01, ADR-0011)
             try:
                 from src.storage.migrations import run_all_migrations

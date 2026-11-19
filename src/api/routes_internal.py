@@ -32,6 +32,7 @@ from src.notifications.web_push import (
     record_dispatched_alert,
 )
 from src.quant.ml_trainer import update_precomputed_forecasts
+from src.tasks.catalyst_engine import clean_notification_headline
 
 logger = logging.getLogger("MIL.InternalSync")
 
@@ -39,29 +40,32 @@ router = APIRouter(prefix="/internal", tags=["Internal Sync Bridge"])
 
 
 def verify_internal_token(
-    x_internal_token: Optional[str] = Header(None, alias="X-Internal-Token")
+    x_internal_token: Optional[str] = Header(None, alias="X-Internal-Token"),
+    x_internal_sync_secret: Optional[str] = Header(None, alias="X-Internal-Sync-Secret"),
 ) -> bool:
     """
     Constant-time token validation for internal bridge endpoints.
-    Reads INTERNAL_SYNC_TOKEN from environment. Raises 401 if missing, empty, or mismatched.
+    Reads MIL_INTERNAL_SYNC_SECRET or INTERNAL_SYNC_TOKEN from environment.
+    Accepts X-Internal-Token or X-Internal-Sync-Secret headers.
     """
-    expected_token = os.getenv("INTERNAL_SYNC_TOKEN", "").strip()
+    expected_token = (os.getenv("MIL_INTERNAL_SYNC_SECRET") or os.getenv("INTERNAL_SYNC_TOKEN", "")).strip()
     if not expected_token:
-        logger.warning("[INTERNAL-SYNC] Rejected: INTERNAL_SYNC_TOKEN is not configured on this server.")
+        logger.warning("[INTERNAL-SYNC] Rejected: Neither MIL_INTERNAL_SYNC_SECRET nor INTERNAL_SYNC_TOKEN is configured on this server.")
         raise HTTPException(
             status_code=401,
-            detail="Unauthorized: Server INTERNAL_SYNC_TOKEN is not configured."
+            detail="Unauthorized: Server internal sync token is not configured."
         )
 
-    if not x_internal_token:
-        logger.warning("[INTERNAL-SYNC] Rejected: Missing X-Internal-Token header.")
+    provided_token = (x_internal_sync_secret or x_internal_token or "").strip()
+    if not provided_token:
+        logger.warning("[INTERNAL-SYNC] Rejected: Missing X-Internal-Token / X-Internal-Sync-Secret header.")
         raise HTTPException(
             status_code=401,
-            detail="Unauthorized: Missing X-Internal-Token header."
+            detail="Unauthorized: Missing X-Internal-Token / X-Internal-Sync-Secret header."
         )
 
-    if not hmac.compare_digest(x_internal_token.strip(), expected_token):
-        logger.warning("[INTERNAL-SYNC] Rejected: Invalid X-Internal-Token value.")
+    if not hmac.compare_digest(provided_token, expected_token):
+        logger.warning("[INTERNAL-SYNC] Rejected: Invalid internal sync token value.")
         raise HTTPException(
             status_code=401,
             detail="Unauthorized: Invalid internal sync token."
@@ -423,9 +427,11 @@ def sync_internal_state_endpoint(
                 if len(push_candidates) <= MAX_INDIVIDUAL_ALERTS:
                     for alert in push_candidates:
                         try:
+                            clean_t = clean_notification_headline(alert["title"])
+                            clean_b = clean_notification_headline(alert["body"])
                             push_stats = broadcast_push(
-                                title=alert["title"],
-                                body=alert["body"],
+                                title=clean_t,
+                                body=clean_b,
                                 url=alert["url"],
                                 tag=f"alert-{alert['sym']}-{int(time.time() * 1000)}",
                             )
@@ -446,9 +452,11 @@ def sync_internal_state_endpoint(
 
                     for alert in top_alerts:
                         try:
+                            clean_t = clean_notification_headline(alert["title"])
+                            clean_b = clean_notification_headline(alert["body"])
                             push_stats = broadcast_push(
-                                title=alert["title"],
-                                body=alert["body"],
+                                title=clean_t,
+                                body=clean_b,
                                 url=alert["url"],
                                 tag=f"alert-{alert['sym']}-{int(time.time() * 1000)}",
                             )

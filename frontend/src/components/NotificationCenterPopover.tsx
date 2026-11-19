@@ -175,7 +175,7 @@ export default function NotificationCenterPopover({
 
       {/* Dropdown Popover */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-[340px] sm:w-[420px] max-h-[520px] bg-[#070b12] border border-cyan-500/30 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.15)] flex flex-col z-50 overflow-hidden backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="fixed inset-x-2 top-14 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-[400px] max-w-[calc(100vw-1rem)] max-h-[520px] bg-[#070b12] border border-cyan-500/30 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.15)] flex flex-col z-50 overflow-hidden backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
           {/* Header */}
           <div className="p-3.5 border-b border-white/[0.08] bg-gradient-to-r from-cyan-950/40 to-slate-900/60 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -227,14 +227,14 @@ export default function NotificationCenterPopover({
           </div>
 
           {/* Filter Bar */}
-          <div className="px-3 py-1.5 border-b border-white/[0.06] bg-black/30 flex items-center justify-between text-[11px] font-mono">
-            <div className="flex items-center gap-1">
+          <div className="px-3 py-1.5 border-b border-white/[0.06] bg-black/30 flex items-center justify-between text-[11px] font-mono gap-2">
+            <div className="flex items-center gap-1 overflow-x-auto thin-scrollbar flex-nowrap pb-0.5 min-w-0">
               {(["ALL", "BULLISH", "BEARISH"] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => setFilter(mode)}
                   className={cn(
-                    "px-2 py-0.5 rounded text-[10px] transition-colors",
+                    "px-2 py-0.5 rounded text-[10px] transition-colors whitespace-nowrap shrink-0",
                     filter === mode
                       ? "bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/30"
                       : "text-slate-400 hover:text-slate-200"
@@ -244,7 +244,7 @@ export default function NotificationCenterPopover({
                 </button>
               ))}
             </div>
-            <span className="text-[10px] text-slate-500">
+            <span className="text-[10px] text-slate-500 shrink-0">
               {filteredCatalysts.length} events
             </span>
           </div>

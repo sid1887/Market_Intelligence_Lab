@@ -1444,18 +1444,18 @@ export default function CopilotDrawer({
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="border border-cyan-500/30 bg-[#060b18] rounded-2xl p-3.5 space-y-3 shadow-xl overflow-hidden"
+                      className="border border-cyan-500/30 bg-[#060b18] rounded-2xl p-3 sm:p-3.5 space-y-3 shadow-xl overflow-hidden max-w-full"
                     >
-                      <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
-                        <div className="flex items-center space-x-2">
-                          <Gauge className="w-4 h-4 text-cyan-400" />
-                          <h4 className="text-xs font-bold text-white font-mono">LLM Quota Metering & Student Distillation</h4>
+                      <div className="flex items-center justify-between border-b border-white/[0.06] pb-2 gap-2">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <Gauge className="w-4 h-4 text-cyan-400 shrink-0" />
+                          <h4 className="text-xs font-bold text-white font-mono truncate">LLM Quota Metering & Distillation</h4>
                         </div>
                         <button
                           type="button"
                           onClick={() => void fetchQuotaTelemetry()}
                           disabled={quotaLoading}
-                          className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                          className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1 shrink-0"
                         >
                           <RotateCcw className={`w-3 h-3 ${quotaLoading ? "animate-spin" : ""}`} />
                           <span>Refresh</span>
@@ -1586,8 +1586,8 @@ export default function CopilotDrawer({
                   )}
                 </AnimatePresence>
 
-                {/* 1-Click Action Chips (Single Horizontal Scrollable Row) */}
-                <div className="overflow-x-auto no-scrollbar flex items-center gap-2 py-0.5 flex-nowrap">
+                {/* 1-Click Action Chips (Single Horizontal Scrollable Row with Thin Scrollbar) */}
+                <div className="overflow-x-auto thin-scrollbar pb-1.5 flex items-center gap-2 flex-nowrap">
                   {/* ML Forecast Dock Toggle Pill */}
                   {mlForecast && !mlForecast.error && (
                     <button

@@ -199,6 +199,9 @@ async function backgroundRevalidate(url: string, options: ApiFetchOptions) {
         const ts = Date.now();
         memoryCache.set(url, { data, timestamp: ts });
         saveToL2Cache(url, data, ts);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("mil:swr-revalidated", { detail: { url, data } }));
+        }
       }
     }).catch(() => {});
 

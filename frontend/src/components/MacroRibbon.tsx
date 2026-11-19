@@ -123,7 +123,7 @@ function MacroRibbonComponent({
   const supervisorInfo = getSupervisorBadge();
 
   return (
-    <div className="flex items-center overflow-x-auto no-scrollbar font-mono text-[11px] divide-x divide-white/[0.06] bg-white/[0.02] border-b border-white/[0.06] h-8 w-full select-none">
+    <div className="flex items-center overflow-x-auto thin-scrollbar font-mono text-[11px] divide-x divide-white/[0.06] bg-white/[0.02] border-b border-white/[0.06] h-8 w-full select-none relative">
       {/* Live SSE Pulse Pill */}
       <div
         className="flex items-center gap-2 px-3 py-1 text-slate-300 whitespace-nowrap shrink-0"

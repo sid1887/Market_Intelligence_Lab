@@ -165,3 +165,75 @@ def test_catalyst_copy_formatting():
     assert "Price & Structural Velocity" not in synth["push_body"]
     assert "200-SMA" not in synth["push_body"]
 
+
+def test_clean_notification_headline():
+    """Verifies that scraper suffixes, tickers and boilerplate are stripped."""
+    from src.tasks.catalyst_engine import clean_notification_headline
+
+    assert clean_notification_headline("Voltas (NSEI:VOLTAS) (Simply Wall St).") == "Voltas"
+    assert clean_notification_headline("RVNL Share Price Today (scanx.trade)") == "RVNL"
+    assert clean_notification_headline("MARUTI - Simply Wall St") == "MARUTI"
+    assert "Simply Wall St" not in clean_notification_headline("🚀 TVSHMOTOR +8.5% (Simply Wall St)")
+
+
+def test_run_intraday_scan_burst_capping(monkeypatch):
+    """
+    Verifies that when multiple anomalies occur, run_intraday_scan(max_push_alerts=2)
+    sends at most 2 individual alerts + 1 consolidated digest.
+    """
+    from unittest.mock import patch, MagicMock
+    from src.tasks.catalyst_engine import CausalCatalystEngine
+
+    engine = CausalCatalystEngine(auto_push=True)
+    engine.get_watchlist_and_priority_symbols = lambda: ["VOLTAS", "TVSHMOTOR", "TMPV", "RVNL", "PNB", "PAYTM", "MARUTI"]
+
+    mock_cats = [
+        {"symbol": "VOLTAS", "move_pct": 8.7, "rvol": 4.5, "causal_headline": "Surges on heavy volume", "causal_bullets": ["Volume surge"]},
+        {"symbol": "TVSHMOTOR", "move_pct": 8.5, "rvol": 4.0, "causal_headline": "Auto sales breakout", "causal_bullets": ["Sales surge"]},
+        {"symbol": "TMPV", "move_pct": 6.2, "rvol": 3.5, "causal_headline": "Strong institutional flow", "causal_bullets": ["Block trade"]},
+        {"symbol": "RVNL", "move_pct": 3.3, "rvol": 2.8, "causal_headline": "Railway order inflow", "causal_bullets": ["Contract win"]},
+        {"symbol": "PNB", "move_pct": 4.3, "rvol": 2.5, "causal_headline": "PSU bank momentum", "causal_bullets": ["Credit growth"]},
+        {"symbol": "PAYTM", "move_pct": 5.1, "rvol": 2.2, "causal_headline": "Fintech turnaround", "causal_bullets": ["Operating profit"]},
+        {"symbol": "MARUTI", "move_pct": 3.8, "rvol": 2.1, "causal_headline": "Export volumes up", "causal_bullets": ["Export surge"]},
+    ]
+
+    cat_map = {c["symbol"]: c for c in mock_cats}
+    engine.investigate_symbol = MagicMock(side_effect=lambda sym, force=False, dispatch_push=None: cat_map.get(sym))
+
+    with patch("src.tasks.catalyst_engine.broadcast_push") as mock_push:
+        mock_push.return_value = {"sent": 1, "failed": 0, "total": 1}
+        # Run scan with sleep mocked to 0 for fast test
+        with patch("time.sleep", return_value=None):
+            results = engine.run_intraday_scan(dispatch_push=True, max_push_alerts=2)
+
+        assert len(results) == 7
+        # At most 2 individual pushes + 1 digest push = 3 total calls
+        assert mock_push.call_count == 3
+        # First call is highest move * rvol: VOLTAS
+        assert "VOLTAS" in mock_push.call_args_list[0].kwargs["title"]
+        # Second call is TVSHMOTOR
+        assert "TVSHMOTOR" in mock_push.call_args_list[1].kwargs["title"]
+        # Third call is digest
+        assert "More Market Movers" in mock_push.call_args_list[2].kwargs["title"]
+
+
+def test_internal_sync_secret_header_and_env(monkeypatch):
+    """Verifies that X-Internal-Sync-Secret header with MIL_INTERNAL_SYNC_SECRET is accepted."""
+    monkeypatch.delenv("INTERNAL_SYNC_TOKEN", raising=False)
+    monkeypatch.setenv("MIL_INTERNAL_SYNC_SECRET", "custom-secret-99")
+
+    test_payload = {
+        "news_articles": [],
+        "catalysts": [],
+        "dispatch_push": False
+    }
+
+    res = client.post(
+        "/api/v1/internal/sync",
+        json=test_payload,
+        headers={"X-Internal-Sync-Secret": "custom-secret-99"}
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "synced"
+
+

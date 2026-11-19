@@ -458,9 +458,264 @@ class CopilotKnowledgeDistiller:
             except Exception:
                 pass
 
+        # Auto-seed initial corpus and train distillation artifacts if fewer than 10 traces exist
+        if trace_count < 10 or not meta.get("trained"):
+            try:
+                self.seed_from_existing_telemetry()
+                return self.get_distillation_stats()
+            except Exception as se:
+                logger.warning(f"[DISTILLER] Auto-seeding distillation corpus failed: {se}")
+
         return {
             "trace_count": trace_count,
             "last_trained_at": meta.get("trained_at"),
             "vocabulary_size": meta.get("vocabulary_size", 0),
             "model_path": self.model_path,
         }
+
+    def seed_from_existing_telemetry(self) -> Dict[str, Any]:
+        """
+        Bootstraps initial parameterized templates from canonical seed templates
+        and existing market_catalysts or equity_news_feed if copilot_distillation_corpus
+        has < 10 traces, and trains the TF-IDF + Ridge artifacts immediately.
+        """
+        try:
+            with self.db.get_connection() as conn:
+                cur = conn.execute("SELECT COUNT(*) FROM copilot_distillation_corpus")
+                row = cur.fetchone()
+                existing_count = row[0] if row else 0
+        except Exception:
+            existing_count = 0
+
+        if existing_count >= 10:
+            return {"status": "already_seeded", "trace_count": existing_count}
+
+        seed_traces = [
+            {
+                "intent": "DIRECT_QA",
+                "symbol": "SYSTEM",
+                "sector": "Broad Market",
+                "user_prompt": "Direct Alpha Brief for {{SYMBOL}}",
+                "abstracted_prompt": "Direct Alpha Brief for {{SYMBOL}}",
+                "teacher_model": "distilled/seed-v1",
+                "teacher_response": (
+                    "### **Alpha & Structural Momentum Brief: {{SYMBOL}} ({{COMPANY_NAME}})**\n\n"
+                    "**Current Market Stance:**\n"
+                    "- **Price Action:** Trading at {{PRICE}} (20D Momentum: {{RET20D}}), positioned relative to the 200-day moving average at {{SMA200}}.\n"
+                    "- **ML Multi-Horizon Projection:** The 20D quantitative forecast anticipates {{ML_20D_RET}} (Excess Alpha: {{ML_20D_BPS}} bps).\n"
+                    "- **Fundamental Quality:** ROE stands at {{ROE}}, trailing P/E is {{PE}}.\n\n"
+                    "**Tactical Range & Invalidation:**\n"
+                    "- **Upside Objective (20D):** {{TARGET_20D}}\n"
+                    "- **Downside Invalidation Floor:** {{FLOOR_20D}}\n"
+                    "- **52-Week Range:** Low {{LOW_52W}} — High {{HIGH_52W}}\n\n"
+                    "**Quantitative Conviction:** Balanced systematic alpha with favorable risk-reward asymmetry."
+                ),
+                "abstracted_template": (
+                    "### **Alpha & Structural Momentum Brief: {{SYMBOL}} ({{COMPANY_NAME}})**\n\n"
+                    "**Current Market Stance:**\n"
+                    "- **Price Action:** Trading at {{PRICE}} (20D Momentum: {{RET20D}}), positioned relative to the 200-day moving average at {{SMA200}}.\n"
+                    "- **ML Multi-Horizon Projection:** The 20D quantitative forecast anticipates {{ML_20D_RET}} (Excess Alpha: {{ML_20D_BPS}} bps).\n"
+                    "- **Fundamental Quality:** ROE stands at {{ROE}}, trailing P/E is {{PE}}.\n\n"
+                    "**Tactical Range & Invalidation:**\n"
+                    "- **Upside Objective (20D):** {{TARGET_20D}}\n"
+                    "- **Downside Invalidation Floor:** {{FLOOR_20D}}\n"
+                    "- **52-Week Range:** Low {{LOW_52W}} — High {{HIGH_52W}}\n\n"
+                    "**Quantitative Conviction:** Balanced systematic alpha with favorable risk-reward asymmetry."
+                ),
+                "telemetry": {"ret_20d_pct": 2.5, "roe_pct": 18.0, "ttm_pe": 22.0, "debt_to_equity": 0.4, "ml_20d_bps": 85.0, "price_above_sma200": 1.0},
+                "tokens": 420
+            },
+            {
+                "intent": "DEBATE_THESIS",
+                "symbol": "SYSTEM",
+                "sector": "Broad Market",
+                "user_prompt": "Debate Bull vs Bear Thesis for {{SYMBOL}}",
+                "abstracted_prompt": "Debate Bull vs Bear Thesis for {{SYMBOL}}",
+                "teacher_model": "distilled/seed-v1",
+                "teacher_response": (
+                    "### **Committee Deliberation & Conviction Stance: {{SYMBOL}}**\n\n"
+                    "**1. Bull Thesis (Alpha & Capital Efficiency):**\n"
+                    "- Resilient capital allocation with verified ROE at {{ROE}}.\n"
+                    "- Walk-forward ML engine models an expected 20D drift of {{ML_20D_RET}}.\n"
+                    "- Tactical upside target sits at {{TARGET_20D}} supported by institutional accumulation.\n\n"
+                    "**2. Bear Thesis (Risk Vectors & Vulnerabilities):**\n"
+                    "- Trailing P/E multiple of {{PE}} leaves limited margin of safety for quarterly earnings misses.\n"
+                    "- Structural invalidation floor is pegged at {{FLOOR_20D}}; a decisive breach exposes deeper retracement.\n"
+                    "- Sector rotation and macro liquidity could compress near-term multiples.\n\n"
+                    "**3. PM Verdict & Execution Stance:**\n"
+                    "- Constructive allocation stance above {{SMA200}} with disciplined stop protection at {{FLOOR_20D}}."
+                ),
+                "abstracted_template": (
+                    "### **Committee Deliberation & Conviction Stance: {{SYMBOL}}**\n\n"
+                    "**1. Bull Thesis (Alpha & Capital Efficiency):**\n"
+                    "- Resilient capital allocation with verified ROE at {{ROE}}.\n"
+                    "- Walk-forward ML engine models an expected 20D drift of {{ML_20D_RET}}.\n"
+                    "- Tactical upside target sits at {{TARGET_20D}} supported by institutional accumulation.\n\n"
+                    "**2. Bear Thesis (Risk Vectors & Vulnerabilities):**\n"
+                    "- Trailing P/E multiple of {{PE}} leaves limited margin of safety for quarterly earnings misses.\n"
+                    "- Structural invalidation floor is pegged at {{FLOOR_20D}}; a decisive breach exposes deeper retracement.\n"
+                    "- Sector rotation and macro liquidity could compress near-term multiples.\n\n"
+                    "**3. PM Verdict & Execution Stance:**\n"
+                    "- Constructive allocation stance above {{SMA200}} with disciplined stop protection at {{FLOOR_20D}}."
+                ),
+                "telemetry": {"ret_20d_pct": 1.2, "roe_pct": 16.5, "ttm_pe": 26.0, "debt_to_equity": 0.6, "ml_20d_bps": 40.0, "price_above_sma200": 1.0},
+                "tokens": 480
+            },
+            {
+                "intent": "COMPARE_PEER",
+                "symbol": "SYSTEM",
+                "sector": "Broad Market",
+                "user_prompt": "Compare {{SYMBOL}} vs sector peer",
+                "abstracted_prompt": "Compare {{SYMBOL}} vs sector peer",
+                "teacher_model": "distilled/seed-v1",
+                "teacher_response": (
+                    "### **Comparative Factor Positioning: {{SYMBOL}}**\n\n"
+                    "- **Valuation & Quality:** {{SYMBOL}} trades at {{PRICE}} with a P/E of {{PE}} and ROE of {{ROE}}, exhibiting robust quality rank.\n"
+                    "- **Momentum Profile:** 20D return of {{RET20D}} relative to the 200-day simple moving average at {{SMA200}}.\n"
+                    "- **Machine Learning Projection:** Multi-horizon walk-forward ML models {{ML_20D_RET}} return potential.\n"
+                    "- **Risk Boundary:** Key invalidation floor at {{FLOOR_20D}} against target resistance at {{TARGET_20D}}."
+                ),
+                "abstracted_template": (
+                    "### **Comparative Factor Positioning: {{SYMBOL}}**\n\n"
+                    "- **Valuation & Quality:** {{SYMBOL}} trades at {{PRICE}} with a P/E of {{PE}} and ROE of {{ROE}}, exhibiting robust quality rank.\n"
+                    "- **Momentum Profile:** 20D return of {{RET20D}} relative to the 200-day simple moving average at {{SMA200}}.\n"
+                    "- **Machine Learning Projection:** Multi-horizon walk-forward ML models {{ML_20D_RET}} return potential.\n"
+                    "- **Risk Boundary:** Key invalidation floor at {{FLOOR_20D}} against target resistance at {{TARGET_20D}}."
+                ),
+                "telemetry": {"ret_20d_pct": 3.1, "roe_pct": 21.0, "ttm_pe": 19.5, "debt_to_equity": 0.3, "ml_20d_bps": 110.0, "price_above_sma200": 1.0},
+                "tokens": 390
+            },
+            {
+                "intent": "WATCHLIST_AUDIT",
+                "symbol": "SYSTEM",
+                "sector": "Broad Market",
+                "user_prompt": "Review my watchlist",
+                "abstracted_prompt": "Review my watchlist",
+                "teacher_model": "distilled/seed-v1",
+                "teacher_response": (
+                    "### **Systematic Watchlist & Portfolio Audit**\n\n"
+                    "- **Momentum & Trend Leaders:** Focus capital on symbols sustaining positive 20D excess alpha above sector benchmarks.\n"
+                    "- **Quality Filter:** Favor holdings with verified ROE > 15% and conservative debt-to-equity (< 0.8).\n"
+                    "- **Risk Management:** Maintain strict discipline on equities violating their 200 SMA baseline."
+                ),
+                "abstracted_template": (
+                    "### **Systematic Watchlist & Portfolio Audit**\n\n"
+                    "- **Momentum & Trend Leaders:** Focus capital on symbols sustaining positive 20D excess alpha above sector benchmarks.\n"
+                    "- **Quality Filter:** Favor holdings with verified ROE > 15% and conservative debt-to-equity (< 0.8).\n"
+                    "- **Risk Management:** Maintain strict discipline on equities violating their 200 SMA baseline."
+                ),
+                "telemetry": {"ret_20d_pct": 0.5, "roe_pct": 17.0, "ttm_pe": 24.0, "debt_to_equity": 0.5, "ml_20d_bps": 30.0, "price_above_sma200": 1.0},
+                "tokens": 350
+            },
+            {
+                "intent": "DIRECT_QA",
+                "symbol": "SYSTEM",
+                "sector": "Broad Market",
+                "user_prompt": "What was {{SYMBOL}}'s last major dip?",
+                "abstracted_prompt": "What was {{SYMBOL}}'s last major dip?",
+                "teacher_model": "distilled/seed-v1",
+                "teacher_response": (
+                    "### **Historical Drawdown & Volatility Analysis: {{SYMBOL}}**\n\n"
+                    "- **52-Week Range:** {{SYMBOL}} has traded between a 52-week low of {{LOW_52W}} and a high of {{HIGH_52W}}.\n"
+                    "- **Current Positioning:** At {{PRICE}}, the stock trades relative to its 200 SMA at {{SMA200}} with 20D return of {{RET20D}}.\n"
+                    "- **Support Invalidation Floor:** Key tactical support is established at {{FLOOR_20D}}.\n"
+                    "- **Target Rebound Potential:** Systematic model projects {{ML_20D_RET}} over the next 20 sessions toward {{TARGET_20D}}."
+                ),
+                "abstracted_template": (
+                    "### **Historical Drawdown & Volatility Analysis: {{SYMBOL}}**\n\n"
+                    "- **52-Week Range:** {{SYMBOL}} has traded between a 52-week low of {{LOW_52W}} and a high of {{HIGH_52W}}.\n"
+                    "- **Current Positioning:** At {{PRICE}}, the stock trades relative to its 200 SMA at {{SMA200}} with 20D return of {{RET20D}}.\n"
+                    "- **Support Invalidation Floor:** Key tactical support is established at {{FLOOR_20D}}.\n"
+                    "- **Target Rebound Potential:** Systematic model projects {{ML_20D_RET}} over the next 20 sessions toward {{TARGET_20D}}."
+                ),
+                "telemetry": {"ret_20d_pct": -1.5, "roe_pct": 15.0, "ttm_pe": 25.0, "debt_to_equity": 0.5, "ml_20d_bps": 50.0, "price_above_sma200": 1.0},
+                "tokens": 410
+            },
+            {
+                "intent": "DIRECT_QA",
+                "symbol": "SYSTEM",
+                "sector": "Broad Market",
+                "user_prompt": "Summarize {{SYMBOL}}'s 20D risk/reward",
+                "abstracted_prompt": "Summarize {{SYMBOL}}'s 20D risk/reward",
+                "teacher_model": "distilled/seed-v1",
+                "teacher_response": (
+                    "### **20D Quantitative Risk/Reward Profile: {{SYMBOL}}**\n\n"
+                    "- **Expected Return:** Walk-forward ML engine projects {{ML_20D_RET}} ({{ML_20D_BPS}} bps excess return).\n"
+                    "- **Asymmetry Metrics:** Upside target at {{TARGET_20D}} versus downside invalidation floor at {{FLOOR_20D}}.\n"
+                    "- **Fundamental Anchor:** Verified ROE of {{ROE}} and P/E of {{PE}} support structural quality.\n"
+                    "- **Trend Health:** Price {{PRICE}} vs 200 SMA {{SMA200}}."
+                ),
+                "abstracted_template": (
+                    "### **20D Quantitative Risk/Reward Profile: {{SYMBOL}}**\n\n"
+                    "- **Expected Return:** Walk-forward ML engine projects {{ML_20D_RET}} ({{ML_20D_BPS}} bps excess return).\n"
+                    "- **Asymmetry Metrics:** Upside target at {{TARGET_20D}} versus downside invalidation floor at {{FLOOR_20D}}.\n"
+                    "- **Fundamental Anchor:** Verified ROE of {{ROE}} and P/E of {{PE}} support structural quality.\n"
+                    "- **Trend Health:** Price {{PRICE}} vs 200 SMA {{SMA200}}."
+                ),
+                "telemetry": {"ret_20d_pct": 1.8, "roe_pct": 19.0, "ttm_pe": 23.0, "debt_to_equity": 0.4, "ml_20d_bps": 75.0, "price_above_sma200": 1.0},
+                "tokens": 380
+            }
+        ]
+
+        # Ingest from existing market_catalysts if available
+        try:
+            with self.db.get_connection() as conn:
+                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='market_catalysts'")
+                if cur.fetchone():
+                    cats = conn.execute(
+                        "SELECT symbol, sector, causal_headline, causal_bullets, move_pct, rvol FROM market_catalysts ORDER BY id DESC LIMIT 5"
+                    ).fetchall()
+                    for cat in cats:
+                        sym = cat["symbol"]
+                        head = cat["causal_headline"]
+                        bullets = json.loads(cat["causal_bullets"] or "[]")
+                        b_text = "\n".join([f"- {b}" for b in bullets[:3]])
+                        seed_traces.append({
+                            "intent": "CATALYST_RADAR",
+                            "symbol": sym,
+                            "sector": cat["sector"] or "Equities",
+                            "user_prompt": f"Why is {sym} moving today?",
+                            "abstracted_prompt": "Why is {{SYMBOL}} moving today?",
+                            "teacher_model": "distilled/seed-v1",
+                            "teacher_response": f"### **Causal Anomaly Attribution: {sym}**\n\n**Headline:** {head}\n\n**Attribution Drivers:**\n{b_text}\n\n**Systematic Horizon:** Monitor support at {{{{FLOOR_20D}}}} and target at {{{{TARGET_20D}}}}.",
+                            "abstracted_template": f"### **Causal Anomaly Attribution: {{{{SYMBOL}}}}**\n\n**Headline:** {head}\n\n**Attribution Drivers:**\n{b_text}\n\n**Systematic Horizon:** Monitor support at {{{{FLOOR_20D}}}} and target at {{{{TARGET_20D}}}}.",
+                            "telemetry": {"ret_20d_pct": float(cat["move_pct"] or 0.0), "roe_pct": 16.0, "ttm_pe": 22.0, "debt_to_equity": 0.5, "ml_20d_bps": 50.0, "price_above_sma200": 1.0},
+                            "tokens": 320
+                        })
+        except Exception as e:
+            logger.debug(f"[DISTILLER] Note: unable to harvest from market_catalysts: {e}")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            with self.db.get_connection() as conn:
+                for t in seed_traces:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO copilot_distillation_corpus (
+                            created_at, intent, symbol, sector, user_prompt,
+                            abstracted_prompt, telemetry_features_json, teacher_model,
+                            teacher_response, abstracted_template, tokens_total
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            now_iso,
+                            t["intent"],
+                            t["symbol"],
+                            t["sector"],
+                            t["user_prompt"],
+                            t["abstracted_prompt"],
+                            json.dumps(t["telemetry"]),
+                            t["teacher_model"],
+                            t["teacher_response"],
+                            t["abstracted_template"],
+                            t["tokens"],
+                        )
+                    )
+                conn.commit()
+            logger.info(f"[DISTILLER] Bootstrapped {len(seed_traces)} seed traces into copilot_distillation_corpus.")
+        except Exception as e:
+            logger.warning(f"[DISTILLER] Failed to persist seed traces: {e}")
+
+        # Train model immediately with the bootstrapped seeds
+        train_res = self.train()
+        return {"status": "seeded", "traces_seeded": len(seed_traces), "train_results": train_res}
