@@ -230,6 +230,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                 "ml_training_runs",
                 "llm_usage_telemetry",
                 "copilot_distillation_corpus",
+                "external_api_telemetry",
             ]
 
             for tbl in table_order:

@@ -885,6 +885,7 @@ class UniverseExpander:
 
             # Download batch with retry
             df_batch = pd.DataFrame()
+            batch_success = False
             for attempt in range(3):
                 try:
                     df_batch = yf.download(
@@ -895,10 +896,23 @@ class UniverseExpander:
                         progress=False,
                         auto_adjust=False
                     )
+                    batch_success = True
                     break
                 except Exception as e:
                     logger.warning(f"Attempt {attempt+1} failed for batch: {e}")
                     time.sleep(1.0 * (attempt + 1))
+
+            try:
+                from src.storage.database import record_external_api_metric
+                record_external_api_metric(
+                    service_name="yfinance",
+                    endpoint_or_model="batch_ohlcv",
+                    success=batch_success,
+                    units=len(symbols_chunk),
+                    quota_source="free_unmetered"
+                )
+            except Exception:
+                pass
 
             # Ingest each symbol in the batch
             for sym in symbols_chunk:

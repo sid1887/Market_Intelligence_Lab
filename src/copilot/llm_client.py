@@ -14,7 +14,7 @@ from typing import Optional, List, Dict, Any, Tuple
 import httpx
 from dotenv import load_dotenv
 
-from src.storage.database import DatabaseManager
+from src.storage.database import DatabaseManager, record_external_api_metric
 
 load_dotenv()
 
@@ -233,6 +233,17 @@ async def call_llm_completion(
                                 db=db,
                             )
 
+                            record_external_api_metric(
+                                service_name="groq",
+                                endpoint_or_model=model,
+                                success=True,
+                                units=t_tok,
+                                remaining_quota_header=rem_req,
+                                quota_limit=MODEL_QUOTAS.get(model, {}).get("daily_request_limit"),
+                                quota_source="server_headers",
+                                db_manager=db,
+                            )
+
                             set_last_call_telemetry({
                                 "model": model,
                                 "provider": "groq",
@@ -246,10 +257,26 @@ async def call_llm_completion(
                             )
                             return content.strip()
                     else:
+                        is_429 = resp.status_code == 429
+                        record_external_api_metric(
+                            service_name="groq",
+                            endpoint_or_model=model,
+                            success=False,
+                            rate_limited=is_429,
+                            error_msg=f"HTTP {resp.status_code}: {resp.text[:100]}",
+                            db_manager=db,
+                        )
                         logger.warning(
                             f"[COPILOT-LLM] Groq ({model}) failed with HTTP {resp.status_code}: {resp.text[:200]}"
                         )
             except Exception as ge:
+                record_external_api_metric(
+                    service_name="groq",
+                    endpoint_or_model=model,
+                    success=False,
+                    error_msg=str(ge)[:100],
+                    db_manager=db,
+                )
                 logger.warning(f"[COPILOT-LLM] Groq ({model}) network/runtime exception: {ge}")
 
     # 2. Secondary: Google AI Studio (gemini-3.8-flash -> gemini-3.5-flash-lite)
@@ -305,6 +332,16 @@ async def call_llm_completion(
                                         db=db,
                                     )
 
+                                    record_external_api_metric(
+                                        service_name="gemini",
+                                        endpoint_or_model=model,
+                                        success=True,
+                                        units=t_tok,
+                                        quota_limit=MODEL_QUOTAS.get(model, {}).get("daily_request_limit"),
+                                        quota_source="api_usage_metadata",
+                                        db_manager=db,
+                                    )
+
                                     set_last_call_telemetry({
                                         "model": model,
                                         "provider": "google",
@@ -318,10 +355,26 @@ async def call_llm_completion(
                                     )
                                     return text_out
                     else:
+                        is_429 = resp.status_code == 429
+                        record_external_api_metric(
+                            service_name="gemini",
+                            endpoint_or_model=model,
+                            success=False,
+                            rate_limited=is_429,
+                            error_msg=f"HTTP {resp.status_code}: {resp.text[:100]}",
+                            db_manager=db,
+                        )
                         logger.warning(
                             f"[COPILOT-LLM] Gemini ({model}) failed with HTTP {resp.status_code}: {resp.text[:200]}"
                         )
             except Exception as gme:
+                record_external_api_metric(
+                    service_name="gemini",
+                    endpoint_or_model=model,
+                    success=False,
+                    error_msg=str(gme)[:100],
+                    db_manager=db,
+                )
                 logger.warning(f"[COPILOT-LLM] Gemini ({model}) network/runtime exception: {gme}")
 
     # Reset telemetry to local deterministic if no live provider succeeded

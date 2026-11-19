@@ -666,6 +666,19 @@ class NewsClient:
                 logger.warning(f"[NEWS-CLIENT] Database batch insertion warning: {ex}")
 
         elapsed = round(time.time() - t0, 2)
+        total_scraped = len(bse_items) + len(nse_items) + len(wire_items) + len(watchlist_items)
+        try:
+            from src.storage.database import record_external_api_metric
+            record_external_api_metric(
+                service_name="news_&_filings",
+                endpoint_or_model="bse_nse_rss_wires",
+                success=True,
+                units=total_scraped,
+                quota_source="free_unmetered"
+            )
+        except Exception:
+            pass
+
         logger.info(
             f"[NEWS-CLIENT] Market-wide aggregation completed in {elapsed}s: "
             f"BSE={len(bse_items)}, NSE={len(nse_items)}, Wire={len(wire_items)}, "

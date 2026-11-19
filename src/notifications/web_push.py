@@ -435,4 +435,16 @@ def broadcast_push(
                 if e not in errors:
                     errors.append(e)
 
+    try:
+        from src.storage.database import record_external_api_metric
+        record_external_api_metric(
+            service_name="web_push",
+            endpoint_or_model="vapid_push",
+            success=(sent_count > 0 or fail_count == 0),
+            units=sent_count,
+            error_msg=errors[0] if errors else None
+        )
+    except Exception:
+        pass
+
     return {"total": len(subs), "sent": sent_count, "failed": fail_count, "errors": errors}

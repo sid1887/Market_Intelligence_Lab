@@ -29,6 +29,7 @@ EXPORTABLE_TABLES = [
     "ml_training_runs",
     "llm_usage_telemetry",
     "copilot_distillation_corpus",
+    "external_api_telemetry",
 ]
 
 
@@ -81,6 +82,10 @@ def export_cloud_snapshot(
                 elif tbl == "llm_usage_telemetry":
                     rows = conn.execute(
                         "SELECT * FROM llm_usage_telemetry ORDER BY usage_date DESC LIMIT 100"
+                    ).fetchall()
+                elif tbl == "external_api_telemetry":
+                    rows = conn.execute(
+                        "SELECT * FROM external_api_telemetry ORDER BY usage_date DESC LIMIT 200"
                     ).fetchall()
                 else:
                     rows = conn.execute(f"SELECT * FROM {tbl}").fetchall()

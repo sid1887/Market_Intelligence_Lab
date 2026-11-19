@@ -35,6 +35,8 @@ import IngestStatusButton from "@/components/IngestStatusButton";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
 import { PanelErrorBoundary } from "@/components/PanelErrorBoundary";
 import { KeyboardShortcutModal } from "@/components/KeyboardShortcutModal";
+import { useBackButtonClose } from "@/hooks/useBackButtonClose";
+import { cn } from "@/lib/utils";
 
 export default function CockpitPage() {
   const [candidates, setCandidates] = useState<ScreenerCandidate[]>(() => {
@@ -65,22 +67,10 @@ export default function CockpitPage() {
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
 
-  // Responsive Breakpoint Detection (< 1024px mobile/tablet vs >= 1024px desktop)
-  const [isDesktopLg, setIsDesktopLg] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return window.innerWidth >= 1024;
-    }
-    return true;
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mql = window.matchMedia("(min-width: 1024px)");
-    const handler = (e: MediaQueryListEvent) => setIsDesktopLg(e.matches);
-    setIsDesktopLg(mql.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, []);
+  // Intercept Android hardware back / left-swipe gestures to close drawers/modals instead of exiting the PWA
+  useBackButtonClose(isMobileInspectorOpen, () => setIsMobileInspectorOpen(false), "mobileInspector");
+  useBackButtonClose(showCommandPalette, () => setShowCommandPalette(false), "commandPalette");
+  useBackButtonClose(isPushModalOpen, () => setIsPushModalOpen(false), "pushModal");
 
   // Resizable Split-Pane Ratio (M3)
   const [splitPct, setSplitPct] = useState<number>(() => {
@@ -433,11 +423,19 @@ export default function CockpitPage() {
       <IngestionProgressBanner activeJob={activeJob} onDismiss={dismissActiveJob} />
 
       {/* ──────────────── 3. RESPONSIVE MASTER-DETAIL SPLIT-PANE ──────────────── */}
-      <div className="flex flex-1 overflow-hidden relative z-10 min-h-0 h-full pb-14 md:pb-0">
-        {/* Master: Screener Workspace (Adjustable desktop width via splitPct on >= 1024px, 100% full width on mobile/tablet or collapsed) */}
+      <div
+        style={{
+          "--split-pct": `${splitPct}%`,
+          "--inspector-pct": `${100 - splitPct}%`,
+        } as React.CSSProperties}
+        className="flex flex-1 overflow-hidden relative z-10 min-h-0 h-full pb-14 md:pb-0"
+      >
+        {/* Master: Screener Workspace (100% full width on mobile/tablet via w-full, splitPct on >= 1024px desktop) */}
         <div
-          style={{ width: isDesktopLg && !isInspectorCollapsed ? `${splitPct}%` : "100%" }}
-          className="w-full flex flex-col h-full overflow-hidden shrink-0 min-h-0 bg-[#040609] transition-all duration-75 ease-out"
+          className={cn(
+            "w-full flex flex-col h-full overflow-hidden shrink-0 min-h-0 bg-[#040609] transition-all duration-75 ease-out",
+            !isInspectorCollapsed && "lg:w-[var(--split-pct)]"
+          )}
         >
           <PanelErrorBoundary panelName="Screener Workspace">
             <ScreenerWorkspace
@@ -467,8 +465,7 @@ export default function CockpitPage() {
         {/* Desktop Detail: Stock Deep Inspector (>= 1024px) */}
         {!isInspectorCollapsed && (
           <div
-            style={{ width: `${100 - splitPct}%` }}
-            className="hidden lg:flex flex-col h-full overflow-hidden min-w-0 min-h-0 bg-[#040609] transition-all duration-75 ease-out"
+            className="hidden lg:flex lg:w-[var(--inspector-pct)] flex-col h-full overflow-hidden min-w-0 min-h-0 bg-[#040609] transition-all duration-75 ease-out"
           >
             <PanelErrorBoundary panelName="Stock Inspector">
               <StockInspector

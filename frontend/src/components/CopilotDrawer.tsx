@@ -28,8 +28,24 @@ import {
 } from "lucide-react";
 import { RobustSSEParser, ServerSentEvent } from "@/lib/sseParser";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useBackButtonClose } from "@/hooks/useBackButtonClose";
 import { milEvents } from "@/lib/store";
 import { Database, Gauge, Zap } from "lucide-react";
+
+interface ExternalApiTelemetry {
+  usage_date: string;
+  service_name: string;
+  endpoint_or_model: string;
+  calls_succeeded: number;
+  calls_failed: number;
+  rate_limit_hits: number;
+  units_processed: number;
+  remaining_quota_header?: number | null;
+  quota_limit?: number | null;
+  quota_source?: string;
+  last_called_at?: string | null;
+  last_error?: string | null;
+}
 
 interface ModelQuotaStatus {
   model_id: string;
@@ -509,10 +525,27 @@ export default function CopilotDrawer({
   const [quotaData, setQuotaData] = useState<{
     models: ModelQuotaStatus[];
     distillation: DistillationStats;
+    external_apis?: ExternalApiTelemetry[];
   } | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
   const [isDistilling, setIsDistilling] = useState(false);
   const [distillSuccessMessage, setDistillSuccessMessage] = useState<string | null>(null);
+
+  const toggleQuotaPanel = useCallback(() => {
+    setShowQuotaPanel((prev) => {
+      const next = !prev;
+      if (next) setShowMlPanel(false);
+      return next;
+    });
+  }, []);
+
+  const toggleMlPanel = useCallback(() => {
+    setShowMlPanel((prev) => {
+      const next = !prev;
+      if (next) setShowQuotaPanel(false);
+      return next;
+    });
+  }, []);
 
   const runDeliberationRef = useRef<(customPrompt?: string) => Promise<void>>();
 
@@ -536,6 +569,7 @@ export default function CopilotDrawer({
         setQuotaData({
           models: json.models || [],
           distillation: json.distillation || { corpus_size: 0, vocabulary_size: 0, model_status: "untrained" },
+          external_apis: json.external_apis || [],
         });
       }
     } catch (e) {
@@ -631,6 +665,8 @@ export default function CopilotDrawer({
       setInternalIsOpen(false);
     }
   }, [onClose]);
+
+  useBackButtonClose(isOpen, handleClose, "copilotDrawer");
 
   const handleExportMarkdown = useCallback(() => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -1348,7 +1384,7 @@ export default function CopilotDrawer({
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
                       transition={{ duration: 0.16 }}
-                      className="border border-indigo-500/30 bg-[#070b16] rounded-xl p-3 shadow-2xl space-y-3 font-mono text-xs max-h-72 overflow-y-auto"
+                      className="border border-indigo-500/30 bg-[#070b16] rounded-xl p-3 shadow-2xl space-y-3 font-mono text-xs max-h-[46dvh] sm:max-h-[340px] overflow-y-auto thin-scrollbar"
                     >
                       <div className="flex items-center justify-between pb-2 border-b border-indigo-500/20">
                         <div className="flex items-center space-x-2">
@@ -1444,22 +1480,32 @@ export default function CopilotDrawer({
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="border border-cyan-500/30 bg-[#060b18] rounded-2xl p-3 sm:p-3.5 space-y-3 shadow-xl overflow-hidden max-w-full"
+                      className="border border-cyan-500/30 bg-[#060b18] rounded-2xl p-3 sm:p-3.5 space-y-3 shadow-xl max-w-full max-h-[46dvh] sm:max-h-[340px] overflow-y-auto thin-scrollbar"
                     >
                       <div className="flex items-center justify-between border-b border-white/[0.06] pb-2 gap-2">
                         <div className="flex items-center space-x-2 min-w-0">
                           <Gauge className="w-4 h-4 text-cyan-400 shrink-0" />
                           <h4 className="text-xs font-bold text-white font-mono truncate">LLM Quota Metering & Distillation</h4>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => void fetchQuotaTelemetry()}
-                          disabled={quotaLoading}
-                          className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1 shrink-0"
-                        >
-                          <RotateCcw className={`w-3 h-3 ${quotaLoading ? "animate-spin" : ""}`} />
-                          <span>Refresh</span>
-                        </button>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => void fetchQuotaTelemetry()}
+                            disabled={quotaLoading}
+                            className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                          >
+                            <RotateCcw className={`w-3 h-3 ${quotaLoading ? "animate-spin" : ""}`} />
+                            <span>Refresh</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowQuotaPanel(false)}
+                            className="p-1 rounded text-slate-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+                            aria-label="Close panel"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
                       {quotaLoading && !quotaData ? (
@@ -1580,6 +1626,60 @@ export default function CopilotDrawer({
                               )}
                             </button>
                           </div>
+
+                          {/* Live External APIs & Alert Feeds */}
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
+                              Live External APIs & Alert Feeds (Today UTC)
+                            </span>
+                            {(!quotaData?.external_apis || quotaData.external_apis.length === 0) ? (
+                              <div className="bg-slate-950/60 border border-white/[0.04] rounded-xl p-2.5 text-center text-[11px] font-mono text-slate-500">
+                                Monitored: Telegram Bot, Web Push, Yahoo Finance & News Feeds.
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {quotaData.external_apis.map((ext, idx) => (
+                                  <div
+                                    key={`${ext.service_name}-${ext.endpoint_or_model}-${idx}`}
+                                    className="bg-slate-950/80 border border-white/[0.04] rounded-xl p-2 space-y-1 text-xs font-mono"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                        ext.service_name === "telegram"
+                                          ? "bg-sky-950 text-sky-400 border border-sky-800"
+                                          : ext.service_name === "web_push"
+                                          ? "bg-purple-950 text-purple-400 border border-purple-800"
+                                          : ext.service_name === "yfinance"
+                                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
+                                          : "bg-amber-950 text-amber-400 border border-amber-800"
+                                      }`}>
+                                        {ext.service_name}
+                                      </span>
+                                      <span className="text-[9px] text-slate-400 truncate max-w-[110px]" title={ext.endpoint_or_model}>
+                                        {ext.endpoint_or_model}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px]">
+                                      <span className="text-slate-300">
+                                        ✓ {ext.calls_succeeded} ok
+                                        {ext.calls_failed > 0 && (
+                                          <span className="text-rose-400 ml-1">({ext.calls_failed} fail)</span>
+                                        )}
+                                      </span>
+                                      <span className="text-slate-400">
+                                        {ext.units_processed} {ext.service_name === "yfinance" ? "syms" : ext.service_name === "news_&_filings" ? "items" : "units"}
+                                      </span>
+                                    </div>
+                                    {ext.rate_limit_hits > 0 && (
+                                      <div className="text-[9px] text-rose-400 font-semibold">
+                                        ⚠️ {ext.rate_limit_hits} rate limit hits
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </motion.div>
@@ -1592,7 +1692,7 @@ export default function CopilotDrawer({
                   {mlForecast && !mlForecast.error && (
                     <button
                       type="button"
-                      onClick={() => setShowMlPanel((prev) => !prev)}
+                      onClick={toggleMlPanel}
                       className="px-2.5 py-1.5 rounded-xl bg-indigo-950/60 hover:bg-indigo-950/90 border border-indigo-500/40 hover:border-indigo-400/70 text-[11px] font-mono text-indigo-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 shadow-sm"
                     >
                       <Cpu className="w-3.5 h-3.5 text-indigo-400" />
@@ -1618,7 +1718,7 @@ export default function CopilotDrawer({
                   {/* Quotas & Engine Dock Toggle Pill */}
                   <button
                     type="button"
-                    onClick={() => setShowQuotaPanel((prev) => !prev)}
+                    onClick={toggleQuotaPanel}
                     className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-white/[0.08] hover:border-cyan-500/40 text-[11px] font-mono text-slate-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 shadow-sm"
                   >
                     <Gauge className="w-3.5 h-3.5 text-cyan-400" />

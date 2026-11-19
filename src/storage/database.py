@@ -270,7 +270,27 @@ class DatabaseManager:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_intent ON copilot_distillation_corpus(intent);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_symbol ON copilot_distillation_corpus(symbol);")
 
-            # 11b. Cleanup legacy synthetic 12.0% default ROE records from quant_factors_daily
+            # 11b. External API Telemetry (Telegram, Yahoo Finance, NewsClient, Web Push)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS external_api_telemetry (
+                    usage_date TEXT NOT NULL,
+                    service_name TEXT NOT NULL,
+                    endpoint_or_model TEXT NOT NULL,
+                    calls_succeeded INTEGER DEFAULT 0,
+                    calls_failed INTEGER DEFAULT 0,
+                    rate_limit_hits INTEGER DEFAULT 0,
+                    units_processed INTEGER DEFAULT 0,
+                    remaining_quota_header INTEGER,
+                    quota_limit INTEGER,
+                    quota_source TEXT DEFAULT 'live_metered',
+                    last_called_at TEXT,
+                    last_error TEXT,
+                    PRIMARY KEY (usage_date, service_name, endpoint_or_model)
+                );
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ext_api_service ON external_api_telemetry(service_name);")
+
+            # 11c. Cleanup legacy synthetic 12.0% default ROE records from quant_factors_daily
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='quant_factors_daily';")
             if cursor.fetchone():
                 conn.execute("""
@@ -2061,6 +2081,75 @@ class DatabaseManager:
 def get_readonly_connection(db_path: str = "data/market_lab.db") -> sqlite3.Connection:
     """Module-level helper to obtain a strictly read-only SQLite connection."""
     return DatabaseManager(db_path).get_readonly_connection()
+
+
+def record_external_api_metric(
+    service_name: str,
+    endpoint_or_model: str,
+    success: bool = True,
+    rate_limited: bool = False,
+    units: int = 1,
+    remaining_quota_header: Optional[int] = None,
+    quota_limit: Optional[int] = None,
+    quota_source: str = "live_metered",
+    error_msg: Optional[str] = None,
+    db_manager: Optional[DatabaseManager] = None,
+) -> None:
+    """
+    Thread-safe atomic upsert for external API telemetry counters for today's UTC date.
+    Tracks Groq, Gemini, Telegram, yfinance, NewsClient, Web Push.
+    """
+    try:
+        if db_manager is None:
+            db_manager = DatabaseManager()
+
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        today_str = now_utc.strftime("%Y-%m-%d")
+        now_iso = now_utc.isoformat()
+
+        succ_inc = 1 if success else 0
+        fail_inc = 0 if success else 1
+        rate_inc = 1 if rate_limited else 0
+
+        with db_manager.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO external_api_telemetry (
+                    usage_date, service_name, endpoint_or_model,
+                    calls_succeeded, calls_failed, rate_limit_hits,
+                    units_processed, remaining_quota_header, quota_limit,
+                    quota_source, last_called_at, last_error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(usage_date, service_name, endpoint_or_model) DO UPDATE SET
+                    calls_succeeded = calls_succeeded + excluded.calls_succeeded,
+                    calls_failed = calls_failed + excluded.calls_failed,
+                    rate_limit_hits = rate_limit_hits + excluded.rate_limit_hits,
+                    units_processed = units_processed + excluded.units_processed,
+                    remaining_quota_header = COALESCE(excluded.remaining_quota_header, external_api_telemetry.remaining_quota_header),
+                    quota_limit = COALESCE(excluded.quota_limit, external_api_telemetry.quota_limit),
+                    quota_source = COALESCE(excluded.quota_source, external_api_telemetry.quota_source),
+                    last_called_at = excluded.last_called_at,
+                    last_error = COALESCE(excluded.last_error, external_api_telemetry.last_error)
+                """,
+                (
+                    today_str,
+                    service_name,
+                    endpoint_or_model,
+                    succ_inc,
+                    fail_inc,
+                    rate_inc,
+                    units,
+                    remaining_quota_header,
+                    quota_limit,
+                    quota_source,
+                    now_iso,
+                    error_msg,
+                ),
+            )
+            conn.commit()
+    except Exception as e:
+        logger.debug(f"Failed to record external API metric ({service_name}/{endpoint_or_model}): {e}")
+
 
 
 

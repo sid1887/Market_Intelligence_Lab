@@ -157,10 +157,29 @@ def send_telegram_message(
         with httpx.Client(timeout=10.0) as client:
             resp = client.post(url, json=payload)
             if resp.status_code == 200:
+                try:
+                    from src.storage.database import record_external_api_metric
+                    record_external_api_metric("telegram", "sendMessage", success=True, units=1)
+                except Exception:
+                    pass
                 return True
+            is_429 = (resp.status_code == 429)
+            try:
+                from src.storage.database import record_external_api_metric
+                record_external_api_metric(
+                    "telegram", "sendMessage", success=False, rate_limited=is_429,
+                    units=1, error_msg=f"HTTP {resp.status_code}"
+                )
+            except Exception:
+                pass
             logger.warning(f"[TELEGRAM] Send failed with HTTP {resp.status_code}: {resp.text}")
             return False
     except Exception as e:
+        try:
+            from src.storage.database import record_external_api_metric
+            record_external_api_metric("telegram", "sendMessage", success=False, units=1, error_msg=str(e)[:100])
+        except Exception:
+            pass
         logger.warning(f"[TELEGRAM] Outbound dispatch error: {e}")
         return False
 
@@ -191,10 +210,29 @@ async def send_telegram_message_async(
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200:
+                try:
+                    from src.storage.database import record_external_api_metric
+                    record_external_api_metric("telegram", "sendMessage", success=True, units=1)
+                except Exception:
+                    pass
                 return True
+            is_429 = (resp.status_code == 429)
+            try:
+                from src.storage.database import record_external_api_metric
+                record_external_api_metric(
+                    "telegram", "sendMessage", success=False, rate_limited=is_429,
+                    units=1, error_msg=f"HTTP {resp.status_code}"
+                )
+            except Exception:
+                pass
             logger.warning(f"[TELEGRAM] Async send failed HTTP {resp.status_code}: {resp.text}")
             return False
     except Exception as e:
+        try:
+            from src.storage.database import record_external_api_metric
+            record_external_api_metric("telegram", "sendMessage", success=False, units=1, error_msg=str(e)[:100])
+        except Exception:
+            pass
         logger.warning(f"[TELEGRAM] Async dispatch error: {e}")
         return False
 

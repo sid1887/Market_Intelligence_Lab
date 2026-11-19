@@ -123,8 +123,19 @@ def sync_yfinance_history_for_symbol(sym: str) -> Optional[List[Dict[str, Any]]]
         except Exception as write_err:
             logger.warning(f"Failed to persist on-demand backfill to SQLite for {sym}: {write_err}")
 
+        try:
+            from src.storage.database import record_external_api_metric
+            record_external_api_metric("yfinance", "Ticker.history", success=True, units=1, quota_source="free_unmetered")
+        except Exception:
+            pass
+
         return candles
     except Exception as e:
+        try:
+            from src.storage.database import record_external_api_metric
+            record_external_api_metric("yfinance", "Ticker.history", success=False, units=1, error_msg=str(e)[:100], quota_source="free_unmetered")
+        except Exception:
+            pass
         logger.warning(f"On-demand yfinance fetch failed for {sym}: {e}")
         return None
 

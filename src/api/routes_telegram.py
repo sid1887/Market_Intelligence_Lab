@@ -134,6 +134,13 @@ async def telegram_webhook_endpoint(
     if is_pairing and username:
         pair_chat_id(username, chat_id)
 
+    try:
+        from src.storage.database import record_external_api_metric
+        cmd_name = text.split()[0] if text.startswith("/") else "query"
+        record_external_api_metric("telegram", f"webhook:{cmd_name[:20]}", success=True, units=1)
+    except Exception:
+        pass
+
     # Process Commands in background to ensure 200 OK is returned in < 500ms to Telegram
     background_tasks.add_task(
         _handle_telegram_command,

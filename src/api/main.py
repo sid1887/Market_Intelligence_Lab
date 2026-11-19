@@ -948,6 +948,12 @@ async def get_copilot_usage_telemetry():
         ).fetchall()
         usage_by_model = {r["model_id"]: dict(r) for r in rows}
 
+        ext_rows = conn.execute(
+            "SELECT * FROM external_api_telemetry WHERE usage_date = ? ORDER BY service_name, endpoint_or_model",
+            (today_utc,)
+        ).fetchall()
+        external_apis = [dict(r) for r in ext_rows]
+
     for model_id, quota in MODEL_QUOTAS.items():
         used_row = usage_by_model.get(model_id, {})
         reqs_used = used_row.get("requests_used", 0)
@@ -981,7 +987,8 @@ async def get_copilot_usage_telemetry():
         "status": "success",
         "date_utc": today_utc,
         "models": models_status,
-        "distillation": distill_stats
+        "distillation": distill_stats,
+        "external_apis": external_apis
     }))
 
 
