@@ -1,6 +1,9 @@
-name: Render Backend Keep-Alive (Manual Verification Only)
+name: Render Backend Keep-Alive (NSE Market Hours 08:45–15:30 IST)
 
 on:
+  schedule:
+    # Every 14 minutes during NSE trading hours (08:45–15:30 IST / 03:15–10:00 UTC, Mon–Fri)
+    - cron: "*/14 3-10 * * 1-5"
   workflow_dispatch:
 
 jobs:
@@ -12,9 +15,9 @@ jobs:
     steps:
       - name: Ping MIL Quant Backend Health Endpoint
         env:
-          CUSTOM_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
+          CUSTOM_BACKEND_URL: ${{ secrets.RENDER_API_URL || secrets.RENDER_BACKEND_URL }}
         run: |
-          RENDER_SECRET="${{ secrets.RENDER_BACKEND_URL }}"
+          RENDER_SECRET="${{ secrets.RENDER_API_URL || secrets.RENDER_BACKEND_URL }}"
           BASE_URL="${RENDER_SECRET:-${CUSTOM_BACKEND_URL:-https://mil-quant-backend.onrender.com}}"
           BASE_URL=$(echo "$BASE_URL" | tr -d '[:space:]')
           BASE_URL="${BASE_URL%/}"

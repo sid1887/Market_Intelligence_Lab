@@ -13,6 +13,8 @@ jobs:
     name: 7GB Cloud Runner Walk-Forward ML Tournament
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -30,8 +32,17 @@ jobs:
 
       - name: Execute Walk-Forward ML Tournament & 300-Stock Precomputation
         env:
-          RENDER_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
-          INTERNAL_SYNC_TOKEN: ${{ secrets.INTERNAL_SYNC_TOKEN }}
+          RENDER_API_URL: ${{ secrets.RENDER_API_URL || secrets.RENDER_BACKEND_URL }}
+          RENDER_BACKEND_URL: ${{ secrets.RENDER_API_URL || secrets.RENDER_BACKEND_URL }}
+          MIL_INTERNAL_SYNC_SECRET: ${{ secrets.MIL_INTERNAL_SYNC_SECRET || secrets.INTERNAL_SYNC_TOKEN }}
+          INTERNAL_SYNC_TOKEN: ${{ secrets.MIL_INTERNAL_SYNC_SECRET || secrets.INTERNAL_SYNC_TOKEN }}
           PYTHONUNBUFFERED: "1"
         run: |
           python scripts/cloud_worker.py --mode ml
+
+      - name: Commit & Push Refreshed Cloud Snapshot
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/cloud_seed_snapshot.json.gz data/models/tournament_summary.json || true
+          git diff --staged --quiet || (git commit -m "chore(data): autonomous EOD market & ML snapshot sync [skip ci]" && git push)

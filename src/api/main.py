@@ -111,6 +111,17 @@ def invalidate_screener_cache() -> None:
         _screener_cache_time = 0.0
     logger.info("In-memory screener cache invalidated.")
 
+def clear_all_api_caches() -> None:
+    """Clears all in-memory API response caches (screener, macro, forecasts)."""
+    invalidate_screener_cache()
+    try:
+        from src.client.macro_client import MacroClient
+        MacroClient._cached_macro_data = None
+        MacroClient._cache_timestamp = 0.0
+    except Exception:
+        pass
+    logger.info("All in-memory API caches cleared.")
+
 def is_nse_trading_hours() -> bool:
     """Returns True if current time is within NSE trading hours (09:15–15:35 IST, Mon–Fri)."""
     ist = datetime.timezone(datetime.timedelta(hours=5, minutes=30))

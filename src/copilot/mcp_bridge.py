@@ -34,8 +34,8 @@ class QuantMCPBridge:
             latest_ohlcv = conn.execute("""
                 SELECT close, trading_date
                 FROM ohlcv_daily
-                WHERE symbol = ? AND series = 'EQ'
-                ORDER BY trading_date DESC
+                WHERE symbol = ? AND (series = 'EQ' OR series IS NULL OR series = '')
+                ORDER BY trading_date DESC, retrieval_timestamp DESC
                 LIMIT 1
             """, (sym,)).fetchone()
 
@@ -142,12 +142,15 @@ class QuantMCPBridge:
             df = pd.read_sql_query("""
                 SELECT trading_date, open, high, low, close, volume
                 FROM ohlcv_daily
-                WHERE symbol = ? AND series = 'EQ'
-                ORDER BY trading_date ASC
+                WHERE symbol = ? AND (series = 'EQ' OR series IS NULL OR series = '')
+                ORDER BY trading_date ASC, retrieval_timestamp ASC
             """, conn, params=(sym,))
 
         if df.empty or len(df) < 5:
             return {"symbol": sym, "error": "Insufficient historical bars."}
+
+        # Deduplicate multiple series/retrievals on same trading_date by keeping latest
+        df = df.drop_duplicates(subset=["trading_date"], keep="last").reset_index(drop=True)
 
         df_3y = df.tail(750).reset_index(drop=True)
         current_price = float(df_3y.iloc[-1]["close"])

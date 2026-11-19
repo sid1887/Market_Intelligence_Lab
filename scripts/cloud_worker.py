@@ -58,6 +58,64 @@ def get_default_sync_token() -> str:
     return os.getenv("MIL_INTERNAL_SYNC_SECRET") or os.getenv("INTERNAL_SYNC_TOKEN", "")
 
 
+def ensure_backend_awake(backend_url: str, max_retries: int = 3, timeout: int = 95) -> bool:
+    """
+    Pings backend health endpoint with retries and backoff to ensure Render container is awake.
+    Handles Render free-tier cold starts (up to 60-90s).
+    """
+    if not backend_url or "127.0.0.1" in backend_url or "localhost" in backend_url:
+        return True
+    health_url = f"{backend_url.rstrip('/')}/api/v1/health"
+    logger.info(f"Pinging backend health at {health_url} (cold-start wake verification)...")
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(health_url, timeout=timeout)
+            if resp.status_code == 200:
+                logger.info(f"Backend is awake and healthy (attempt {attempt}).")
+                return True
+            logger.warning(f"Health check attempt {attempt} returned HTTP {resp.status_code}. Retrying in 10s...")
+        except Exception as e:
+            logger.warning(f"Health check attempt {attempt} failed ({e}). Retrying in 10s...")
+        if attempt < max_retries:
+            time.sleep(10.0)
+    logger.warning("Backend did not respond to health checks within retry window; proceeding.")
+    return False
+
+
+def _request_with_wake(
+    method: str,
+    url: str,
+    backend_url: Optional[str] = None,
+    max_retries: int = 3,
+    **kwargs
+) -> requests.Response:
+    """
+    Guarantees backend is awake before executing HTTP request, and retries with backoff if network/timeout fails.
+    """
+    base = backend_url or url.split("/api/v1")[0]
+    ensure_backend_awake(base)
+    timeout = kwargs.pop("timeout", 90)
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.request(method, url, timeout=timeout, **kwargs)
+            if resp.status_code in (200, 201):
+                return resp
+            logger.warning(f"{method} {url} returned HTTP {resp.status_code} on attempt {attempt}: {resp.text[:200]}")
+            if resp.status_code >= 500 and attempt < max_retries:
+                time.sleep(10.0)
+                continue
+            return resp
+        except Exception as e:
+            last_exc = e
+            logger.warning(f"{method} {url} attempt {attempt} raised: {e}")
+            if attempt < max_retries:
+                time.sleep(10.0)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"Request {method} {url} failed after {max_retries} attempts.")
+
+
 def is_nse_market_hours() -> bool:
     """Checks whether current time is within NSE trading hours (Mon-Fri 09:15-15:30 IST)."""
     # IST is UTC+5:30
@@ -115,10 +173,15 @@ def bootstrap_worker_db(
         export_url = f"{backend_url}/api/v1/internal/export-state"
         logger.info(f"Pulling live state from backend: {export_url}...")
         try:
-            resp = requests.get(
+            resp = _request_with_wake(
+                "GET",
                 export_url,
-                headers={"X-Internal-Token": token},
-                timeout=30
+                backend_url=backend_url,
+                headers={
+                    "X-Internal-Token": token,
+                    "X-Internal-Sync-Secret": token,
+                },
+                timeout=95
             )
             if resp.status_code == 200:
                 payload = resp.json()
@@ -128,6 +191,7 @@ def bootstrap_worker_db(
                 state["latest_ohlcv_date"] = payload.get("latest_ohlcv_date")
                 state["push_subscriptions"] = payload.get("push_subscriptions", [])
                 recent_ohlcv = payload.get("recent_ohlcv", [])
+                latest_funds = payload.get("latest_fundamentals", [])
 
                 logger.info(
                     f"State successfully exported from backend: "
@@ -135,7 +199,8 @@ def bootstrap_worker_db(
                     f"{len(state['portfolio_symbols'])} portfolio, "
                     f"{len(state['priority_symbols'])} priority, "
                     f"{len(state.get('push_subscriptions', []))} push subscriptions, "
-                    f"{len(recent_ohlcv)} recent OHLCV bars."
+                    f"{len(recent_ohlcv)} recent OHLCV bars, "
+                    f"{len(latest_funds)} fundamental records."
                 )
 
                 # Merge exported state into local DB
@@ -182,6 +247,29 @@ def bootstrap_worker_db(
                                 symbol, trading_date, series, open, high, low, close, volume, source, retrieval_timestamp
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, bar_tuples)
+
+                    # 3. Latest fundamental metrics from Render (prevent overwriting fundamentals with NULL)
+                    if latest_funds:
+                        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                        for f in latest_funds:
+                            conn.execute("""
+                                UPDATE quant_factors_daily
+                                SET roe_pct = COALESCE(?, roe_pct),
+                                    opm_pct = COALESCE(?, opm_pct),
+                                    debt_to_equity = COALESCE(?, debt_to_equity),
+                                    ttm_pe = COALESCE(?, ttm_pe),
+                                    eps_growth_yoy = COALESCE(?, eps_growth_yoy),
+                                    updated_at = ?
+                                WHERE symbol = ?
+                            """, (
+                                f.get("roe_pct"),
+                                f.get("opm_pct"),
+                                f.get("debt_to_equity"),
+                                f.get("ttm_pe"),
+                                f.get("eps_growth_yoy"),
+                                now_iso,
+                                f["symbol"]
+                            ))
 
                     conn.commit()
             else:
@@ -334,6 +422,26 @@ def run_parallel_news_pipeline(
 
     logger.info(f"Causal Radar identified {len(detected_catalysts)} active catalysts.")
 
+    # Extract any fresh OHLCV bars from 5d quote refresh
+    fresh_news_bars = []
+    try:
+        with db.get_connection() as conn:
+            max_d_row = conn.execute("SELECT MAX(trading_date) FROM ohlcv_daily").fetchone()
+            if max_d_row and max_d_row[0]:
+                max_d = max_d_row[0]
+                cutoff_dt = datetime.datetime.strptime(max_d, "%Y-%m-%d") - datetime.timedelta(days=7)
+                cutoff_str = cutoff_dt.strftime("%Y-%m-%d")
+                rows = conn.execute("""
+                    SELECT symbol, trading_date, series, open, high, low, close, prev_close, volume
+                    FROM ohlcv_daily
+                    WHERE trading_date >= ? AND (series = 'EQ' OR series IS NULL)
+                    ORDER BY symbol, trading_date
+                """, (cutoff_str,)).fetchall()
+                fresh_news_bars = [dict(r) for r in rows]
+                logger.info(f"[NEWS-RADAR] Extracted {len(fresh_news_bars)} fresh OHLCV bars (>= {cutoff_str}) to sync to backend.")
+    except Exception as bar_err:
+        logger.warning(f"[NEWS-RADAR] Error extracting fresh OHLCV bars: {bar_err}")
+
     # Prepare sync payload (explicitly instruct Render backend to dispatch push for catalysts & breaking filings)
     has_catalysts = len(detected_catalysts) > 0
     has_articles = len(all_articles) > 0
@@ -341,7 +449,8 @@ def run_parallel_news_pipeline(
         "news_articles": all_articles,
         "catalysts": detected_catalysts,
         "dispatch_push": True if (has_catalysts or has_articles) else False,
-        "push_subscriptions": state.get("push_subscriptions", [])
+        "push_subscriptions": state.get("push_subscriptions", []),
+        "ohlcv_bars": fresh_news_bars[:2500] if fresh_news_bars else None,
     }
 
     elapsed = round(time.time() - t0, 1)
@@ -364,15 +473,17 @@ def run_parallel_news_pipeline(
         sync_url = f"{backend_url}/api/v1/internal/sync"
         logger.info(f"Syncing news & catalysts to backend: {sync_url}...")
         try:
-            resp = requests.post(
+            resp = _request_with_wake(
+                "POST",
                 sync_url,
+                backend_url=backend_url,
                 json=payload,
                 headers={
                     "X-Internal-Token": token,
                     "X-Internal-Sync-Secret": token,
                     "Content-Type": "application/json",
                 },
-                timeout=45
+                timeout=95
             )
             if resp.status_code == 200:
                 logger.info(f"Successfully synced news to backend: {resp.json()}")
@@ -517,33 +628,73 @@ def run_ml_tournament_pipeline(
         logger.info(f"[DRY-RUN] ML pipeline finished in {elapsed}s. Skipping POST sync.")
         return result
 
-    # 5. POST to Render Internal Sync Bridge
+    # Extract fresh daily OHLCV bars ingested/updated during this run (last 5 sessions)
+    fresh_ohlcv_bars = []
+    try:
+        with db.get_connection() as conn:
+            max_d_row = conn.execute("SELECT MAX(trading_date) FROM ohlcv_daily").fetchone()
+            if max_d_row and max_d_row[0]:
+                max_d = max_d_row[0]
+                cutoff_dt = datetime.datetime.strptime(max_d, "%Y-%m-%d") - datetime.timedelta(days=7)
+                cutoff_str = cutoff_dt.strftime("%Y-%m-%d")
+                rows = conn.execute("""
+                    SELECT symbol, trading_date, series, open, high, low, close, prev_close, volume
+                    FROM ohlcv_daily
+                    WHERE trading_date >= ? AND (series = 'EQ' OR series IS NULL)
+                    ORDER BY symbol, trading_date
+                """, (cutoff_str,)).fetchall()
+                fresh_ohlcv_bars = [dict(r) for r in rows]
+                logger.info(f"[ML-TOURNAMENT] Extracted {len(fresh_ohlcv_bars)} fresh OHLCV bars (>= {cutoff_str}) to sync to backend.")
+    except Exception as bar_err:
+        logger.warning(f"[ML-TOURNAMENT] Error querying fresh OHLCV bars: {bar_err}")
+
+    # 5. POST to Render Internal Sync Bridge (chunking ohlcv_bars in batches of 2,500 if needed)
     if backend_url and token:
         sync_url = f"{backend_url}/api/v1/internal/sync"
-        payload = {
-            "tournament_summary": tournament_summary,
-            "ml_forecasts": ml_forecasts,
-            "factor_updates": factor_updates,
-            "push_subscriptions": state.get("push_subscriptions", [])
-        }
-        logger.info(f"Syncing tournament & precomputed forecasts to backend: {sync_url}...")
-        try:
-            resp = requests.post(
-                sync_url,
-                json=payload,
-                headers={"X-Internal-Token": token},
-                timeout=90
-            )
-            if resp.status_code == 200:
-                logger.info(f"Successfully synced ML forecasts to backend: {resp.json()}")
-                result["synced"] = True
-                result["backend_response"] = resp.json()
-            else:
-                logger.error(f"Backend ML sync failed with HTTP {resp.status_code}: {resp.text[:300]}")
-        except Exception as e:
-            logger.error(f"Failed to post ML sync to {sync_url}: {e}")
+        CHUNK_SIZE = 2500
+        bar_chunks = [fresh_ohlcv_bars[i:i + CHUNK_SIZE] for i in range(0, max(1, len(fresh_ohlcv_bars)), CHUNK_SIZE)] if fresh_ohlcv_bars else [[]]
+
+        for chunk_idx, bar_chunk in enumerate(bar_chunks):
+            is_first = (chunk_idx == 0)
+            payload = {
+                "tournament_summary": tournament_summary if is_first else None,
+                "ml_forecasts": ml_forecasts if is_first else None,
+                "factor_updates": factor_updates if is_first else None,
+                "push_subscriptions": state.get("push_subscriptions", []) if is_first else [],
+                "ohlcv_bars": bar_chunk if bar_chunk else None,
+            }
+            logger.info(f"Syncing tournament & bars (chunk {chunk_idx + 1}/{len(bar_chunks)}, {len(bar_chunk)} bars) to backend: {sync_url}...")
+            try:
+                resp = _request_with_wake(
+                    "POST",
+                    sync_url,
+                    backend_url=backend_url,
+                    json=payload,
+                    headers={
+                        "X-Internal-Token": token,
+                        "X-Internal-Sync-Secret": token,
+                        "Content-Type": "application/json",
+                    },
+                    timeout=95
+                )
+                if resp.status_code == 200:
+                    logger.info(f"Successfully synced ML chunk {chunk_idx + 1} to backend: {resp.json().get('counts', {})}")
+                    result["synced"] = True
+                    result["backend_response"] = resp.json()
+                else:
+                    logger.error(f"Backend ML sync failed with HTTP {resp.status_code}: {resp.text[:300]}")
+            except Exception as e:
+                logger.error(f"Failed to post ML sync chunk {chunk_idx + 1} to {sync_url}: {e}")
     else:
         logger.warning("No backend_url or token provided; skipping sync.")
+
+    # 6. Persist Refreshed data/cloud_seed_snapshot.json.gz (when not dry-run)
+    try:
+        from src.storage.cloud_snapshot import export_cloud_snapshot
+        snap_path = export_cloud_snapshot(db, output_path="data/cloud_seed_snapshot.json.gz", max_ohlcv_days=120)
+        logger.info(f"[SNAPSHOT] Refreshed cloud seed snapshot exported to {snap_path}")
+    except Exception as snap_err:
+        logger.warning(f"[SNAPSHOT] Error exporting refreshed cloud snapshot: {snap_err}")
 
     return result
 

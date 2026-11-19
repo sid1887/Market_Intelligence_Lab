@@ -197,8 +197,8 @@ class MultiAgentDeliberationEngine:
                 bars_rows = conn.execute("""
                     SELECT trading_date, close, high, low, volume
                     FROM ohlcv_daily
-                    WHERE symbol = ? AND series = 'EQ'
-                    ORDER BY trading_date DESC
+                    WHERE symbol = ? AND (series = 'EQ' OR series IS NULL OR series = '')
+                    ORDER BY trading_date DESC, retrieval_timestamp DESC
                     LIMIT 65
                 """, (sym,)).fetchall()
                 bars = [dict(b) for b in bars_rows]

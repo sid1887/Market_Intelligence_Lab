@@ -300,6 +300,30 @@ class DatabaseManager:
                 """)
                 conn.commit()
 
+            # 11d. Normalize series in ohlcv_daily to canonical 'EQ' (P0-08 / Split-Brain Remediation)
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ohlcv_daily';")
+            if cursor.fetchone():
+                try:
+                    # Deduplicate any (symbol, trading_date) conflict before normalization
+                    conn.execute("""
+                        DELETE FROM ohlcv_daily
+                        WHERE (series IS NULL OR series = '')
+                          AND EXISTS (
+                              SELECT 1 FROM ohlcv_daily b
+                              WHERE b.symbol = ohlcv_daily.symbol
+                                AND b.trading_date = ohlcv_daily.trading_date
+                                AND b.series = 'EQ'
+                          );
+                    """)
+                    conn.execute("""
+                        UPDATE ohlcv_daily
+                        SET series = 'EQ'
+                        WHERE series IS NULL OR series = '';
+                    """)
+                    conn.commit()
+                except Exception as norm_e:
+                    logger.debug(f"ohlcv_daily series normalization warning: {norm_e}")
+
             # 12. Run Numbered Migrations & Truth Quarantine (P1-01, ADR-0011)
             try:
                 from src.storage.migrations import run_all_migrations

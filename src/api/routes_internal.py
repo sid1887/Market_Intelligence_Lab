@@ -162,6 +162,32 @@ def export_state_endpoint(
                         "volume": int(row["volume"]) if pd.notnull(row["volume"]) else 0,
                     })
 
+    # 6. Latest fundamental metrics from quant_factors_daily for target symbols
+    latest_fundamentals: List[Dict[str, Any]] = []
+    if target_symbols:
+        q_funds = f"""
+            SELECT symbol, roe_pct, opm_pct, debt_to_equity, ttm_pe, eps_growth_yoy, trading_date
+            FROM quant_factors_daily
+            WHERE symbol IN ({placeholders})
+              AND (roe_pct IS NOT NULL OR opm_pct IS NOT NULL OR debt_to_equity IS NOT NULL OR ttm_pe IS NOT NULL)
+            ORDER BY symbol ASC, trading_date DESC
+        """
+        try:
+            df_funds = pd.read_sql_query(q_funds, conn, params=target_symbols)
+            if not df_funds.empty:
+                df_latest_funds = df_funds.drop_duplicates(subset=["symbol"], keep="first")
+                for _, r in df_latest_funds.iterrows():
+                    latest_fundamentals.append({
+                        "symbol": r["symbol"],
+                        "roe_pct": float(r["roe_pct"]) if pd.notnull(r["roe_pct"]) else None,
+                        "opm_pct": float(r["opm_pct"]) if pd.notnull(r["opm_pct"]) else None,
+                        "debt_to_equity": float(r["debt_to_equity"]) if pd.notnull(r["debt_to_equity"]) else None,
+                        "ttm_pe": float(r["ttm_pe"]) if pd.notnull(r["ttm_pe"]) else None,
+                        "eps_growth_yoy": float(r["eps_growth_yoy"]) if pd.notnull(r["eps_growth_yoy"]) else None,
+                    })
+        except Exception as e_funds:
+            logger.warning(f"[INTERNAL-EXPORT] Error querying latest fundamentals: {e_funds}")
+
     return sanitize_for_json({
         "status": "success",
         "watchlist": watchlist,
@@ -169,6 +195,7 @@ def export_state_endpoint(
         "priority_symbols": priority_symbols,
         "latest_ohlcv_date": latest_ohlcv_date,
         "recent_ohlcv": recent_ohlcv,
+        "latest_fundamentals": latest_fundamentals,
         "push_subscriptions": get_all_subscriptions(),
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     })
@@ -589,12 +616,57 @@ def sync_internal_state_endpoint(
         except Exception as e:
             logger.error(f"[INTERNAL-SYNC] Error upserting factor updates: {e}", exc_info=True)
 
-    # If prices or factors were updated, invalidate in-memory screener cache
-    if payload.ohlcv_bars or payload.factor_updates:
+    # 7. Autonomous Closed-Loop Post-Sync Orchestration
+    # A. Recompute Portfolio Rebalance Targets (target_allocation_pct)
+    if payload.factor_updates or payload.ml_forecasts or payload.tournament_summary:
         try:
-            from src.api.main import invalidate_screener_cache
+            from src.quant.rebalance_engine import RebalanceEngine
+            rebal_engine = RebalanceEngine(db)
+            rebal_prop = rebal_engine.generate_daily_rebalance_proposal()
+            counts["rebalance_proposals_generated"] = 1
+            logger.info(f"[INTERNAL-SYNC] Autonomous rebalance proposal generated: {rebal_prop.get('proposal_id') if isinstance(rebal_prop, dict) else 'OK'}")
+        except Exception as re_err:
+            logger.warning(f"[INTERNAL-SYNC] Autonomous rebalance proposal warning: {re_err}")
+
+    # B. Distill Copilot Knowledge Automatically
+    if payload.news_articles or payload.catalysts or payload.ml_forecasts:
+        try:
+            from src.copilot.distiller import CopilotKnowledgeDistiller
+            distiller = CopilotKnowledgeDistiller(db)
+            distill_res = distiller.train()
+            counts["copilot_distillation_trained"] = 1
+            logger.info(f"[INTERNAL-SYNC] Autonomous CopilotKnowledgeDistiller trained: {distill_res}")
+        except Exception as de_err:
+            logger.warning(f"[INTERNAL-SYNC] Autonomous Copilot distillation warning: {de_err}")
+
+    # C. Update supervisor_state & Invalidate Caches
+    try:
+        champion_id = None
+        if payload.tournament_summary:
+            champion_id = (
+                payload.tournament_summary.get("champion_model")
+                or payload.tournament_summary.get("active_model_id")
+                or payload.tournament_summary.get("champion_id")
+            )
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with db.get_connection() as conn:
+            conn.execute("""
+                UPDATE supervisor_state
+                SET active_model_id = COALESCE(?, active_model_id),
+                    updated_at = ?
+                WHERE singleton_id = 1
+            """, (champion_id, now_iso))
+            conn.commit()
+    except Exception as se:
+        logger.warning(f"[INTERNAL-SYNC] Supervisor state synchronization warning: {se}")
+
+    # If prices, factors, or models were updated, invalidate in-memory screener & API caches
+    if payload.ohlcv_bars or payload.factor_updates or payload.ml_forecasts:
+        try:
+            from src.api.main import invalidate_screener_cache, clear_all_api_caches
             invalidate_screener_cache()
-            logger.info("[INTERNAL-SYNC] In-memory screener cache invalidated.")
+            clear_all_api_caches()
+            logger.info("[INTERNAL-SYNC] In-memory screener & API response caches invalidated.")
         except Exception as e:
             logger.warning(f"[INTERNAL-SYNC] Failed to invalidate screener cache: {e}")
 
