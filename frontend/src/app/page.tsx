@@ -11,9 +11,8 @@ import {
   Briefcase,
   LineChart,
   X,
-  Bell,
-  BellRing,
 } from "lucide-react";
+import NotificationCenterPopover from "@/components/NotificationCenterPopover";
 import {
   apiFetch,
   peekCachedData,
@@ -330,6 +329,7 @@ export default function CockpitPage() {
             onClick={() => void loadPageData(true)}
             disabled={pageLoading}
             title="Force refresh universe and invalidate cache"
+            aria-label="Force refresh universe"
             className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800/60 border border-white/[0.06] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${pageLoading ? "animate-spin text-cyan-400" : ""}`} />
@@ -337,6 +337,7 @@ export default function CockpitPage() {
 
           <button
             onClick={() => setShowCommandPalette(true)}
+            aria-label="Open Command Palette"
             className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2 sm:px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
           >
             <Command className="w-3.5 h-3.5 text-cyan-400" />
@@ -349,6 +350,7 @@ export default function CockpitPage() {
               milEvents.emit("mil:open-copilot", { symbol: selectedSymbol || "RELIANCE" });
             }}
             title="Open Quant Copilot Committee (⌘J)"
+            aria-label="Open Quant Copilot Committee"
             className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2 sm:px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/50 hover:border-cyan-400 transition-colors whitespace-nowrap"
           >
             <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
@@ -360,37 +362,17 @@ export default function CockpitPage() {
           <button
             onClick={() => setShowShortcutModal(true)}
             title="Terminal Keyboard Shortcuts (?)"
+            aria-label="Terminal keyboard shortcuts"
             className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-white/[0.04] border border-white/[0.06] transition-colors font-mono text-xs font-bold"
           >
             ?
           </button>
 
-          {/* Web Push Notification Bell */}
-          <button
-            onClick={() => setIsPushModalOpen(true)}
-            title={
-              isPushSubscribed
-                ? "Mobile Web Push Connected (Causal Radar Active)"
-                : "Enable Mobile Web Push & Causal Catalyst Alerts"
-            }
-            className="relative flex items-center justify-center p-1.5 sm:p-2 rounded-lg bg-white/[0.04] hover:bg-cyan-950/40 border border-white/[0.08] hover:border-cyan-500/40 text-slate-300 hover:text-cyan-300 transition-all shadow-sm"
-          >
-            {isPushSubscribed ? (
-              <BellRing className="w-3.5 h-3.5 text-cyan-400" />
-            ) : (
-              <Bell className="w-3.5 h-3.5 text-slate-400" />
-            )}
-            <span className="absolute top-1 right-1 flex h-1.5 w-1.5">
-              {isPushSubscribed ? (
-                <>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                </>
-              ) : (
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400/60" />
-              )}
-            </span>
-          </button>
+          {/* Real-time Notification Center Popover */}
+          <NotificationCenterPopover
+            isPushSubscribed={isPushSubscribed}
+            onOpenPushSettings={() => setIsPushModalOpen(true)}
+          />
 
           {/* Real-Time Dynamic Ingest Button (Desktop) */}
           <IngestStatusButton />
@@ -399,6 +381,7 @@ export default function CockpitPage() {
             <button
               onClick={() => setIsInspectorCollapsed(false)}
               title="Expand Details Inspector"
+              aria-label="Expand Details Inspector"
               className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800/60 rounded-lg transition-colors"
             >
               <PanelRightOpen className="w-3.5 h-3.5 text-cyan-400" />
@@ -409,7 +392,7 @@ export default function CockpitPage() {
       </header>
 
       {/* ──────────────── 2. DEDICATED TELEMETRY SUB-BAR ──────────────── */}
-      <div className="h-8 shrink-0 border-b border-white/[0.04] bg-[#020306] px-3 sm:px-4 flex items-center overflow-x-auto scrollbar-none z-20">
+      <div className="h-8 shrink-0 border-b border-white/[0.04] bg-[#020306] flex items-center overflow-hidden z-20">
         <MacroRibbon
           macroData={macroData}
           supervisorStatus={supervisorStatus}
@@ -488,6 +471,7 @@ export default function CockpitPage() {
           <div className="sticky top-0 z-50 flex items-center justify-between px-3.5 py-2.5 bg-[#060911] border-b border-white/10 shrink-0">
             <button
               onClick={() => setIsMobileInspectorOpen(false)}
+              aria-label="Back to Screener"
               className="flex items-center gap-1.5 text-xs font-mono text-cyan-400 hover:text-cyan-300 font-semibold px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-800/50"
             >
               <span>← Back to Screener</span>
@@ -498,6 +482,7 @@ export default function CockpitPage() {
               </span>
               <button
                 onClick={() => setIsMobileInspectorOpen(false)}
+                aria-label="Close details inspector"
                 className="p-1 rounded-lg text-slate-400 hover:text-white"
               >
                 <X className="w-4 h-4" />

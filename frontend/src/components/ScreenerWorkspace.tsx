@@ -246,7 +246,7 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
 
       {/* Optional Dynamic Columns */}
       {columns.roe && (
-        <div className="w-20 text-right tabular-nums text-slate-300 shrink-0">
+        <div className="hidden lg:block w-20 text-right tabular-nums text-slate-300 shrink-0">
           {cand.roe_pct !== null ? `${cand.roe_pct.toFixed(1)}%` : "—"}
         </div>
       )}
@@ -269,19 +269,19 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
       )}
 
       {columns.opm && (
-        <div className="w-20 text-right tabular-nums text-slate-300 shrink-0">
+        <div className="hidden lg:block w-20 text-right tabular-nums text-slate-300 shrink-0">
           {cand.opm_pct !== null ? `${cand.opm_pct.toFixed(1)}%` : "—"}
         </div>
       )}
 
       {columns.de && (
-        <div className="w-20 text-right tabular-nums text-slate-300 shrink-0">
+        <div className="hidden lg:block w-20 text-right tabular-nums text-slate-300 shrink-0">
           {cand.debt_to_equity !== null ? cand.debt_to_equity.toFixed(2) : "—"}
         </div>
       )}
 
       {columns.score60 && (
-        <div className="w-24 text-right tabular-nums text-slate-300 shrink-0">
+        <div className="hidden lg:block w-24 text-right tabular-nums text-slate-300 shrink-0">
           {cand.score_60d !== null && cand.score_60d !== undefined
             ? cand.score_60d.toFixed(1)
             : "—"}
@@ -289,7 +289,7 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
       )}
 
       {columns.targetAlloc && (
-        <div className="w-20 text-right tabular-nums text-emerald-400 shrink-0 pr-2">
+        <div className="hidden lg:block w-20 text-right tabular-nums text-emerald-400 shrink-0 pr-2">
           {cand.target_allocation_pct
             ? `${cand.target_allocation_pct.toFixed(1)}%`
             : "—"}
@@ -332,14 +332,14 @@ const MobileScreenerRow = React.memo(function MobileScreenerRow({
       onClick={() => onSelect(cand.symbol)}
       onContextMenu={(e) => onContextMenu?.(e, cand)}
       className={cn(
-        "grid grid-cols-12 items-center gap-2 px-3 h-[68px] cursor-pointer text-xs font-mono transition-colors border-b border-white/[0.05] select-none overflow-hidden",
+        "flex items-center justify-between px-3 h-[68px] cursor-pointer text-xs font-mono transition-colors border-b border-white/[0.05] select-none overflow-hidden",
         isSelected
           ? "bg-cyan-950/40 text-white font-medium"
           : "text-slate-300 hover:bg-white/[0.03]"
       )}
     >
-      {/* Cols 1–6 (Left - Instrument) */}
-      <div className="col-span-6 min-w-0">
+      {/* Left - Instrument */}
+      <div className="flex-1 min-w-0 pr-2">
         <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden">
           <span className="text-[11px] font-mono text-slate-400 shrink-0">#{cand.rank || idx + 1}</span>
           <span className="text-sm font-bold text-slate-100 truncate">{cand.symbol}</span>
@@ -354,14 +354,14 @@ const MobileScreenerRow = React.memo(function MobileScreenerRow({
         </span>
       </div>
 
-      {/* Cols 7–9 (Middle - Price & 20D Return, text-right shrink-0) */}
-      <div className="col-span-3 text-right shrink-0 tabular-nums">
-        <div className="text-sm font-mono font-semibold text-slate-100 truncate">
+      {/* Middle - Price & 20D Return, deterministic 88px */}
+      <div className="w-[88px] text-right shrink-0 tabular-nums">
+        <div className="text-xs sm:text-sm font-mono font-semibold text-slate-100 whitespace-nowrap">
           ₹{cand.close !== null ? cand.close.toFixed(2) : "—"}
         </div>
         <div
           className={cn(
-            "text-[11px] font-mono font-medium truncate",
+            "text-[10px] sm:text-[11px] font-mono font-medium whitespace-nowrap",
             isPositiveRet ? "text-emerald-400" : isNegativeRet ? "text-rose-400" : "text-slate-400"
           )}
         >
@@ -370,9 +370,9 @@ const MobileScreenerRow = React.memo(function MobileScreenerRow({
         </div>
       </div>
 
-      {/* Cols 10–12 (Right - Score Pill, flex justify-end shrink-0) */}
-      <div className="col-span-3 flex justify-end shrink-0 items-center">
-        <div className="min-w-[44px] px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-center font-mono text-xs font-bold text-cyan-300">
+      {/* Right - Score Pill, deterministic 52px */}
+      <div className="w-[52px] flex justify-end shrink-0 items-center pl-1">
+        <div className="min-w-[42px] px-1.5 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-500/30 text-center font-mono text-xs font-bold text-cyan-300">
           {score !== null ? score.toFixed(1) : "—"}
         </div>
       </div>
@@ -676,13 +676,14 @@ function ScreenerWorkspaceComponent({
       {/* Top Filter and Navigation Strip */}
       <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-[#050811]">
         {/* Left: View Mode Toggle & Search */}
-        <div className="flex items-center gap-2.5 flex-1 min-w-[280px]">
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
           {onViewModeChange && (
-            <div className="flex items-center p-0.5 rounded-lg bg-[#050811] border border-white/[0.06]">
+            <div className="flex items-center p-0.5 rounded-lg bg-[#050811] border border-white/[0.06] shrink-0">
               <button
                 onClick={() => onViewModeChange("table")}
+                aria-label="Table view mode"
                 className={cn(
-                  "px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
+                  "px-2 sm:px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
                   viewMode === "table"
                     ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold"
                     : "text-slate-400 hover:text-slate-200"
@@ -690,14 +691,15 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <TableIcon className="w-3 h-3" />
-                  <span>Screener</span>
+                  <span className="hidden sm:inline">Screener</span>
                 </span>
               </button>
 
               <button
                 onClick={() => onViewModeChange("heatmap")}
+                aria-label="Heatmap view mode"
                 className={cn(
-                  "px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
+                  "px-2 sm:px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
                   viewMode === "heatmap"
                     ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold"
                     : "text-slate-400 hover:text-slate-200"
@@ -705,14 +707,15 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <LayoutGrid className="w-3 h-3" />
-                  <span>Heatmap</span>
+                  <span className="hidden sm:inline">Heatmap</span>
                 </span>
               </button>
 
               <button
                 onClick={() => onViewModeChange("cards")}
+                aria-label="Cards view mode"
                 className={cn(
-                  "px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
+                  "px-2 sm:px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
                   viewMode === "cards"
                     ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold"
                     : "text-slate-400 hover:text-slate-200"
@@ -720,14 +723,14 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <Grid3X3 className="w-3 h-3" />
-                  <span>Cards</span>
+                  <span className="hidden sm:inline">Cards</span>
                 </span>
               </button>
             </div>
           )}
 
           {/* Quick Search Input */}
-          <div className="relative flex-1 max-w-xs">
+          <div className="relative flex-1 min-w-[140px] max-w-xs">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               ref={searchInputRef}
@@ -735,11 +738,13 @@ function ScreenerWorkspaceComponent({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter ticker, name, sector..."
+              aria-label="Filter tickers, company names, or sectors"
               className="w-full bg-[#050811] border border-white/[0.08] focus:border-cyan-500/60 rounded-md pl-8 pr-7 py-1 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none transition-all"
             />
             {search && (
               <button
                 onClick={() => setSearch("")}
+                aria-label="Clear search"
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
               >
                 <X className="w-3 h-3" />
@@ -810,7 +815,7 @@ function ScreenerWorkspaceComponent({
       </div>
 
       {/* Sector Filter Chips with Live Quantitative Counts */}
-      <div className="shrink-0 border-b border-white/[0.04] px-3.5 py-1.5 flex items-center gap-1.5 overflow-x-auto thin-scrollbar pb-1.5 bg-[#020406]">
+      <div className="h-9 shrink-0 border-b border-white/[0.04] px-3.5 flex items-center gap-1.5 overflow-x-auto overflow-y-hidden thin-scrollbar bg-[#020406]">
         {SECTOR_FILTERS.map((sec) => (
           <button
             key={sec}
@@ -857,21 +862,24 @@ function ScreenerWorkspaceComponent({
         <div className="h-3 w-[1px] bg-white/[0.08] mx-1 shrink-0" />
 
         {/* Min ROE % Input (H3) */}
-        <div className="flex items-center gap-1.5 bg-[#050811] border border-white/[0.08] px-2 py-0.5 rounded text-[11px] font-mono text-slate-300 shrink-0">
+        <div className="flex items-center gap-1 bg-[#050811] border border-white/[0.08] px-2 py-0.5 rounded text-[11px] font-mono text-slate-300 shrink-0">
           <span className="text-[10px] text-slate-400">Min ROE:</span>
           <input
             type="number"
             min="0"
             max="100"
-            placeholder="0%"
+            placeholder="0"
+            aria-label="Minimum ROE percentage"
             value={minRoe !== null ? minRoe : ""}
             onChange={(e) => setMinRoe(e.target.value ? Math.max(0, parseFloat(e.target.value)) : null)}
-            className="w-10 bg-transparent text-cyan-300 font-bold focus:outline-none tabular-nums placeholder-slate-600"
+            className="w-9 bg-transparent text-right text-cyan-300 font-bold focus:outline-none tabular-nums placeholder-slate-600"
           />
+          <span className="text-[10px] text-slate-500">%</span>
           {minRoe !== null && (
             <button
               onClick={() => setMinRoe(null)}
-              className="text-slate-500 hover:text-slate-200 text-xs leading-none"
+              aria-label="Clear Min ROE filter"
+              className="text-slate-500 hover:text-slate-200 text-xs leading-none ml-0.5"
               title="Clear Min ROE"
             >
               ×
@@ -1016,11 +1024,21 @@ function ScreenerWorkspaceComponent({
         </div>
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0 h-full">
-          {/* Desktop Virtual Table View (hidden on mobile, flex on lg:) */}
-          <div className="hidden lg:flex flex-col flex-1 overflow-hidden min-h-0">
+          {/* Desktop Virtual Table View (hidden on mobile, flex on md:) */}
+          <div className="hidden md:flex flex-col flex-1 overflow-hidden min-h-0">
             {/* Fixed Sticky Header */}
             <div className="shrink-0 flex items-center px-3 py-2 border-b border-white/[0.08] bg-[#060a12] sticky top-0 z-20 text-[10px] font-mono font-semibold uppercase tracking-wider text-slate-400">
               <div
+                role="columnheader"
+                tabIndex={0}
+                aria-label="Sort by rank"
+                aria-sort={sortField === "rank" ? (sortAsc ? "ascending" : "descending") : "none"}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("rank");
+                  }
+                }}
                 className="w-12 text-center shrink-0 cursor-pointer flex items-center justify-center gap-1 hover:text-slate-200"
                 onClick={() => handleSort("rank")}
               >
@@ -1031,6 +1049,16 @@ function ScreenerWorkspaceComponent({
               </div>
 
               <div
+                role="columnheader"
+                tabIndex={0}
+                aria-label="Sort by symbol"
+                aria-sort={sortField === "symbol" ? (sortAsc ? "ascending" : "descending") : "none"}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("symbol");
+                  }
+                }}
                 className="flex-1 min-w-[180px] cursor-pointer flex items-center gap-1 hover:text-slate-200"
                 onClick={() => handleSort("symbol")}
               >
@@ -1041,6 +1069,16 @@ function ScreenerWorkspaceComponent({
               </div>
 
               <div
+                role="columnheader"
+                tabIndex={0}
+                aria-label="Sort by close price"
+                aria-sort={sortField === "close" ? (sortAsc ? "ascending" : "descending") : "none"}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("close");
+                  }
+                }}
                 className="w-28 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200"
                 onClick={() => handleSort("close")}
               >
@@ -1051,6 +1089,16 @@ function ScreenerWorkspaceComponent({
               </div>
 
               <div
+                role="columnheader"
+                tabIndex={0}
+                aria-label="Sort by blended score"
+                aria-sort={sortField === "blended_score" ? (sortAsc ? "ascending" : "descending") : "none"}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("blended_score");
+                  }
+                }}
                 className="w-28 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200"
                 onClick={() => handleSort("blended_score")}
                 title="Blended Multi-Horizon Score"
@@ -1064,7 +1112,17 @@ function ScreenerWorkspaceComponent({
               {/* Dynamic Optional Column Headers */}
               {columns.roe && (
                 <div
-                  className="w-20 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200"
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by ROE"
+                  aria-sort={sortField === "roe_pct" ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("roe_pct");
+                    }
+                  }}
+                  className="hidden lg:flex w-20 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
                   onClick={() => handleSort("roe_pct")}
                 >
                   <span>ROE</span>
@@ -1076,6 +1134,16 @@ function ScreenerWorkspaceComponent({
 
               {columns.ret20 && (
                 <div
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by 20D return"
+                  aria-sort={(sortField === "ret_20d" || sortField === "excess_ret_20d") ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("ret_20d");
+                    }
+                  }}
                   className="w-24 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200 pr-2"
                   onClick={() => handleSort("ret_20d")}
                 >
@@ -1088,7 +1156,17 @@ function ScreenerWorkspaceComponent({
 
               {columns.opm && (
                 <div
-                  className="w-20 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200"
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by OPM"
+                  aria-sort={sortField === "opm_pct" ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("opm_pct");
+                    }
+                  }}
+                  className="hidden lg:flex w-20 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
                   onClick={() => handleSort("opm_pct")}
                 >
                   <span>OPM</span>
@@ -1100,7 +1178,17 @@ function ScreenerWorkspaceComponent({
 
               {columns.de && (
                 <div
-                  className="w-20 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200"
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by Debt to Equity"
+                  aria-sort={sortField === "debt_to_equity" ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("debt_to_equity");
+                    }
+                  }}
+                  className="hidden lg:flex w-20 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
                   onClick={() => handleSort("debt_to_equity")}
                 >
                   <span>D/E</span>
@@ -1112,7 +1200,17 @@ function ScreenerWorkspaceComponent({
 
               {columns.score60 && (
                 <div
-                  className="w-24 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200"
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by 60D score"
+                  aria-sort={sortField === "score_60d" ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("score_60d");
+                    }
+                  }}
+                  className="hidden lg:flex w-24 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
                   onClick={() => handleSort("score_60d")}
                 >
                   <span>60D Score</span>
@@ -1124,7 +1222,17 @@ function ScreenerWorkspaceComponent({
 
               {columns.targetAlloc && (
                 <div
-                  className="w-20 text-right shrink-0 cursor-pointer flex items-center justify-end gap-1 hover:text-slate-200 pr-2"
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by target allocation percentage"
+                  aria-sort={sortField === "target_allocation_pct" ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("target_allocation_pct");
+                    }
+                  }}
+                  className="hidden lg:flex w-20 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200 pr-2"
                   onClick={() => handleSort("target_allocation_pct")}
                 >
                   <span>Target %</span>
@@ -1156,7 +1264,7 @@ function ScreenerWorkspaceComponent({
                         <div className="w-16 h-5 bg-white/[0.06] rounded-md" />
                       </div>
                       {columns.roe && (
-                        <div className="w-20 flex justify-end">
+                        <div className="hidden lg:flex w-20 justify-end">
                           <div className="w-10 h-3.5 bg-white/[0.06] rounded" />
                         </div>
                       )}
@@ -1166,22 +1274,22 @@ function ScreenerWorkspaceComponent({
                         </div>
                       )}
                       {columns.opm && (
-                        <div className="w-20 flex justify-end">
+                        <div className="hidden lg:flex w-20 justify-end">
                           <div className="w-10 h-3.5 bg-white/[0.06] rounded" />
                         </div>
                       )}
                       {columns.de && (
-                        <div className="w-20 flex justify-end">
+                        <div className="hidden lg:flex w-20 justify-end">
                           <div className="w-10 h-3.5 bg-white/[0.06] rounded" />
                         </div>
                       )}
                       {columns.score60 && (
-                        <div className="w-24 flex justify-end">
+                        <div className="hidden lg:flex w-24 justify-end">
                           <div className="w-12 h-3.5 bg-white/[0.06] rounded" />
                         </div>
                       )}
                       {columns.targetAlloc && (
-                        <div className="w-20 flex justify-end pr-2">
+                        <div className="hidden lg:flex w-20 justify-end pr-2">
                           <div className="w-10 h-3.5 bg-white/[0.06] rounded" />
                         </div>
                       )}
@@ -1232,8 +1340,8 @@ function ScreenerWorkspaceComponent({
             </div>
           </div>
 
-          {/* Mobile Card-Row List View (block on mobile, hidden on lg:) */}
-          <div ref={mobileParentRef} className="block lg:hidden flex-1 overflow-y-auto min-h-0 relative">
+          {/* Mobile Card-Row List View (block on mobile, hidden on md:) */}
+          <div ref={mobileParentRef} className="block md:hidden flex-1 overflow-y-auto min-h-0 relative">
             {/* Mobile Header Banner */}
             <div className="flex items-center justify-between px-3 py-1.5 text-[10px] font-mono text-slate-400 border-b border-white/[0.06] bg-[#020406] sticky top-0 z-10">
               <span>RANK · INSTRUMENT</span>
@@ -1311,7 +1419,7 @@ function ScreenerWorkspaceComponent({
       )}
 
       {/* Bottom Keyboard Navigation Hint Bar */}
-      <div className="hidden sm:flex shrink-0 border-t border-white/[0.04] px-3.5 py-1.5 items-center justify-between text-[10px] font-mono text-slate-500 bg-[#020406]">
+      <div className="hidden md:flex shrink-0 border-t border-white/[0.04] px-3.5 py-1.5 items-center justify-between text-[10px] font-mono text-slate-500 bg-[#020406]">
         <div className="flex items-center gap-3">
           <span>
             <kbd className="px-1 py-0.5 rounded bg-slate-900 border border-white/[0.08] text-slate-400">↑</kbd>

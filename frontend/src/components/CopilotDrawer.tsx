@@ -167,7 +167,8 @@ export function FormattedMarkdown({
 }) {
   if (!content) return null;
 
-  const rawLines = content.split("\n");
+  const sanitizedContent = cleanLatexToPlainText(content);
+  const rawLines = sanitizedContent.split("\n");
 
   const parseInline = (text: string) => {
     const parts: React.ReactNode[] = [];
@@ -1003,28 +1004,28 @@ export default function CopilotDrawer({
               }`}
             >
               {/* Header Bar */}
-              <div className="h-14 px-5 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-[#080c14]">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.2)]">
+              <div className="h-14 px-3 sm:px-5 border-b border-white/[0.08] flex items-center justify-between shrink-0 bg-[#080c14]">
+                <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.2)] shrink-0">
                     <BrainCircuit className="w-4 h-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center space-x-2">
-                      <span className="text-xs font-bold font-mono text-white tracking-wider">
+                      <span className="text-xs font-bold font-mono text-white tracking-wider truncate">
                         QUANT COPILOT
                       </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_8px_rgba(6,182,212,0.2)]">
+                      <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_8px_rgba(6,182,212,0.2)]">
                         Multi-Agent Committee
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono block">
+                    <span className="text-[10px] text-slate-400 font-mono block truncate">
                       TradingAgents Architecture · Free Tier Engine
                     </span>
                   </div>
                 </div>
 
                 {/* Right controls */}
-                <div className="flex items-center space-x-1.5">
+                <div className="flex items-center space-x-1 shrink-0">
                   <button
                     onClick={() => {
                       setChatHistory([]);
@@ -1039,6 +1040,7 @@ export default function CopilotDrawer({
                       });
                     }}
                     title="Clear Chat Thread"
+                    aria-label="Clear chat thread"
                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/[0.06] transition-colors"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -1046,6 +1048,7 @@ export default function CopilotDrawer({
                   <button
                     onClick={handleExportMarkdown}
                     title="Export deliberation transcript to Markdown (.md)"
+                    aria-label="Export deliberation transcript"
                     className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-white/[0.06] transition-colors"
                   >
                     <Download className="w-4 h-4" />
@@ -1053,6 +1056,7 @@ export default function CopilotDrawer({
                   <button
                     onClick={() => setIsExpanded(!isExpanded)}
                     title={isExpanded ? "Restore width" : "Expand width"}
+                    aria-label={isExpanded ? "Restore width" : "Expand width"}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors hidden sm:block"
                   >
                     {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -1060,6 +1064,7 @@ export default function CopilotDrawer({
                   <button
                     onClick={handleClose}
                     title="Close Drawer (Esc)"
+                    aria-label="Close drawer"
                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/[0.06] transition-colors"
                   >
                     <X className="w-4 h-4" />
@@ -1068,32 +1073,32 @@ export default function CopilotDrawer({
               </div>
 
               {/* Context-Aware Active Instrument Banner */}
-              <div className="px-5 py-2.5 bg-[#050810]/80 border-b border-white/[0.06] flex items-center justify-between font-mono text-xs shrink-0">
-                <div className="flex items-center space-x-2.5">
-                  <span className="text-slate-400 text-[11px] uppercase tracking-wider">Active Context:</span>
+              <div className="px-3 sm:px-5 py-2 bg-[#050810]/80 border-b border-white/[0.06] flex items-center justify-between font-mono text-xs shrink-0 overflow-hidden">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <span className="text-slate-400 text-[11px] uppercase tracking-wider whitespace-nowrap shrink-0">Context:</span>
                   {activeSymbol ? (
-                    <span className="text-white font-bold tracking-tight px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.1] shadow-sm">
+                    <span className="text-white font-bold tracking-tight px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.1] shadow-sm truncate">
                       {activeSymbol}
                     </span>
                   ) : (
-                    <span className="text-slate-400 italic text-[11px]">Market Overview</span>
+                    <span className="text-slate-400 italic text-[11px] whitespace-nowrap">Market Overview</span>
                   )}
                   {activePrice !== undefined ? (
-                    <span className="text-slate-200 font-semibold tabular-nums">₹{activePrice.toFixed(2)}</span>
+                    <span className="text-slate-200 font-semibold tabular-nums whitespace-nowrap">₹{activePrice.toFixed(2)}</span>
                   ) : activeSymbol ? (
-                    <span className="text-slate-500 text-[11px] flex items-center space-x-1">
+                    <span className="text-slate-500 text-[11px] flex items-center space-x-1 whitespace-nowrap">
                       <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
                       <span>Syncing...</span>
                     </span>
                   ) : null}
                 </div>
                 {activeVerdict ? (
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)] max-w-[130px] sm:max-w-none truncate shrink-0">
                     {activeVerdict.replace(/_/g, " ")}
                   </span>
                 ) : (
-                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono text-slate-400 border border-white/[0.08]">
-                    {activeSymbol ? "Pending Verdict" : "NIFTY 50 Active"}
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono text-slate-400 border border-white/[0.08] whitespace-nowrap shrink-0">
+                    {activeSymbol ? "Pending Verdict" : "NIFTY 50"}
                   </span>
                 )}
               </div>
@@ -1375,7 +1380,7 @@ export default function CopilotDrawer({
               {/* ───────────────────────────────────────────────────────────── */}
               {/* 4. ACTIONABLE PROMPT CHIPS & INPUT BOX                        */}
               {/* ───────────────────────────────────────────────────────────── */}
-              <div className="p-4 border-t border-white/[0.08] bg-[#06090f]/95 space-y-2.5 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <div className="p-3 sm:p-4 border-t border-white/[0.08] bg-[#06090f]/95 space-y-2.5 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 {/* Expandable ML Forecast Card Docked Above Input Dock */}
                 <AnimatePresence>
                   {showMlPanel && mlForecast && !mlForecast.error && (

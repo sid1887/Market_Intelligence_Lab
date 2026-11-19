@@ -123,10 +123,10 @@ function MacroRibbonComponent({
   const supervisorInfo = getSupervisorBadge();
 
   return (
-    <div className="flex items-center overflow-x-auto thin-scrollbar font-mono text-[11px] divide-x divide-white/[0.06] bg-white/[0.02] border-b border-white/[0.06] h-8 w-full select-none relative">
+    <div className="h-full w-full flex items-center overflow-x-auto overflow-y-hidden thin-scrollbar px-2 font-mono text-[11px] divide-x divide-white/[0.06] select-none relative">
       {/* Live SSE Pulse Pill */}
       <div
-        className="flex items-center gap-2 px-3 py-1 text-slate-300 whitespace-nowrap shrink-0"
+        className="h-full flex items-center gap-1.5 px-3 text-slate-300 whitespace-nowrap shrink-0"
         title={
           effectiveIngestTime
             ? `Last Dynamic Ingestion: ${new Date(effectiveIngestTime).toLocaleString()} (Continuous feed)`
@@ -192,7 +192,7 @@ function MacroRibbonComponent({
         return (
           <div
             key={ind.symbol}
-            className={`flex items-center gap-2 px-3 py-1 text-slate-300 whitespace-nowrap shrink-0 transition-colors ${flashClass}`}
+            className={`h-full flex items-center gap-1.5 px-3 text-slate-300 whitespace-nowrap shrink-0 transition-colors ${flashClass}`}
             title={`${ind.label} (${ind.source}) - ${ind.freshness_status || "LIVE"}`}
           >
             <span className="text-slate-500 font-medium text-[10px] uppercase tracking-wider">{ind.label}:</span>
@@ -229,7 +229,7 @@ function MacroRibbonComponent({
 
       {/* Supervisor Health State */}
       <div
-        className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-mono whitespace-nowrap shrink-0 ml-auto"
+        className="h-full flex items-center gap-1.5 px-3 text-[10px] font-mono whitespace-nowrap shrink-0 ml-auto"
         title={`Autonomous Supervisor State: ${supervisorInfo.label} | ${supervisorInfo.modelText}`}
       >
         {supervisorInfo.icon}
