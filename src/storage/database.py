@@ -233,7 +233,44 @@ class DatabaseManager:
             if sec_cols and "is_nifty50" not in sec_cols:
                 conn.execute("ALTER TABLE securities_master ADD COLUMN is_nifty50 INTEGER NOT NULL DEFAULT 0;")
 
-            # 11. Run Numbered Migrations & Truth Quarantine (P1-01, ADR-0011)
+            # 11. LLM Usage Telemetry & Copilot Knowledge Distillation Corpus
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS llm_usage_telemetry (
+                    usage_date TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    model_id TEXT NOT NULL,
+                    requests_used INTEGER DEFAULT 0,
+                    prompt_tokens INTEGER DEFAULT 0,
+                    completion_tokens INTEGER DEFAULT 0,
+                    total_tokens INTEGER DEFAULT 0,
+                    remaining_requests_header INTEGER,
+                    remaining_tokens_header INTEGER,
+                    daily_request_limit INTEGER NOT NULL,
+                    daily_token_limit INTEGER NOT NULL,
+                    last_used_at TEXT,
+                    PRIMARY KEY (usage_date, model_id)
+                );
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS copilot_distillation_corpus (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    intent TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    sector TEXT,
+                    user_prompt TEXT NOT NULL,
+                    abstracted_prompt TEXT NOT NULL,
+                    telemetry_features_json TEXT NOT NULL,
+                    teacher_model TEXT NOT NULL,
+                    teacher_response TEXT NOT NULL,
+                    abstracted_template TEXT NOT NULL,
+                    tokens_total INTEGER DEFAULT 0
+                );
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_intent ON copilot_distillation_corpus(intent);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_symbol ON copilot_distillation_corpus(symbol);")
+
+            # 12. Run Numbered Migrations & Truth Quarantine (P1-01, ADR-0011)
             try:
                 from src.storage.migrations import run_all_migrations
                 run_all_migrations(conn)

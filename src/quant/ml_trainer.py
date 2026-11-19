@@ -484,10 +484,21 @@ class WalkForwardMLTrainer:
             with open(self.summary_path, "w", encoding="utf-8") as f:
                 json.dump(summary_dict, f, indent=2)
 
+        # Hook Copilot Knowledge Distillation training at end of tournament
+        try:
+            from src.copilot.distiller import CopilotKnowledgeDistiller
+            distiller = CopilotKnowledgeDistiller(self.db)
+            distiller.train()
+        except Exception as de:
+            logger.debug(f"[ML-TOURNAMENT] Copilot distillation training notice: {de}")
+
         import gc
         gc.collect()
 
         return all_results
+
+    # Alias for run_training_tournament
+    run_tournament = run_training_tournament
 
     def get_ml_telemetry(self, limit: int = 25) -> Dict[str, Any]:
         """Returns chronological training ledger and currently active champions."""

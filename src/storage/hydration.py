@@ -110,6 +110,43 @@ def ensure_core_tables_exist(conn: sqlite3.Connection):
         );
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS llm_usage_telemetry (
+            usage_date TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            requests_used INTEGER DEFAULT 0,
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
+            remaining_requests_header INTEGER,
+            remaining_tokens_header INTEGER,
+            daily_request_limit INTEGER NOT NULL,
+            daily_token_limit INTEGER NOT NULL,
+            last_used_at TEXT,
+            PRIMARY KEY (usage_date, model_id)
+        );
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS copilot_distillation_corpus (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            intent TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            sector TEXT,
+            user_prompt TEXT NOT NULL,
+            abstracted_prompt TEXT NOT NULL,
+            telemetry_features_json TEXT NOT NULL,
+            teacher_model TEXT NOT NULL,
+            teacher_response TEXT NOT NULL,
+            abstracted_template TEXT NOT NULL,
+            tokens_total INTEGER DEFAULT 0
+        );
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_intent ON copilot_distillation_corpus(intent);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_distill_symbol ON copilot_distillation_corpus(symbol);")
+
 
 def repair_null_ret_20d(target: Any) -> int:
     """
@@ -191,6 +228,8 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                 "model_registry",
                 "supervisor_state",
                 "ml_training_runs",
+                "llm_usage_telemetry",
+                "copilot_distillation_corpus",
             ]
 
             for tbl in table_order:

@@ -28,6 +28,42 @@ import {
 } from "lucide-react";
 import { RobustSSEParser, ServerSentEvent } from "@/lib/sseParser";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { milEvents } from "@/lib/store";
+import { Database, Gauge, Zap } from "lucide-react";
+
+interface ModelQuotaStatus {
+  model_id: string;
+  provider: string;
+  requests_used: number;
+  daily_request_limit: number;
+  requests_remaining: number;
+  requests_pct_used: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  daily_token_limit: number;
+  tokens_remaining: number;
+  tokens_pct_used: number;
+  remaining_requests_header?: number;
+  remaining_tokens_header?: number;
+  last_used_at?: string;
+}
+
+interface DistillationStats {
+  corpus_size: number;
+  trace_count?: number;
+  vocabulary_size: number;
+  model_status: string;
+  last_trained_at?: string;
+}
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp?: string;
+  modelUsed?: string;
+  tokenUsage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+}
 
 export interface MLForecastData {
   symbol?: string;
@@ -79,6 +115,32 @@ interface DeliberationState {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+
+export function cleanLatexToPlainText(raw: string): string {
+  if (!raw) return "";
+  let clean = raw;
+  // Block math delimiters \[ ... \] and display math $$ ... $$
+  clean = clean.replace(/\\\[([\s\S]*?)\\\]/g, "$1");
+  clean = clean.replace(/\$\$([\s\S]*?)\$\$/g, "$1");
+  // Inline math delimiters \( ... \)
+  clean = clean.replace(/\\\(([\s\S]*?)\\\)/g, "$1");
+  // Fractions \frac{a}{b} -> (a ÷ b)
+  clean = clean.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1 ÷ $2)");
+  // Common math symbols
+  clean = clean.replace(/\\times\b/g, "×");
+  clean = clean.replace(/\\approx\b/g, "≈");
+  clean = clean.replace(/\\le\b/g, "≤");
+  clean = clean.replace(/\\ge\b/g, "≥");
+  clean = clean.replace(/\\pm\b/g, "±");
+  clean = clean.replace(/\\cdot\b/g, "·");
+  // Text formatting inside math: \text{...}, \mathbf{...}, \mathit{...}
+  clean = clean.replace(/\\mathbf\{([^}]+)\}/g, "**$1**");
+  clean = clean.replace(/\\text\{([^}]+)\}/g, "$1");
+  clean = clean.replace(/\\mathit\{([^}]+)\}/g, "*$1*");
+  // Remove leftover backslashes before common tokens
+  clean = clean.replace(/\\%/g, "%");
+  return clean;
+}
 
 export function FormattedMarkdown({
   content,
@@ -423,9 +485,7 @@ export default function CopilotDrawer({
 
   const [prompt, setPrompt] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
-  const [chatHistory, setChatHistory] = useState<
-    Array<{ role: "user" | "assistant"; content: string; timestamp?: string }>
-  >([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [expandedSections, setExpandedSections] = useState<{ bull: boolean; bear: boolean; judge: boolean }>({
     bull: true,
     bear: true,
@@ -444,6 +504,69 @@ export default function CopilotDrawer({
   const [mlForecast, setMlForecast] = useState<MLForecastData | null>(null);
   const [showMlPanel, setShowMlPanel] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [isDebateActive, setIsDebateActive] = useState(false);
+  const [showQuotaPanel, setShowQuotaPanel] = useState(false);
+  const [quotaData, setQuotaData] = useState<{
+    models: ModelQuotaStatus[];
+    distillation: DistillationStats;
+  } | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
+  const [isDistilling, setIsDistilling] = useState(false);
+  const [distillSuccessMessage, setDistillSuccessMessage] = useState<string | null>(null);
+
+  const runDeliberationRef = useRef<(customPrompt?: string) => Promise<void>>();
+
+  // Subscribe to mil:open-copilot event
+  useEffect(() => {
+    const unsub = milEvents.on("mil:open-copilot", (payload) => {
+      setInternalIsOpen(true);
+      if (payload?.initialPrompt) {
+        void runDeliberationRef.current?.(payload.initialPrompt);
+      }
+    });
+    return unsub;
+  }, []);
+
+  const fetchQuotaTelemetry = useCallback(async () => {
+    setQuotaLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/copilot/usage`);
+      if (res.ok) {
+        const json = await res.json();
+        setQuotaData({
+          models: json.models || [],
+          distillation: json.distillation || { corpus_size: 0, vocabulary_size: 0, model_status: "untrained" },
+        });
+      }
+    } catch (e) {
+      console.error("Quota telemetry fetch error:", e);
+    } finally {
+      setQuotaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showQuotaPanel) {
+      void fetchQuotaTelemetry();
+    }
+  }, [showQuotaPanel, fetchQuotaTelemetry]);
+
+  const handleTriggerDistillation = async () => {
+    setIsDistilling(true);
+    setDistillSuccessMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/copilot/distill`, { method: "POST" });
+      if (res.ok) {
+        setDistillSuccessMessage("Distillation tournament trained successfully!");
+        void fetchQuotaTelemetry();
+        setTimeout(() => setDistillSuccessMessage(null), 3500);
+      }
+    } catch (e) {
+      console.error("Distillation trigger error:", e);
+    } finally {
+      setIsDistilling(false);
+    }
+  };
 
   const handleCopyMessage = useCallback((content: string, idx: number) => {
     try {
@@ -577,6 +700,7 @@ export default function CopilotDrawer({
 
   // Start Multi-Agent Deliberation Stream
   const runDeliberation = async (customPrompt?: string) => {
+    runDeliberationRef.current = runDeliberation;
     const userInstruction = customPrompt || prompt || "Debate Bull vs Bear Thesis";
     const targetSymbol = activeSymbol || "NIFTY 50";
     
@@ -600,6 +724,8 @@ export default function CopilotDrawer({
 
     let streamConversational = "";
     let streamJudge = "";
+    let lastModelUsed = "";
+    let lastTokenUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
 
     try {
       const response = await fetch(`${API_BASE}/copilot/stream`, {
@@ -635,11 +761,26 @@ export default function CopilotDrawer({
           const data = JSON.parse(ev.data);
 
           if (data.stage === "bull_analyst") {
+            setIsDebateActive(true);
             if (!bullStartTimeRef.current) bullStartTimeRef.current = Date.now();
             setBullElapsed(formatSeconds((Date.now() - bullStartTimeRef.current) / 1000));
           } else if (data.stage === "bear_analyst") {
+            setIsDebateActive(true);
             if (!bearStartTimeRef.current) bearStartTimeRef.current = Date.now();
             setBearElapsed(formatSeconds((Date.now() - bearStartTimeRef.current) / 1000));
+          } else if (data.stage === "judge_synthesis") {
+            setIsDebateActive(true);
+          } else if (data.stage === "conversational") {
+            setIsDebateActive(false);
+          }
+
+          if (data.stage === "complete") {
+            if (data.model_used || data.result?.model_used) {
+              lastModelUsed = data.model_used || data.result?.model_used;
+            }
+            if (data.token_usage || data.result?.token_usage) {
+              lastTokenUsage = data.token_usage || data.result?.token_usage;
+            }
           }
 
           setState(prev => {
@@ -713,7 +854,13 @@ export default function CopilotDrawer({
         setChatHistory(prev => [
           ...prev,
           { role: "user", content: userInstruction, timestamp: nowStr },
-          { role: "assistant", content: reply, timestamp: nowStr }
+          {
+            role: "assistant",
+            content: reply,
+            timestamp: nowStr,
+            modelUsed: lastModelUsed,
+            tokenUsage: lastTokenUsage
+          }
         ]);
         // Clear conversationalText so completed turns render exclusively inside chatHistory (zero duplication)
         setState(prev => ({
@@ -1038,6 +1185,18 @@ export default function CopilotDrawer({
                                 </div>
                               </div>
                               <FormattedMarkdown content={msg.content} role="general" />
+                              {msg.modelUsed && (
+                                <div className="flex items-center gap-1.5 mt-2 pt-1.5 border-t border-white/[0.04] text-[10px] font-mono text-slate-400">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-semibold">
+                                    ⚡ {msg.modelUsed.replace(/^groq:/, "").replace(/^gemini:/, "").replace(/^local:/, "")}
+                                  </span>
+                                  {msg.tokenUsage && msg.tokenUsage.total_tokens ? (
+                                    <span className="text-slate-500">
+                                      · {msg.tokenUsage.total_tokens.toLocaleString()} tok
+                                    </span>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -1069,7 +1228,7 @@ export default function CopilotDrawer({
                 )}
 
                 {/* STAGE 1: BULL ANALYST */}
-                {!state.conversationalText && (state.bullText || state.stage === "bull_analyst" || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
+                {isDebateActive && (state.bullText || state.stage === "bull_analyst" || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
                   <div className="border border-emerald-500/20 bg-emerald-950/20 rounded-xl overflow-hidden shadow-sm">
                     <button
                       onClick={() => toggleSection("bull")}
@@ -1098,7 +1257,7 @@ export default function CopilotDrawer({
                 )}
 
                 {/* STAGE 2: BEAR ANALYST */}
-                {!state.conversationalText && (state.bearText || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
+                {isDebateActive && (state.bearText || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
                   <div className="border border-rose-500/20 bg-rose-950/20 rounded-xl overflow-hidden shadow-sm">
                     <button
                       onClick={() => toggleSection("bear")}
@@ -1127,7 +1286,7 @@ export default function CopilotDrawer({
                 )}
 
                 {/* STAGE 3: PORTFOLIO MANAGER JUDGE */}
-                {!state.conversationalText && (state.judgeText || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
+                {isDebateActive && (state.judgeText || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
                   <div className="border border-cyan-500/30 bg-cyan-950/20 rounded-xl overflow-hidden shadow-md">
                     <button
                       onClick={() => toggleSection("judge")}
@@ -1277,6 +1436,154 @@ export default function CopilotDrawer({
                       )}
                     </motion.div>
                   )}
+
+                  {/* Collapsible 📊 Engine & Quota Panel */}
+                  {showQuotaPanel && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="border border-cyan-500/30 bg-[#060b18] rounded-2xl p-3.5 space-y-3 shadow-xl overflow-hidden"
+                    >
+                      <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
+                        <div className="flex items-center space-x-2">
+                          <Gauge className="w-4 h-4 text-cyan-400" />
+                          <h4 className="text-xs font-bold text-white font-mono">LLM Quota Metering & Student Distillation</h4>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void fetchQuotaTelemetry()}
+                          disabled={quotaLoading}
+                          className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${quotaLoading ? "animate-spin" : ""}`} />
+                          <span>Refresh</span>
+                        </button>
+                      </div>
+
+                      {quotaLoading && !quotaData ? (
+                        <div className="flex items-center justify-center py-4 text-xs font-mono text-slate-500">
+                          <Loader2 className="w-4 h-4 animate-spin mr-2 text-cyan-400" />
+                          <span>Loading quota telemetry...</span>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {/* Models Quota Table */}
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 block">
+                              Active Multi-Model Daily Free-Tier Quota (UTC)
+                            </span>
+                            <div className="grid gap-1.5">
+                              {quotaData?.models.map((m) => {
+                                const reqPct = Math.min(100, m.requests_pct_used || 0);
+                                const tokPct = Math.min(100, m.tokens_pct_used || 0);
+                                return (
+                                  <div
+                                    key={m.model_id}
+                                    className="bg-slate-950/80 border border-white/[0.04] rounded-xl p-2.5 space-y-1.5 text-xs font-mono"
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center space-x-1.5">
+                                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                                          m.provider === "groq"
+                                            ? "bg-orange-950/80 text-orange-400 border border-orange-800/60"
+                                            : "bg-blue-950/80 text-blue-400 border border-blue-800/60"
+                                        }`}>
+                                          {m.provider}
+                                        </span>
+                                        <span className="text-slate-200 font-semibold">{m.model_id}</span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400">
+                                        {m.requests_remaining} reqs left
+                                      </span>
+                                    </div>
+
+                                    {/* Requests Progress */}
+                                    <div className="space-y-0.5">
+                                      <div className="flex justify-between text-[10px] text-slate-400">
+                                        <span>Requests: {m.requests_used} / {m.daily_request_limit}</span>
+                                        <span>{reqPct}%</span>
+                                      </div>
+                                      <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full transition-all duration-300 ${
+                                            reqPct > 80 ? "bg-rose-500" : reqPct > 50 ? "bg-amber-500" : "bg-cyan-500"
+                                          }`}
+                                          style={{ width: `${reqPct}%` }}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Tokens */}
+                                    <div className="flex justify-between text-[10px] text-slate-500">
+                                      <span>Tokens: {m.total_tokens.toLocaleString()} / {m.daily_token_limit.toLocaleString()}</span>
+                                      <span>{tokPct}%</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Knowledge Distillation Engine Status */}
+                          <div className="bg-cyan-950/30 border border-cyan-500/20 rounded-xl p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-1.5">
+                                <Database className="w-3.5 h-3.5 text-cyan-400" />
+                                <span className="text-xs font-mono font-bold text-cyan-200">
+                                  Student Knowledge Distillation (Offline)
+                                </span>
+                              </div>
+                              <span className="text-[9px] px-1.5 py-0.5 rounded font-mono bg-cyan-900/60 text-cyan-300 border border-cyan-700/50 uppercase font-semibold">
+                                {quotaData?.distillation?.model_status || "ACTIVE"}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                              <div className="bg-slate-950/70 p-2 rounded-lg border border-white/[0.04]">
+                                <span className="text-slate-500 block text-[9px]">Corpus Size</span>
+                                <span className="text-white font-bold">
+                                  {quotaData?.distillation?.corpus_size ?? quotaData?.distillation?.trace_count ?? 0} Traces
+                                </span>
+                              </div>
+                              <div className="bg-slate-950/70 p-2 rounded-lg border border-white/[0.04]">
+                                <span className="text-slate-500 block text-[9px]">Vocabulary Size</span>
+                                <span className="text-white font-bold">
+                                  {quotaData?.distillation?.vocabulary_size ?? 0} Terms
+                                </span>
+                              </div>
+                            </div>
+
+                            {distillSuccessMessage && (
+                              <div className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-1 rounded-lg">
+                                ✓ {distillSuccessMessage}
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={handleTriggerDistillation}
+                              disabled={isDistilling}
+                              className="w-full py-1.5 px-3 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-mono text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                            >
+                              {isDistilling ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Training Student Tournament...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Zap className="w-3.5 h-3.5" />
+                                  <span>Train Distillation Engine Now</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
                 </AnimatePresence>
 
                 {/* 1-Click Action Chips (Single Horizontal Scrollable Row) */}
@@ -1307,6 +1614,21 @@ export default function CopilotDrawer({
                       )}
                     </button>
                   )}
+
+                  {/* Quotas & Engine Dock Toggle Pill */}
+                  <button
+                    type="button"
+                    onClick={() => setShowQuotaPanel((prev) => !prev)}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-white/[0.08] hover:border-cyan-500/40 text-[11px] font-mono text-slate-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 shadow-sm"
+                  >
+                    <Gauge className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="font-bold">Quotas & Engine</span>
+                    {showQuotaPanel ? (
+                      <ChevronDown className="w-3 h-3 text-cyan-400" />
+                    ) : (
+                      <ChevronRight className="w-3 h-3 text-slate-400" />
+                    )}
+                  </button>
 
                   <button
                     onClick={() => runDeliberation(activeSymbol ? `Direct Alpha Brief for ${activeSymbol}` : "Direct Alpha Brief")}

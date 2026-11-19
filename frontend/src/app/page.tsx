@@ -16,11 +16,13 @@ import {
 } from "lucide-react";
 import {
   apiFetch,
+  peekCachedData,
   ScreenerCandidate,
   ScreenerResponse,
   WatchlistResponse,
   clearMemoryCache,
 } from "@/lib/api";
+import { milEvents } from "@/lib/store";
 import { usePlatformEvents } from "@/hooks/usePlatformEvents";
 import { checkPushSubscription, autoSyncPushSubscription } from "@/lib/pushNotifications";
 import PushNotificationModal from "@/components/PushNotificationModal";
@@ -35,12 +37,27 @@ import { PanelErrorBoundary } from "@/components/PanelErrorBoundary";
 import { KeyboardShortcutModal } from "@/components/KeyboardShortcutModal";
 
 export default function CockpitPage() {
-  const [candidates, setCandidates] = useState<ScreenerCandidate[]>([]);
-  const [asOfDate, setAsOfDate] = useState<string>("");
-  const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
-  const [pageLoading, setPageLoading] = useState(true);
+  const [candidates, setCandidates] = useState<ScreenerCandidate[]>(() => {
+    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
+    return cached?.results || [];
+  });
+  const [asOfDate, setAsOfDate] = useState<string>(() => {
+    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
+    return cached?.as_of_date || "";
+  });
+  const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>(() => {
+    const cached = peekCachedData<WatchlistResponse>("/watchlist");
+    return cached?.watchlist?.map((w) => w.symbol) || [];
+  });
+  const [pageLoading, setPageLoading] = useState<boolean>(() => {
+    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
+    return !cached;
+  });
   const [viewMode, setViewMode] = useState<"table" | "heatmap" | "cards">("table");
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(() => {
+    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
+    return cached?.results && cached.results.length > 0 ? cached.results[0].symbol : null;
+  });
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
   const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -106,7 +123,9 @@ export default function CockpitPage() {
 
   // 2. Initial Screener & Watchlist Data Fetch
   const loadPageData = useCallback(async (invalidateCache: boolean = false) => {
-    setPageLoading(true);
+    if (invalidateCache || candidates.length === 0) {
+      setPageLoading(true);
+    }
     if (invalidateCache) {
       clearMemoryCache();
     }
@@ -134,19 +153,23 @@ export default function CockpitPage() {
     } finally {
       setPageLoading(false);
     }
-  }, []);
+  }, [candidates.length]);
 
-  // 3. Initial Load, Push Subscription & URL Query Parameter Initialization
+  // 3. Initial Load, Session-Gated Push Subscription & URL Query Parameter Initialization
   useEffect(() => {
     void loadPageData();
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-      autoSyncPushSubscription().then((res) => {
-        setIsPushSubscribed(res.isSubscribed);
-      });
-    } else {
-      checkPushSubscription().then((res) => {
-        setIsPushSubscribed(res.isSubscribed);
-      });
+    if (typeof window !== "undefined") {
+      const alreadySynced = sessionStorage.getItem("mil:push-synced");
+      if (!alreadySynced && "Notification" in window && Notification.permission === "granted") {
+        autoSyncPushSubscription().then((res) => {
+          setIsPushSubscribed(res.isSubscribed);
+          sessionStorage.setItem("mil:push-synced", "true");
+        });
+      } else {
+        checkPushSubscription().then((res) => {
+          setIsPushSubscribed(res.isSubscribed);
+        });
+      }
     }
 
     if (typeof window !== "undefined") {
@@ -298,7 +321,7 @@ export default function CockpitPage() {
 
           <button
             onClick={() => {
-              window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }));
+              milEvents.emit("mil:open-copilot", { symbol: selectedSymbol || "RELIANCE" });
             }}
             title="Open Quant Copilot Committee (⌘J)"
             className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2 sm:px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/50 hover:border-cyan-400 transition-colors whitespace-nowrap"
@@ -418,9 +441,7 @@ export default function CockpitPage() {
                 activeCandidate={activeCandidate}
                 onClose={() => setIsInspectorCollapsed(true)}
                 onOpenCopilot={() => {
-                  window.dispatchEvent(
-                    new KeyboardEvent("keydown", { key: "j", metaKey: true })
-                  );
+                  milEvents.emit("mil:open-copilot", { symbol: selectedSymbol || "RELIANCE" });
                 }}
               />
             </PanelErrorBoundary>
@@ -459,9 +480,7 @@ export default function CockpitPage() {
               activeCandidate={activeCandidate}
               onClose={() => setIsMobileInspectorOpen(false)}
               onOpenCopilot={() => {
-                window.dispatchEvent(
-                  new KeyboardEvent("keydown", { key: "j", metaKey: true })
-                );
+                milEvents.emit("mil:open-copilot", { symbol: selectedSymbol || "RELIANCE" });
               }}
             />
           </div>
@@ -492,7 +511,7 @@ export default function CockpitPage() {
           <span>Backtest</span>
         </Link>
         <button
-          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }))}
+          onClick={() => milEvents.emit("mil:open-copilot", { symbol: selectedSymbol || "RELIANCE" })}
           className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-cyan-300"
         >
           <BrainCircuit className="w-4 h-4 mb-0.5 text-cyan-400" />

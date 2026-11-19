@@ -17,6 +17,7 @@ import CausalCatalystFeed from "./CausalCatalystFeed";
 import {
   apiFetch,
   fetchStockBundle,
+  peekCachedData,
   toggleWatchlist,
   requestLifecycle,
   ScreenerCandidate,
@@ -117,7 +118,18 @@ function StockInspectorComponent({
       return;
     }
 
-    setIsSyncing(true);
+    // Synchronously hydrate from SWR memory or sessionStorage L2 cache
+    const cachedTearsheet = peekCachedData<{ history?: CandleData[] }>(`/stocks/${symbol}/tearsheet`);
+    const cachedForecast = peekCachedData<ForecastData>(`/stocks/${symbol}/forecast`);
+    const cachedMemo = peekCachedData<InvestmentMemo>(`/stocks/${symbol}/memo`);
+    if (cachedTearsheet?.history) setCandles(cachedTearsheet.history);
+    if (cachedForecast) setForecast(cachedForecast);
+    if (cachedMemo) setMemo(cachedMemo);
+    if (cachedTearsheet && cachedForecast && cachedMemo) {
+      setIsSyncing(false);
+    } else {
+      setIsSyncing(true);
+    }
 
     const fetchBundleData = async (skipCache: boolean = false) => {
       const { signal, generation } = requestLifecycle.prepareRequest("inspector_active");

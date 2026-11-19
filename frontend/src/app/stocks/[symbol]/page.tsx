@@ -19,7 +19,7 @@ import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
 import Navbar from "@/components/Navbar";
 import { cn } from "@/lib/utils";
-import { requestLifecycle, API_BASE, DEFAULT_HEADERS, apiFetch, clearMemoryCache } from "@/lib/api";
+import { requestLifecycle, API_BASE, DEFAULT_HEADERS, apiFetch, peekCachedData, clearMemoryCache } from "@/lib/api";
 
 const TEARSHEET_SECTIONS = [
   { id: "tearsheet-overview", label: "Overview" },
@@ -114,12 +114,20 @@ export default function StockTearsheetPage() {
   const rawSymbol = params.symbol as string;
   const symbol = rawSymbol ? rawSymbol.toUpperCase() : "";
 
-  const [data, setData] = useState<TearsheetData | null>(null);
-  const [forecast, setForecast] = useState<ForecastData | null>(null);
+  const [data, setData] = useState<TearsheetData | null>(() => {
+    return symbol ? peekCachedData<TearsheetData>(`/stocks/${symbol}/tearsheet`) : null;
+  });
+  const [forecast, setForecast] = useState<ForecastData | null>(() => {
+    return symbol ? peekCachedData<ForecastData>(`/stocks/${symbol}/forecast`) : null;
+  });
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [newsLoading, setNewsLoading] = useState<boolean>(true);
-  const [memo, setMemo] = useState<InvestmentMemo | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [memo, setMemo] = useState<InvestmentMemo | null>(() => {
+    return symbol ? peekCachedData<InvestmentMemo>(`/stocks/${symbol}/memo`) : null;
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    return symbol ? !peekCachedData<TearsheetData>(`/stocks/${symbol}/tearsheet`) : true;
+  });
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
   const [activeSection, setActiveSection] = useState<string>("tearsheet-overview");

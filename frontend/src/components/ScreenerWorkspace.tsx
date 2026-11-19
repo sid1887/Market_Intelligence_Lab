@@ -588,7 +588,10 @@ function ScreenerWorkspaceComponent({
 
       if (filteredCandidates.length === 0) return;
 
-      if (e.key === "ArrowDown" || e.key === "j") {
+      const isPlainJ = e.key === "j" && !e.metaKey && !e.ctrlKey && !e.altKey;
+      const isPlainK = e.key === "k" && !e.metaKey && !e.ctrlKey && !e.altKey;
+
+      if (e.key === "ArrowDown" || isPlainJ) {
         e.preventDefault();
         const currIdx = filteredCandidates.findIndex((c) => c.symbol === selectedSymbol);
         const nextIdx = currIdx === -1 ? 0 : Math.min(currIdx + 1, filteredCandidates.length - 1);
@@ -596,7 +599,7 @@ function ScreenerWorkspaceComponent({
         onSelectSymbol(targetSym);
         desktopVirtualizer.scrollToIndex(nextIdx, { align: "auto" });
         mobileVirtualizer.scrollToIndex(nextIdx, { align: "auto" });
-      } else if (e.key === "ArrowUp" || e.key === "k") {
+      } else if (e.key === "ArrowUp" || isPlainK) {
         e.preventDefault();
         const currIdx = filteredCandidates.findIndex((c) => c.symbol === selectedSymbol);
         const prevIdx = currIdx === -1 ? 0 : Math.max(currIdx - 1, 0);
@@ -610,6 +613,45 @@ function ScreenerWorkspaceComponent({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [filteredCandidates, selectedSymbol, onSelectSymbol, desktopVirtualizer, mobileVirtualizer]);
+
+  // Restore UI filter & scroll state from sessionStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = sessionStorage.getItem("mil:screener-ui-state");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.search !== undefined) setSearch(parsed.search);
+        if (parsed.sectorFilter !== undefined) setSectorFilter(parsed.sectorFilter);
+        if (parsed.sortField !== undefined) setSortField(parsed.sortField);
+        if (parsed.sortAsc !== undefined) setSortAsc(parsed.sortAsc);
+        if (parsed.minRoe !== undefined) setMinRoe(parsed.minRoe);
+        if (parsed.onlyAbove200Sma !== undefined) setOnlyAbove200Sma(parsed.onlyAbove200Sma);
+        if (parsed.onlyRebalanceTargets !== undefined) setOnlyRebalanceTargets(parsed.onlyRebalanceTargets);
+        if (parsed.scrollTop && desktopParentRef.current) {
+          desktopParentRef.current.scrollTop = parsed.scrollTop;
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Save UI filter state to sessionStorage
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stateToSave = {
+        search,
+        sectorFilter,
+        sortField,
+        sortAsc,
+        minRoe,
+        onlyAbove200Sma,
+        onlyRebalanceTargets,
+        scrollTop: desktopParentRef.current?.scrollTop || 0,
+      };
+      sessionStorage.setItem("mil:screener-ui-state", JSON.stringify(stateToSave));
+    } catch {}
+  }, [search, sectorFilter, sortField, sortAsc, minRoe, onlyAbove200Sma, onlyRebalanceTargets]);
 
   // Column Sort Handler
   const handleSort = (field: keyof ScreenerCandidate) => {

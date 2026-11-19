@@ -13,6 +13,7 @@ import {
   BrainCircuit,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { milEvents } from "@/lib/store";
 import IngestStatusButton from "./IngestStatusButton";
 import PushNotificationModal from "./PushNotificationModal";
 import NotificationCenterPopover from "./NotificationCenterPopover";
@@ -141,7 +142,7 @@ export default function Navbar() {
           {/* Copilot ⌘J Trigger */}
           <button
             onClick={() => {
-              window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }));
+              milEvents.emit("mil:open-copilot");
             }}
             title="Open Quant Copilot Committee (⌘J)"
             className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-950/40 border border-white/[0.08] hover:border-cyan-500/40 transition-all shadow-sm"
@@ -194,7 +195,7 @@ export default function Navbar() {
 
         {/* Mobile Copilot Trigger Button (H1) */}
         <button
-          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }))}
+          onClick={() => milEvents.emit("mil:open-copilot")}
           className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono transition-colors text-slate-400 hover:text-cyan-300 active:scale-95"
           aria-label="Toggle Quant Copilot Drawer"
         >

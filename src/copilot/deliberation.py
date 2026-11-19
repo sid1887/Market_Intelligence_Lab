@@ -18,7 +18,14 @@ import asyncio
 import logging
 from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 
-from src.copilot.llm_client import get_copilot_client, is_live_llm_configured, call_llm_completion
+from src.copilot.llm_client import (
+    get_copilot_client,
+    is_live_llm_configured,
+    call_llm_completion,
+    get_last_call_telemetry,
+    set_last_call_telemetry
+)
+from src.copilot.distiller import CopilotKnowledgeDistiller, store_teacher_trace
 from src.copilot.mcp_bridge import QuantMCPBridge
 from src.storage.database import DatabaseManager
 from src.api.utils import DATABASE_PATH
@@ -186,12 +193,49 @@ class MultiAgentDeliberationEngine:
                 """, (sym,)).fetchall()
                 news = [dict(n) for n in news_rows]
 
+                # 7. Exact historical lookback bars (up to 65 daily bars for 5D, 20D, 60D lookbacks)
+                bars_rows = conn.execute("""
+                    SELECT trading_date, close, high, low, volume
+                    FROM ohlcv_daily
+                    WHERE symbol = ? AND series = 'EQ'
+                    ORDER BY trading_date DESC
+                    LIMIT 65
+                """, (sym,)).fetchall()
+                bars = [dict(b) for b in bars_rows]
+
+                latest_close = float(bars[0]["close"]) if len(bars) > 0 and bars[0].get("close") else float(funds.get("current_price", 0.0))
+                latest_date = bars[0]["trading_date"] if len(bars) > 0 else funds.get("as_of_date")
+                close_5d_ago = float(bars[5]["close"]) if len(bars) > 5 and bars[5].get("close") else None
+                date_5d_ago = bars[5]["trading_date"] if len(bars) > 5 else None
+                close_20d_ago = float(bars[20]["close"]) if len(bars) > 20 and bars[20].get("close") else None
+                date_20d_ago = bars[20]["trading_date"] if len(bars) > 20 else None
+                close_60d_ago = float(bars[60]["close"]) if len(bars) > 60 and bars[60].get("close") else None
+                date_60d_ago = bars[60]["trading_date"] if len(bars) > 60 else None
+
+                ret_5d_pct = round(((latest_close - close_5d_ago) / close_5d_ago) * 100, 2) if close_5d_ago and close_5d_ago > 0 else None
+                ret_20d_pct = round(((latest_close - close_20d_ago) / close_20d_ago) * 100, 2) if close_20d_ago and close_20d_ago > 0 else None
+                ret_60d_pct = round(((latest_close - close_60d_ago) / close_60d_ago) * 100, 2) if close_60d_ago and close_60d_ago > 0 else None
+
+                current_price = latest_close if latest_close > 0 else funds.get("current_price", 0.0)
+
                 stocks_data[sym] = {
                     "symbol": sym,
                     "company_name": funds.get("company_name", sym),
                     "sector": funds.get("sector", "Equity"),
-                    "current_price": funds.get("current_price", 0.0),
-                    "as_of_date": funds.get("as_of_date"),
+                    "current_price": current_price,
+                    "as_of_date": latest_date,
+                    "latest_close": latest_close,
+                    "latest_date": latest_date,
+                    "close_5d_ago": close_5d_ago,
+                    "date_5d_ago": date_5d_ago,
+                    "ret_5d_pct": ret_5d_pct,
+                    "close_20d_ago": close_20d_ago,
+                    "date_20d_ago": date_20d_ago,
+                    "ret_20d_pct": ret_20d_pct,
+                    "close_60d_ago": close_60d_ago,
+                    "date_60d_ago": date_60d_ago,
+                    "ret_60d_pct": ret_60d_pct,
+                    "lookback_bars": bars,
                     "technicals": funds.get("technicals", {}),
                     "fundamentals": funds.get("fundamentals", {}),
                     "historical_drawdowns": drawdowns,
@@ -256,6 +300,17 @@ class MultiAgentDeliberationEngine:
             "price": primary_data.get("current_price", 0.0),
             "current_price": primary_data.get("current_price", 0.0),
             "as_of_date": primary_data.get("as_of_date"),
+            "latest_close": primary_data.get("latest_close", primary_data.get("current_price", 0.0)),
+            "latest_date": primary_data.get("latest_date", primary_data.get("as_of_date")),
+            "close_5d_ago": primary_data.get("close_5d_ago"),
+            "date_5d_ago": primary_data.get("date_5d_ago"),
+            "ret_5d_pct": primary_data.get("ret_5d_pct"),
+            "close_20d_ago": primary_data.get("close_20d_ago"),
+            "date_20d_ago": primary_data.get("date_20d_ago"),
+            "ret_20d_pct": primary_data.get("ret_20d_pct"),
+            "close_60d_ago": primary_data.get("close_60d_ago"),
+            "date_60d_ago": primary_data.get("date_60d_ago"),
+            "ret_60d_pct": primary_data.get("ret_60d_pct"),
             "trend": primary_data.get("technicals", {}).get("trend_regime", "NEUTRAL"),
             "technicals": primary_data.get("technicals", {}),
             "fundamentals": primary_data.get("fundamentals", {}),
@@ -410,11 +465,17 @@ class MultiAgentDeliberationEngine:
         price = primary_stock.get("current_price", 0.0)
         fc = primary_stock.get("forecast_20d", {})
 
+        telemetry = get_last_call_telemetry()
+        model_used = telemetry.get("model_id") or ("groq:gpt-oss-120b" if live_llm else "local:deterministic-quant")
+        token_usage = telemetry.get("token_usage") or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
         yield self._sse_event({
             "stage": "complete",
             "status": "Analysis complete.",
             "progress": 100,
             "conversational_response": reply_content,
+            "model_used": model_used,
+            "token_usage": token_usage,
             "result": {
                 "symbol": primary_sym,
                 "verdict": "QUANT_ANALYSIS_COMPLETE",
@@ -423,7 +484,9 @@ class MultiAgentDeliberationEngine:
                 "target_price": fc.get("expected_20d_price", round(price * 1.05, 2)),
                 "stop_loss": fc.get("invalidation_floor", round(price * 0.95, 2)),
                 "conversational_response": reply_content,
-                "ml_forecast": primary_stock.get("ml_forecast")
+                "ml_forecast": primary_stock.get("ml_forecast"),
+                "model_used": model_used,
+                "token_usage": token_usage
             }
         })
         yield "data: [DONE]\n\n"
@@ -526,11 +589,17 @@ class MultiAgentDeliberationEngine:
             yield self._sse_event({"stage": "judge_synthesis", "delta": chunk, "progress": 95})
             await asyncio.sleep(0.02)
 
+        telemetry = get_last_call_telemetry()
+        model_used = telemetry.get("model_id") or ("groq:gpt-oss-120b" if is_live_llm_configured() else "local:deterministic-quant")
+        token_usage = telemetry.get("token_usage") or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
         # COMPLETE
         yield self._sse_event({
             "stage": "complete",
             "status": "Deliberation concluded successfully.",
             "progress": 100,
+            "model_used": model_used,
+            "token_usage": token_usage,
             "result": {
                 "symbol": symbol,
                 "verdict": verdict_meta.get("verdict", "TACTICAL_SWING_LONG"),
@@ -541,7 +610,9 @@ class MultiAgentDeliberationEngine:
                 "bull_thesis": bull_content,
                 "bear_thesis": bear_content,
                 "judge_memo": judge_content,
-                "ml_forecast": context.get("ml_forecast")
+                "ml_forecast": context.get("ml_forecast"),
+                "model_used": model_used,
+                "token_usage": token_usage
             }
         })
         yield "data: [DONE]\n\n"
@@ -555,6 +626,26 @@ class MultiAgentDeliberationEngine:
         p_lower = (prompt or "").lower().strip()
         primary_sym = context.get("primary_symbol", "NIFTY 50")
         stock = context.get("stocks", {}).get(primary_sym, {})
+
+        # 0. Check Offline Student Distillation Corpus First
+        try:
+            distiller = CopilotKnowledgeDistiller(self.db)
+            distilled_resp = distiller.retrieve_and_hydrate(prompt, "DIRECT_QA", primary_sym, stock)
+            if distilled_resp:
+                set_last_call_telemetry("local:distilled-v1", {
+                    "prompt_tokens": len(prompt) // 4,
+                    "completion_tokens": len(distilled_resp) // 4,
+                    "total_tokens": (len(prompt) + len(distilled_resp)) // 4
+                })
+                return distilled_resp
+        except Exception as de:
+            logger.debug(f"[COPILOT] Student distillation check skipped: {de}")
+
+        set_last_call_telemetry("local:deterministic-quant", {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0
+        })
         price = stock.get("current_price", 0.0)
         as_of = stock.get("as_of_date", "")
         comp = stock.get("company_name", primary_sym)
@@ -751,12 +842,15 @@ class MultiAgentDeliberationEngine:
         """Executes live LLM completion (Groq or Gemini) conditioned on multi-turn history."""
         sys_msg = (
             "You are the Principal Quantitative Analyst for Market Intelligence Lab, an institutional terminal. "
-            "You answer user inquiries with sharp, conversational, data-grounded insights citing exact telemetry from the context:\n"
-            "1. For greetings (e.g., 'hi', 'hello', 'hey'): provide a natural 2-sentence conversational greeting welcoming the user, stating the live price and fundamental standing (e.g. ROE) of the primary symbol, and inviting them to explore dips, volatility cones, or multi-agent debate.\n"
-            "2. For dips, drawdowns, pullbacks, or market crashes: directly cite the exact dates and percentage drop of the last major peak-to-trough decline (from historical_drawdowns), 52-week high/low distances, and worst 3 single-day drops.\n"
-            "3. For fundamentals and valuation: cite exact ROE, OPM, TTM P/E, and Debt/Equity.\n"
-            "4. For comparisons: compare the tickers side-by-side on momentum, ML alpha, ROE, and P/E.\n"
-            "5. Never use a rigid 3-block (Bull/Bear/Judge) template unless the user specifically asks for a Bull vs Bear thesis debate.\n"
+            "You answer user inquiries with sharp, conversational, data-grounded insights citing exact telemetry from the context.\n\n"
+            "STRICT FORMATTING & REASONING RULES:\n"
+            "1. ANTI-LATEX MANDATE: Absolutely NEVER use LaTeX math delimiters (no \\[ \\], no \\( \\), no \\frac, no \\text, no \\mathbf, no $$). Write all math in plain Indian notation (e.g. ₹1,332.30 ÷ 1.212 = ₹1,099.26 or (₹1,500 - ₹1,400) / ₹1,400 = +7.14%).\n"
+            "2. DIRECT ANSWER FIRST: Always lead with a 1-2 sentence direct answer in bold, followed by a compact Markdown table or 3-4 bullet points. Never use snake_case variable names in prose (write 'Return (20-Day)' instead of 'ret_20d_pct', 'Price-to-Earnings' instead of 'pe_ratio').\n"
+            "3. GREETINGS: For greetings ('hi', 'hello', 'hey'), provide a natural 2-sentence conversational greeting welcoming the user, stating the live price and fundamental standing (e.g. ROE) of the primary symbol, and inviting them to explore dips, volatility cones, or multi-agent debate.\n"
+            "4. DIPS & DRAWDOWNS: For dips, pullbacks, or market crashes, directly cite the exact dates and percentage drop of the last major peak-to-trough decline (from historical_drawdowns), 52-week high/low distances, and worst 3 single-day drops.\n"
+            "5. LOOKBACK PERFORMANCE: For 5D/20D/60D performance, cite exact lookback prices and dates (e.g. ₹1,744.50 on 2026-11-18 vs ₹1,680.00 on 2026-10-21, +3.84%).\n"
+            "6. FUNDAMENTALS & PEERS: For fundamentals and valuation, cite exact ROE, OPM, TTM P/E, and Debt/Equity. For comparisons, compare tickers side-by-side in a compact table.\n"
+            "7. NO CANNED TEMPLATES: Never use a rigid 3-block (Bull/Bear/Judge) template unless the user specifically asks for a Bull vs Bear thesis debate.\n"
             "Cite exact numbers. Use clean Markdown."
         )
 
@@ -777,6 +871,17 @@ class MultiAgentDeliberationEngine:
             "stocks": {
                 sym: {
                     "price": d.get("current_price"),
+                    "latest_close": d.get("latest_close"),
+                    "latest_date": d.get("latest_date"),
+                    "close_5d_ago": d.get("close_5d_ago"),
+                    "date_5d_ago": d.get("date_5d_ago"),
+                    "ret_5d_pct": d.get("ret_5d_pct"),
+                    "close_20d_ago": d.get("close_20d_ago"),
+                    "date_20d_ago": d.get("date_20d_ago"),
+                    "ret_20d_pct": d.get("ret_20d_pct"),
+                    "close_60d_ago": d.get("close_60d_ago"),
+                    "date_60d_ago": d.get("date_60d_ago"),
+                    "ret_60d_pct": d.get("ret_60d_pct"),
                     "technicals": d.get("technicals"),
                     "fundamentals": d.get("fundamentals"),
                     "historical_drawdowns": d.get("historical_drawdowns"),
@@ -796,7 +901,30 @@ class MultiAgentDeliberationEngine:
         messages.append({"role": "user", "content": user_content})
 
         reply = await call_llm_completion(messages, max_tokens=750, temperature=0.2)
-        return reply or ""
+        clean_reply = (reply or "").strip()
+
+        # Distillation Pipeline: Store high-quality teacher trace
+        if clean_reply and len(clean_reply) > 60:
+            try:
+                telemetry = get_last_call_telemetry()
+                teacher_model = telemetry.get("model_id", "teacher-llm")
+                primary_sym = context.get("primary_symbol", "NIFTY 50")
+                primary_stock = context.get("stocks", {}).get(primary_sym, {})
+                sector = primary_stock.get("sector", "Equity")
+                store_teacher_trace(
+                    db_manager=self.db,
+                    intent=intent,
+                    symbol=primary_sym,
+                    sector=sector,
+                    user_prompt=user_prompt,
+                    teacher_model=teacher_model,
+                    teacher_response=clean_reply,
+                    telemetry_features=primary_stock
+                )
+            except Exception as te:
+                logger.debug(f"[COPILOT] Distillation teacher trace storage skipped: {te}")
+
+        return clean_reply
 
     def _sse_event(self, data: Dict[str, Any]) -> str:
         from src.api.utils import sanitize_for_json

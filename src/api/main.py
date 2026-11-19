@@ -41,6 +41,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 from src.copilot.deliberation import MultiAgentDeliberationEngine
+from src.copilot.distiller import CopilotKnowledgeDistiller
+from src.copilot.llm_client import MODEL_QUOTAS
 
 from src.storage.database import DatabaseManager
 from src.storage.hydration import is_cloud_lightweight_mode, hydrate_initial_cloud_database
@@ -928,6 +930,75 @@ async def stream_copilot_deliberation(request: CopilotStreamRequest):
             "X-Accel-Buffering": "no"
         }
     )
+
+
+@app.get("/copilot/usage")
+@app.get("/api/v1/copilot/usage")
+async def get_copilot_usage_telemetry():
+    """Returns today's token & request usage per model, quota headroom, and distillation statistics."""
+    from datetime import datetime, timezone
+    today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    db = DatabaseManager(DATABASE_PATH)
+    models_status = []
+
+    with db.get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM llm_usage_telemetry WHERE usage_date = ?",
+            (today_utc,)
+        ).fetchall()
+        usage_by_model = {r["model_id"]: dict(r) for r in rows}
+
+    for model_id, quota in MODEL_QUOTAS.items():
+        used_row = usage_by_model.get(model_id, {})
+        reqs_used = used_row.get("requests_used", 0)
+        toks_used = used_row.get("total_tokens", 0)
+        daily_req_limit = quota.get("daily_request_limit", 1000)
+        daily_tok_limit = quota.get("daily_token_limit", 200000)
+        provider = "groq" if "gpt" in model_id else "gemini"
+
+        models_status.append({
+            "model_id": model_id,
+            "provider": provider,
+            "requests_used": reqs_used,
+            "daily_request_limit": daily_req_limit,
+            "requests_remaining": max(0, daily_req_limit - reqs_used),
+            "requests_pct_used": round((reqs_used / daily_req_limit) * 100, 1) if daily_req_limit else 0,
+            "prompt_tokens": used_row.get("prompt_tokens", 0),
+            "completion_tokens": used_row.get("completion_tokens", 0),
+            "total_tokens": toks_used,
+            "daily_token_limit": daily_tok_limit,
+            "tokens_remaining": max(0, daily_tok_limit - toks_used),
+            "tokens_pct_used": round((toks_used / daily_tok_limit) * 100, 1) if daily_tok_limit else 0,
+            "remaining_requests_header": used_row.get("remaining_requests_header"),
+            "remaining_tokens_header": used_row.get("remaining_tokens_header"),
+            "last_used_at": used_row.get("last_used_at")
+        })
+
+    distiller = CopilotKnowledgeDistiller(db)
+    distill_stats = distiller.get_distillation_stats()
+
+    return JSONResponse(sanitize_for_json({
+        "status": "success",
+        "date_utc": today_utc,
+        "models": models_status,
+        "distillation": distill_stats
+    }))
+
+
+@app.post("/copilot/distill")
+@app.post("/api/v1/copilot/distill")
+async def trigger_copilot_distillation():
+    """Triggers TF-IDF and Ridge parameter training on the collected teacher distillation corpus."""
+    db = DatabaseManager(DATABASE_PATH)
+    distiller = CopilotKnowledgeDistiller(db)
+    train_results = distiller.train()
+    stats = distiller.get_distillation_stats()
+    return JSONResponse(sanitize_for_json({
+        "status": "success",
+        "message": "Distillation tournament trained successfully",
+        "train_results": train_results,
+        "distillation_stats": stats
+    }))
 
 
 __all__ = [

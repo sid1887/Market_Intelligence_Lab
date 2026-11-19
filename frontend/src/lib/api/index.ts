@@ -77,8 +77,68 @@ export const requestLifecycle = new RequestLifecycleManager();
 
 // Memory cache store for instant navigation (SWR: Stale-While-Revalidate)
 const memoryCache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL_MS = 15_000; // 15 seconds fresh window (0ms perceived latency)
-const STALE_TTL_MS = 90_000; // 90 seconds stale window for background revalidation
+const CACHE_TTL_MS = 60_000; // 60 seconds fresh window (0ms perceived latency)
+const STALE_TTL_MS = 900_000; // 15 minutes stale window for background revalidation
+
+// Persistent L2 sessionStorage cache configuration
+const L2_CACHE_PREFIX = "mil:swr-cache:v1:";
+const L2_MAX_ITEMS = 15;
+
+function saveToL2Cache(url: string, data: unknown, timestamp: number) {
+  if (typeof window === "undefined") return;
+  try {
+    const key = `${L2_CACHE_PREFIX}${url}`;
+    sessionStorage.setItem(key, JSON.stringify({ data, timestamp }));
+
+    // Keep <= 15 items in L2 cache
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith(L2_CACHE_PREFIX)) {
+        keys.push(k);
+      }
+    }
+    if (keys.length > L2_MAX_ITEMS) {
+      keys.slice(0, keys.length - L2_MAX_ITEMS).forEach((oldKey) => {
+        sessionStorage.removeItem(oldKey);
+      });
+    }
+  } catch {}
+}
+
+function getFromL2Cache<T>(url: string): { data: T; timestamp: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const key = `${L2_CACHE_PREFIX}${url}`;
+    const raw = sessionStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.data !== undefined) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Synchronous cache lookup helper:
+ * Checks L1 in-memory SWR cache, then L2 sessionStorage cache.
+ * Returns immediately without network overhead, enabling frame-1 instant hydration.
+ */
+export function peekCachedData<T>(endpoint: string): T | null {
+  if (typeof window === "undefined") return null;
+  const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = `${getApiBase()}${normalizedEndpoint}`;
+  const mem = memoryCache.get(url);
+  if (mem) return mem.data as T;
+  const l2 = getFromL2Cache<T>(url);
+  if (l2) {
+    memoryCache.set(url, l2);
+    return l2.data;
+  }
+  return null;
+}
 
 // In-flight request deduplication (prevents redundant fetches on fast arrow scrubbing / concurrent mounts)
 const inFlightRequests = new Map<string, Promise<unknown>>();
@@ -91,6 +151,16 @@ export interface ApiFetchOptions extends RequestInit {
 export function clearMemoryCache(prefix?: string) {
   if (!prefix) {
     memoryCache.clear();
+    if (typeof window !== "undefined") {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(L2_CACHE_PREFIX)) keysToRemove.push(k);
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      } catch {}
+    }
     return;
   }
   memoryCache.forEach((_, key) => {
@@ -98,6 +168,16 @@ export function clearMemoryCache(prefix?: string) {
       memoryCache.delete(key);
     }
   });
+  if (typeof window !== "undefined") {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(L2_CACHE_PREFIX) && k.includes(prefix)) keysToRemove.push(k);
+      }
+      keysToRemove.forEach(k => sessionStorage.removeItem(k));
+    } catch {}
+  }
 }
 
 /**
@@ -116,7 +196,9 @@ async function backgroundRevalidate(url: string, options: ApiFetchOptions) {
     }).then(async (res) => {
       if (res.ok) {
         const data = await res.json();
-        memoryCache.set(url, { data, timestamp: Date.now() });
+        const ts = Date.now();
+        memoryCache.set(url, { data, timestamp: ts });
+        saveToL2Cache(url, data, ts);
       }
     }).catch(() => {});
 
@@ -148,16 +230,25 @@ export async function apiFetch<T>(
   const cached = memoryCache.get(url);
 
   // 1. Stale-While-Revalidate (SWR) Instant Return:
-  // If memory cache exists, return it immediately (0ms perceived latency)
-  if (useCache && cached) {
-    const age = now - cached.timestamp;
+  // Check L1 memory cache, then fallback to L2 persistent storage
+  let entry = cached;
+  if (!entry && useCache) {
+    const l2 = getFromL2Cache<{ data: unknown; timestamp: number }>(url);
+    if (l2) {
+      entry = l2;
+      memoryCache.set(url, l2);
+    }
+  }
+
+  if (useCache && entry) {
+    const age = now - entry.timestamp;
     if (age < CACHE_TTL_MS) {
-      return cached.data as T;
+      return entry.data as T;
     }
     if (age < STALE_TTL_MS) {
       // Revalidate asynchronously in background without delaying user navigation
       void backgroundRevalidate(url, options);
-      return cached.data as T;
+      return entry.data as T;
     }
   }
 
@@ -220,7 +311,9 @@ export async function apiFetch<T>(
 
         const data = (await res.json()) as T;
         if (useCache) {
-          memoryCache.set(url, { data, timestamp: Date.now() });
+          const ts = Date.now();
+          memoryCache.set(url, { data, timestamp: ts });
+          saveToL2Cache(url, data, ts);
         }
         return data;
       } catch (err: unknown) {
