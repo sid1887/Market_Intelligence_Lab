@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import {
+  Activity,
   RefreshCw,
   Command,
   PanelRightOpen,
@@ -29,7 +31,6 @@ import MacroRibbon from "@/components/MacroRibbon";
 import IngestionProgressBanner from "@/components/IngestionProgressBanner";
 import ScreenerWorkspace from "@/components/ScreenerWorkspace";
 import StockInspector from "@/components/StockInspector";
-import CopilotDrawer from "@/components/CopilotDrawer";
 import IngestStatusButton from "@/components/IngestStatusButton";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
 import { PanelErrorBoundary } from "@/components/PanelErrorBoundary";
@@ -281,56 +282,65 @@ export default function CockpitPage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] bg-grid-pattern relative select-none text-slate-100 font-sans">
-      {/* ──────────────── 1. TOP HEADER NAVIGATION ──────────────── */}
-      <header className="h-12 shrink-0 border-b border-white/[0.06] flex items-center justify-between px-3 sm:px-4 bg-[#030508] z-30">
-        {/* Left: Brand + Navigation Tabs (Desktop) */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          <Link href="/" className="flex items-center gap-1.5 shrink-0 group">
-            <span className="w-2 h-2 rounded-sm bg-cyan-400 shadow-[0_0_6px_#06b6d4] group-hover:scale-125 transition-transform" />
-            <span className="text-sm font-mono font-bold text-white tracking-tight">
-              MIL<span className="hidden sm:inline">.QUANT</span>
-            </span>
-            <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 hidden md:inline">
-              PRO
-            </span>
+      {/* ──────────────── 1. TOP HEADER NAVIGATION (V8 Institutional Aesthetic) ──────────────── */}
+      <header className="h-14 shrink-0 border-b border-white/[0.08] bg-[#040609] flex items-center justify-between px-3 sm:px-6 z-30 transition-all">
+        {/* Left: Brand + Navigation Tabs with Framer Motion Spring Indicator */}
+        <div className="flex items-center space-x-3 sm:space-x-4 shrink-0">
+          <Link href="/" className="flex items-center space-x-2.5 group">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 via-teal-500 to-indigo-600 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.35)] group-hover:scale-105 transition-transform duration-200">
+              <Activity className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm sm:text-base text-slate-100 tracking-tight font-mono">
+                MIL<span className="text-cyan-400 font-sans hidden md:inline">.QUANT</span>
+              </span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 hidden sm:inline">
+                V8
+              </span>
+            </div>
           </Link>
 
-          {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1">
+          {/* Navigation Tabs with Framer Motion Spring Layout Indicator (Desktop) */}
+          <nav className="hidden md:flex items-center space-x-1 sm:space-x-1.5 bg-[#080c14] border border-white/[0.06] p-1 rounded-xl">
             <Link
               href="/"
-              className="px-2.5 py-1 rounded-md text-xs font-mono font-semibold bg-cyan-950/70 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 transition-colors"
+              className="relative px-3 py-1.5 text-xs font-mono font-medium rounded-lg transition-colors flex items-center gap-1.5 text-cyan-300 font-semibold"
             >
-              <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Screener</span>
+              <motion.div
+                layoutId="navbar-tab-indicator"
+                className="absolute inset-0 bg-cyan-950/60 border border-cyan-500/40 rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.25)]"
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              />
+              <LayoutDashboard className="w-3.5 h-3.5 relative z-10 text-cyan-400" />
+              <span className="relative z-10 hidden sm:inline">Screener</span>
             </Link>
 
             <Link
               href="/portfolio"
-              className="px-2.5 py-1 rounded-md text-xs font-mono text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent hover:border-white/[0.06] flex items-center gap-1.5 transition-colors"
+              className="relative px-3 py-1.5 text-xs font-mono font-medium rounded-lg transition-colors flex items-center gap-1.5 text-slate-400 hover:text-slate-200"
             >
-              <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-              <span>Portfolio</span>
+              <Briefcase className="w-3.5 h-3.5 relative z-10" />
+              <span className="relative z-10 hidden sm:inline">Portfolio</span>
             </Link>
 
             <Link
               href="/backtest"
-              className="px-2.5 py-1 rounded-md text-xs font-mono text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent hover:border-white/[0.06] flex items-center gap-1.5 transition-colors"
+              className="relative px-3 py-1.5 text-xs font-mono font-medium rounded-lg transition-colors flex items-center gap-1.5 text-slate-400 hover:text-slate-200"
             >
-              <LineChart className="w-3.5 h-3.5 text-slate-400" />
-              <span>Backtest</span>
+              <LineChart className="w-3.5 h-3.5 relative z-10" />
+              <span className="relative z-10 hidden sm:inline">Backtest</span>
             </Link>
           </nav>
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => void loadPageData(true)}
             disabled={pageLoading}
             title="Force refresh universe and invalidate cache"
             aria-label="Force refresh universe"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-slate-800/60 border border-white/[0.06] transition-colors disabled:opacity-50"
+            className="p-2 rounded-xl text-slate-400 hover:text-cyan-300 hover:bg-white/[0.04] border border-white/[0.08] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${pageLoading ? "animate-spin text-cyan-400" : ""}`} />
           </button>
@@ -338,7 +348,7 @@ export default function CockpitPage() {
           <button
             onClick={() => setShowCommandPalette(true)}
             aria-label="Open Command Palette"
-            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2 sm:px-2.5 py-1 rounded-lg bg-slate-900/60 border border-white/[0.06] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-mono text-slate-400 px-2.5 py-1.5 rounded-xl bg-slate-900/60 border border-white/[0.08] hover:border-cyan-500/30 hover:text-slate-200 transition-colors"
           >
             <Command className="w-3.5 h-3.5 text-cyan-400" />
             <span className="hidden md:inline">Search</span>
@@ -351,7 +361,7 @@ export default function CockpitPage() {
             }}
             title="Open Quant Copilot Committee (⌘J)"
             aria-label="Open Quant Copilot Committee"
-            className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2 sm:px-2.5 py-1 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/50 hover:border-cyan-400 transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-950/40 border border-white/[0.08] hover:border-cyan-500/40 transition-all shadow-sm whitespace-nowrap"
           >
             <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
             <span className="hidden sm:inline">Copilot</span>
@@ -363,7 +373,7 @@ export default function CockpitPage() {
             onClick={() => setShowShortcutModal(true)}
             title="Terminal Keyboard Shortcuts (?)"
             aria-label="Terminal keyboard shortcuts"
-            className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-white/[0.04] border border-white/[0.06] transition-colors font-mono text-xs font-bold"
+            className="hidden sm:flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-cyan-300 hover:bg-white/[0.04] border border-white/[0.08] transition-colors font-mono text-xs font-bold"
           >
             ?
           </button>
@@ -382,7 +392,7 @@ export default function CockpitPage() {
               onClick={() => setIsInspectorCollapsed(false)}
               title="Expand Details Inspector"
               aria-label="Expand Details Inspector"
-              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800/60 rounded-lg transition-colors"
+              className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800/60 rounded-xl transition-colors"
             >
               <PanelRightOpen className="w-3.5 h-3.5 text-cyan-400" />
               <span>Inspect {selectedSymbol || "Stock"}</span>
@@ -542,13 +552,6 @@ export default function CockpitPage() {
       <KeyboardShortcutModal
         isOpen={showShortcutModal}
         onClose={() => setShowShortcutModal(false)}
-      />
-
-      <CopilotDrawer
-        activeSymbol={selectedSymbol || "RELIANCE"}
-        activePrice={activeCandidate?.close ?? undefined}
-        activeVerdict={activeCandidate?.composite_score ? (activeCandidate.composite_score >= 75 ? "STRONG_BUY_COMPOUNDER" : "HOLD_FAIRLY_VALUED") : undefined}
-        showFloatingTrigger={false}
       />
 
       <PushNotificationModal

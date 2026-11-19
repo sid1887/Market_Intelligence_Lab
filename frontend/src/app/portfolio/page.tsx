@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
@@ -106,7 +107,10 @@ function getStockSector(sym: string): string {
   return "General";
 }
 
-export default function PortfolioPage() {
+function PortfolioContent() {
+  const searchParams = useSearchParams();
+  const urlSymbol = searchParams.get("symbol");
+
   const [activeAccount, setActiveAccount] = useState<string>("paper_alpha_2");
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
@@ -141,6 +145,21 @@ export default function PortfolioPage() {
 
   // Universe & ML Actions
   const [sysActionLoading, setSysActionLoading] = useState(false);
+
+  // Handle URL query parameter pre-fill (?symbol=...)
+  useEffect(() => {
+    if (urlSymbol) {
+      const sym = urlSymbol.toUpperCase().trim();
+      setActiveAccount("paper_manual_1");
+      setTradeSymbol(sym);
+      setTimeout(() => {
+        const ticketEl = document.getElementById("manual-trade-ticket");
+        if (ticketEl) {
+          ticketEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 350);
+    }
+  }, [urlSymbol]);
 
   const loadData = useCallback(async (accId: string, invalidateCache: boolean = false) => {
     try {
@@ -673,7 +692,7 @@ export default function PortfolioPage() {
 
         {/* FrontPage Discretionary Trade Ticket (Active for paper_manual_1) */}
         {activeAccount === "paper_manual_1" && (
-          <div className="p-6 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
+          <div id="manual-trade-ticket" className="p-6 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.08]">
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
@@ -1093,5 +1112,19 @@ export default function PortfolioPage() {
         formatINR={formatINR}
       />
     </div>
+  );
+}
+
+export default function PortfolioPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#040609] text-slate-100 flex items-center justify-center font-mono text-xs text-slate-500">
+          Loading Portfolio blotter...
+        </div>
+      }
+    >
+      <PortfolioContent />
+    </Suspense>
   );
 }

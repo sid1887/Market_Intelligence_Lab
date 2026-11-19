@@ -8,12 +8,11 @@ import {
   BrainCircuit,
   Loader2,
   FileText,
-  Newspaper,
   Radio,
   Star,
+  Zap,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import CausalCatalystFeed from "./CausalCatalystFeed";
 import {
   apiFetch,
   fetchStockBundle,
@@ -28,21 +27,23 @@ import {
   NewsResponse,
   VerdictType,
 } from "@/lib/api";
-
-const StockChart = dynamic(() => import("./StockChart"), {
-  ssr: false,
-  loading: () => (
-    <div className="h-[280px] w-full flex items-center justify-center bg-[#050811] rounded-xl border border-white/[0.06] text-xs font-mono text-slate-500">
-      Loading chart engine...
-    </div>
-  ),
-});
+import { milEvents } from "@/lib/store";
+import { AnimatedTabs, TabItem } from "./ui/AnimatedTabs";
+import UnifiedIntelligenceHub from "./UnifiedIntelligenceHub";
 import { FactorPentagonRadar } from "./FactorPentagonRadar";
 import { RiskRewardVectorBar } from "./RiskRewardVectorBar";
 import { RadialConvictionGauge } from "./RadialConvictionGauge";
 import InvestmentMemoCard from "./InvestmentMemoCard";
-import NewsImpactCard from "./NewsImpactCard";
 import { cn } from "@/lib/utils";
+
+const StockChart = dynamic(() => import("./StockChart"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[300px] w-full flex items-center justify-center bg-[#050811] rounded-xl border border-white/[0.06] text-xs font-mono text-slate-500">
+      Loading chart engine...
+    </div>
+  ),
+});
 
 interface StockInspectorProps {
   symbol: string | null;
@@ -57,27 +58,29 @@ const VERDICT_CONFIG: Record<
 > = {
   STRONG_BUY_COMPOUNDER: {
     label: "STRONG BUY",
-    badge: "bg-emerald-950/80 border-emerald-500/50 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.2)]",
+    badge: "bg-emerald-950/80 border-emerald-500/50 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]",
     horizonLabel: "12–24 Months",
   },
   TACTICAL_SWING_LONG: {
     label: "SWING LONG",
-    badge: "bg-cyan-950/80 border-cyan-500/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]",
+    badge: "bg-cyan-950/80 border-cyan-500/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)]",
     horizonLabel: "2–8 Weeks",
   },
   HOLD_FAIRLY_VALUED: {
     label: "HOLD",
-    badge: "bg-amber-950/80 border-amber-500/50 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]",
+    badge: "bg-amber-950/80 border-amber-500/50 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.2)]",
     horizonLabel: "3–6 Months",
   },
   AVOID_CAPITAL_PRESERVATION: {
     label: "AVOID",
-    badge: "bg-rose-950/80 border-rose-500/50 text-rose-300 shadow-[0_0_12px_rgba(239,68,68,0.2)]",
+    badge: "bg-rose-950/80 border-rose-500/50 text-rose-300 shadow-[0_0_12px_rgba(239,68,68,0.25)]",
     horizonLabel: "Capital Preservation",
   },
 };
 
 const DEFAULT_VERDICT_CFG = VERDICT_CONFIG["HOLD_FAIRLY_VALUED"];
+
+type InspectorTabKey = "thesis" | "intelligence";
 
 function StockInspectorComponent({
   symbol,
@@ -90,7 +93,7 @@ function StockInspectorComponent({
   const [memo, setMemo] = useState<InvestmentMemo | null>(null);
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [inspectorTab, setInspectorTab] = useState<"thesis" | "catalysts" | "news">("thesis");
+  const [activeTab, setActiveTab] = useState<InspectorTabKey>("thesis");
   const [isBookmarked, setIsBookmarked] = useState<boolean>(Boolean(activeCandidate?.is_watchlist));
 
   useEffect(() => {
@@ -104,6 +107,15 @@ function StockInspectorComponent({
     const res = await toggleWatchlist(symbol, nextState);
     if (!res.success) {
       setIsBookmarked(!nextState);
+    }
+  };
+
+  const handleOpenCopilot = () => {
+    if (!symbol) return;
+    if (onOpenCopilot) {
+      onOpenCopilot(symbol);
+    } else {
+      milEvents.emit("mil:open-copilot", { symbol });
     }
   };
 
@@ -151,7 +163,6 @@ function StockInspectorComponent({
         }
       } catch {
         if (signal.aborted || !requestLifecycle.isLatest("inspector_active", generation)) return;
-        // Fallback to parallel fetch if bundle endpoint fails (extracting history from tearsheet)
         Promise.allSettled([
           apiFetch<{ history?: CandleData[] }>(`/stocks/${symbol}/tearsheet`, { signal, useCache: !skipCache }),
           apiFetch<ForecastData>(`/stocks/${symbol}/forecast`, { signal, useCache: !skipCache }),
@@ -247,11 +258,31 @@ function StockInspectorComponent({
     forecast?.forecast_horizon_days === 5
   );
 
+  const inspectorTabs: TabItem<InspectorTabKey>[] = [
+    {
+      id: "thesis",
+      label: "Thesis & Quant Model",
+      icon: <FileText className="w-3.5 h-3.5" />,
+    },
+    {
+      id: "intelligence",
+      label: "Live Intelligence & Filings",
+      badge: news.length > 0 ? `${news.length} Items` : "Live",
+      icon: <Radio className="w-3.5 h-3.5 text-cyan-400" />,
+    },
+  ];
+
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#040609] border-l border-white/[0.08] text-slate-100 select-none">
-      {/* 1. Responsive Header (Zero-Overlap Dual Row) */}
+    <div
+      className="flex-1 flex flex-col h-full overflow-hidden bg-[#040609] border-l border-white/[0.08] text-slate-100 select-none relative"
+      style={{ containerType: "inline-size" }}
+    >
+      {/* Top subtle specular edge */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent pointer-events-none" />
+
+      {/* 1. Responsive Header (Specular Hairline & Clean Badges) */}
       <div className="shrink-0 border-b border-white/[0.08] px-4 sm:px-5 py-3 bg-[#060a12] space-y-2">
-        {/* Top Row: Symbol + Sector + Verdict on Left | Spot + SMA Dist + Close on Right */}
+        {/* Top Row: Symbol + Watchlist Star + Sector + Verdict | Spot + SMA Dist + Close */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <div className="flex items-center gap-1.5">
@@ -282,7 +313,10 @@ function StockInspectorComponent({
               </span>
             )}
             <span
-              className={`px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-wider shrink-0 ${verdictCfg.badge}`}
+              className={cn(
+                "px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-wider shrink-0",
+                verdictCfg.badge
+              )}
             >
               {verdictCfg.label}
             </span>
@@ -290,12 +324,18 @@ function StockInspectorComponent({
 
           <div className="flex items-center gap-2.5 shrink-0 text-right">
             <div>
-              <span className="text-xs font-mono font-semibold text-slate-100">
+              <span className="text-xs font-mono font-semibold text-slate-100 tabular-nums">
                 ₹{currentPrice ? currentPrice.toFixed(2) : "—"}
               </span>
               {smaDist !== null && (
-                <span className={`ml-2 text-[10px] font-mono ${smaDist >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                  {smaDist >= 0 ? "+" : ""}{smaDist.toFixed(1)}% vs 200 SMA
+                <span
+                  className={cn(
+                    "ml-2 text-[10px] font-mono tabular-nums",
+                    smaDist >= 0 ? "text-emerald-400" : "text-rose-400"
+                  )}
+                >
+                  {smaDist >= 0 ? "+" : ""}
+                  {smaDist.toFixed(1)}% vs 200 SMA
                 </span>
               )}
             </div>
@@ -311,27 +351,37 @@ function StockInspectorComponent({
           </div>
         </div>
 
-        {/* Second Row: Company Name on Left | Copilot + Tearsheet Link on Right */}
-        <div className="flex items-center justify-between gap-2 pt-0.5">
+        {/* Second Row: Company Name on Left | Action CTAs on Right */}
+        <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
           <span className="text-xs text-slate-400 truncate max-w-[200px] sm:max-w-none">
             {activeCandidate?.company_name || memo?.company_name || symbol}
           </span>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {onOpenCopilot && (
-              <button
-                onClick={() => onOpenCopilot(symbol)}
-                title="Launch Quant Copilot Committee (⌘J)"
-                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 hover:border-cyan-400/80 rounded-lg transition-all"
-              >
-                <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="hidden sm:inline font-semibold">Copilot</span>
-              </button>
-            )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Ask Copilot CTA */}
+            <button
+              onClick={handleOpenCopilot}
+              title="Launch Quant Copilot Committee (⌘J)"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 hover:border-cyan-400/80 rounded-lg transition-all shadow-sm"
+            >
+              <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="font-semibold">Copilot</span>
+            </button>
 
+            {/* Paper Trade CTA */}
+            <Link
+              href={`/portfolio?symbol=${symbol}`}
+              title="Trade symbol in Paper Trading Blotter"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-mono text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/30 hover:border-emerald-400/60 rounded-lg transition-all"
+            >
+              <Zap className="w-3 h-3 text-emerald-400" />
+              <span>Trade</span>
+            </Link>
+
+            {/* Deep Tearsheet Link */}
             <Link
               href={`/stocks/${symbol}`}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-slate-200 bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/40 rounded-lg transition-all"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-mono text-slate-200 bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/40 rounded-lg transition-all"
               title="Open Deep Institutional Tearsheet"
             >
               <span>Tearsheet</span>
@@ -341,146 +391,90 @@ function StockInspectorComponent({
         </div>
       </div>
 
-      {/* 2. Responsive 3-Tab Bar (100% Mobile Viewport Fit) */}
-      <div className="shrink-0 border-b border-white/[0.06] p-2 bg-[#04070e]">
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#060a12] rounded-xl border border-white/[0.07] w-full">
-          <button
-            onClick={() => setInspectorTab("thesis")}
-            className={`flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg text-xs font-mono transition-all duration-200 truncate ${
-              inspectorTab === "thesis"
-                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline truncate">Thesis &amp; Valuation</span>
-            <span className="inline sm:hidden truncate">Thesis</span>
-          </button>
-
-          <button
-            onClick={() => setInspectorTab("catalysts")}
-            className={`flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg text-xs font-mono transition-all duration-200 truncate ${
-              inspectorTab === "catalysts"
-                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Radio className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <span className="hidden sm:inline truncate">Market Pulse &amp; Catalysts</span>
-            <span className="inline sm:hidden truncate">Catalysts</span>
-          </button>
-
-          <button
-            onClick={() => setInspectorTab("news")}
-            className={`flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg text-xs font-mono transition-all duration-200 truncate ${
-              inspectorTab === "news"
-                ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Newspaper className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline truncate">News Wire &amp; Disclosures ({news.length})</span>
-            <span className="inline sm:hidden truncate">News ({news.length})</span>
-          </button>
-        </div>
+      {/* 2. Responsive 2-Tab Animated Header */}
+      <div className="shrink-0 px-4 py-2 bg-[#04070e] border-b border-white/[0.06]">
+        <AnimatedTabs<InspectorTabKey>
+          tabs={inspectorTabs}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          layoutId="stock-inspector-tab-pill"
+          className="w-full justify-start"
+        />
       </div>
 
-      {/* 3. Tab Body Container */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+      {/* 3. Tab Body Container with @container queries */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5 thin-scrollbar">
         {isSyncing && candles.length === 0 && !memo ? (
-          <div className="space-y-5 animate-pulse">
-            {/* Top bento grid skeleton */}
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-              <div className="xl:col-span-7 rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 h-[340px] flex flex-col justify-between">
-                <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-                  <div className="w-48 h-3.5 bg-white/[0.08] rounded" />
-                  <div className="w-24 h-3 bg-white/[0.04] rounded" />
-                </div>
-                <div className="flex-1 my-3 bg-white/[0.02] rounded-xl flex items-center justify-center border border-white/[0.03]">
-                  <span className="text-xs font-mono text-slate-500">
-                    Loading institutional market telemetry for {symbol}...
-                  </span>
-                </div>
-                <div className="h-6 w-48 bg-white/[0.04] rounded" />
-              </div>
-              <div className="xl:col-span-5 rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 h-[340px] flex flex-col justify-between space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
-                  <div className="w-44 h-3.5 bg-white/[0.08] rounded" />
-                  <div className="w-16 h-3.5 bg-white/[0.06] rounded" />
-                </div>
-                <div className="space-y-3">
-                  <div className="w-full h-12 bg-white/[0.04] rounded-lg" />
-                  <div className="w-full h-12 bg-white/[0.04] rounded-lg" />
-                  <div className="w-full h-12 bg-white/[0.04] rounded-lg" />
-                </div>
-                <div className="w-full h-8 bg-white/[0.05] rounded-lg" />
-              </div>
+          <div className="space-y-4 animate-pulse">
+            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 h-[300px] flex items-center justify-center">
+              <span className="text-xs font-mono text-slate-500">
+                Loading quantitative market telemetry for {symbol}...
+              </span>
             </div>
-            {/* Bottom memo skeleton */}
-            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 h-[180px] space-y-3">
-              <div className="w-48 h-4 bg-white/[0.08] rounded" />
-              <div className="w-full h-3 bg-white/[0.04] rounded" />
-              <div className="w-5/6 h-3 bg-white/[0.04] rounded" />
-              <div className="w-4/6 h-3 bg-white/[0.04] rounded" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 h-[220px]" />
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 h-[220px]" />
             </div>
           </div>
-        ) : inspectorTab === "thesis" ? (
+        ) : activeTab === "thesis" ? (
           <>
-            {/* Above-the-Fold 2-Column Bento Grid: Chart (60%) + Multi-Horizon Consensus (40%) */}
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-              {/* Left Column (xl:col-span-7): Price Chart */}
-              <div className="xl:col-span-7 rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/[0.06]">
+            {/* Card 1: 100% Width Price Chart & 20D Forecast Cone */}
+            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.5)] relative overflow-hidden">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent pointer-events-none" />
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/[0.06]">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,1)]" />
                   <span className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
                     Historical Price & 20D Forecast Cone
                   </span>
-                  <span className="text-[10px] font-mono text-slate-400 tabular-nums">
-                    {candles.length} Candles Loaded
-                  </span>
                 </div>
-                <StockChart
-                  symbol={symbol}
-                  data={candles}
-                  sma200={sma200}
-                  forecast={forecast}
-                  compact={true}
-                  height={280}
-                />
+                <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                  {candles.length} Candles Loaded
+                </span>
               </div>
+              <StockChart
+                symbol={symbol}
+                data={candles}
+                sma200={sma200}
+                forecast={forecast}
+                compact={true}
+                height={290}
+              />
+            </div>
 
-              {/* Right Column (xl:col-span-5): Multi-Horizon Factor Consensus & Rebalance Attribution */}
-              <div className="xl:col-span-5 rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-4">
+            {/* Row 2: Symmetric 2-Column Bento Grid: Consensus (Left) + Conviction & Risk/Reward (Right) */}
+            <div className="grid grid-cols-1 @[520px]:grid-cols-2 min-[640px]:grid-cols-2 gap-4 items-stretch">
+              {/* Left Column: Multi-Horizon Factor Consensus */}
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 sm:p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-3 relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent pointer-events-none" />
                 <div>
-                  <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(6,182,212,1)]" />
-                      <span className="text-xs font-mono font-semibold text-white uppercase tracking-wider">
+                  <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,1)] shrink-0" />
+                      <span className="text-xs font-mono font-semibold text-white uppercase tracking-wider truncate">
                         Multi-Horizon Consensus
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-slate-400">Blended:</span>
-                      <span className="text-xs font-mono font-bold text-cyan-300 px-2.5 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)] tabular-nums">
-                        {activeCandidate?.blended_score !== undefined && activeCandidate?.blended_score !== null
-                          ? `${activeCandidate.blended_score.toFixed(1)}/100`
-                          : activeCandidate?.composite_score !== undefined && activeCandidate?.composite_score !== null
-                          ? `${activeCandidate.composite_score.toFixed(1)}/100`
-                          : "—"}
-                      </span>
-                    </div>
+                    <span className="text-xs font-mono font-bold text-cyan-300 px-2 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.2)] tabular-nums shrink-0">
+                      {activeCandidate?.blended_score !== undefined && activeCandidate?.blended_score !== null
+                        ? `${activeCandidate.blended_score.toFixed(1)}/100`
+                        : activeCandidate?.composite_score !== undefined && activeCandidate?.composite_score !== null
+                        ? `${activeCandidate.composite_score.toFixed(1)}/100`
+                        : "—"}
+                    </span>
                   </div>
 
                   {/* Horizon Attribution Breakdown Bars */}
                   <div className="space-y-3 pt-3">
                     {/* 20D Tactical Horizon */}
                     <div>
-                      <div className="flex items-center justify-between text-xs font-mono mb-1.5">
+                      <div className="flex items-center justify-between text-xs font-mono mb-1">
                         <span className="text-slate-300 flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded text-[9px] bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-bold">20D Tactical</span>
-                          <span className="text-slate-500">(Weight: 62.5%)</span>
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-bold">20D Tactical</span>
+                          <span className="text-slate-500 text-[10px]">(62.5%)</span>
                         </span>
-                        <span className="text-cyan-300 font-semibold tabular-nums">
-                          Score: {activeCandidate?.score_20d !== undefined && activeCandidate.score_20d !== null ? `${activeCandidate.score_20d.toFixed(1)}` : "—"}
+                        <span className="text-cyan-300 font-semibold tabular-nums text-xs">
+                          {activeCandidate?.score_20d !== undefined && activeCandidate.score_20d !== null ? `${activeCandidate.score_20d.toFixed(1)}` : "—"}
                         </span>
                       </div>
                       <div className="h-1.5 w-full bg-slate-900/80 rounded-full overflow-hidden border border-white/[0.06]">
@@ -493,13 +487,13 @@ function StockInspectorComponent({
 
                     {/* 60D Trend Drift Horizon */}
                     <div>
-                      <div className="flex items-center justify-between text-xs font-mono mb-1.5">
+                      <div className="flex items-center justify-between text-xs font-mono mb-1">
                         <span className="text-slate-300 flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded text-[9px] bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-bold">60D Trend</span>
-                          <span className="text-slate-500">(Weight: 37.5%)</span>
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-bold">60D Trend</span>
+                          <span className="text-slate-500 text-[10px]">(37.5%)</span>
                         </span>
-                        <span className="text-emerald-300 font-semibold tabular-nums">
-                          Score: {activeCandidate?.score_60d !== undefined && activeCandidate.score_60d !== null ? `${activeCandidate.score_60d.toFixed(1)}` : "—"}
+                        <span className="text-emerald-300 font-semibold tabular-nums text-xs">
+                          {activeCandidate?.score_60d !== undefined && activeCandidate.score_60d !== null ? `${activeCandidate.score_60d.toFixed(1)}` : "—"}
                         </span>
                       </div>
                       <div className="h-1.5 w-full bg-slate-900/80 rounded-full overflow-hidden border border-white/[0.06]">
@@ -510,91 +504,58 @@ function StockInspectorComponent({
                       </div>
                     </div>
 
-                    {/* 5D Swing Horizon: Dynamic Status based on Active Model & Horizon Drivers */}
+                    {/* 5D Swing Horizon */}
                     <div
                       className={cn(
-                        "pt-1 flex items-center justify-between text-[11px] font-mono p-2.5 rounded-xl border transition-all duration-300",
+                        "pt-1 flex items-center justify-between text-[11px] font-mono p-2 rounded-xl border transition-all duration-300",
                         is5dActive
-                          ? "text-slate-200 bg-emerald-950/25 border-emerald-500/35 shadow-[0_0_12px_rgba(16,185,129,0.12)]"
+                          ? "text-slate-200 bg-emerald-950/25 border-emerald-500/35"
                           : "text-slate-400 bg-white/[0.02] border-white/[0.04]"
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            "px-2 py-0.5 rounded text-[9px] font-bold border",
-                            is5dActive
-                              ? "bg-emerald-950/90 text-emerald-300 border-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.25)]"
-                              : "bg-slate-850/80 text-slate-400 border-white/[0.08]"
-                          )}
-                        >
+                      <span className="font-semibold flex items-center gap-1.5 text-[10px]">
+                        <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-white/[0.08]">
                           5D Swing
                         </span>
-                        <span className="text-slate-400">Status:</span>
-                      </div>
+                        <span>Gate:</span>
+                      </span>
                       <span
                         className={cn(
-                          "font-semibold flex items-center gap-1.5",
+                          "font-bold text-[10px] flex items-center gap-1",
                           is5dActive ? "text-emerald-300" : "text-slate-400"
                         )}
                       >
-                        {is5dActive ? (
-                          <>
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                            </span>
-                            <span>Armed &amp; Active (Mean-Reversion Alpha)</span>
-                          </>
-                        ) : (
-                          <span>Disarmed (Noise Filter Gate)</span>
-                        )}
+                        {is5dActive ? "Active" : "Disarmed"}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Portfolio Rebalance Target & Projected Delta */}
-                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-400">Target Allocation:</span>
+                {/* Target Allocation */}
+                <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between text-xs font-mono">
+                  <span className="text-slate-400 text-[11px]">Allocation:</span>
                   {activeCandidate?.target_allocation_pct !== undefined && activeCandidate.target_allocation_pct !== null && activeCandidate.target_allocation_pct > 0 ? (
-                    <span className="px-2.5 py-1 rounded-lg font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.3)] tabular-nums">
-                      {activeCandidate.target_allocation_pct.toFixed(2)}% (Maintain)
+                    <span className="px-2 py-0.5 rounded-lg font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 tabular-nums text-[11px]">
+                      {activeCandidate.target_allocation_pct.toFixed(2)}%
                     </span>
                   ) : (
-                    <span className="px-2.5 py-1 rounded-lg text-slate-500 bg-white/[0.02] border border-white/[0.06]">
-                      Unallocated (Cash Guard)
+                    <span className="px-2 py-0.5 rounded-lg text-slate-500 bg-white/[0.02] border border-white/[0.06] text-[10px]">
+                      Unallocated
                     </span>
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* Row 2: Factor Radar & Risk/Reward Gauge */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Factor Radar Card */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center">
-                <span className="text-xs font-mono font-semibold text-slate-200 mb-2 self-start uppercase tracking-wider">
-                  Quantitative Factor Pentagon
-                </span>
-                <FactorPentagonRadar
-                  roe={factorRoe}
-                  debtToEquity={factorDe}
-                  opm={factorOpm}
-                  momentum20d={factorMom}
-                  conviction={factorConv}
-                />
-              </div>
-
-              {/* Conviction Gauge and Risk/Reward Vector Card */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between">
+              {/* Right Column: Institutional Conviction & Risk/Reward Gauge */}
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 sm:p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-3 relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent pointer-events-none" />
                 <div>
-                  <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/[0.06]">
+                  <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
                     <span className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
                       Institutional Conviction
                     </span>
                     <span className="text-[10px] font-mono text-slate-400">
-                      Target: {verdictCfg.horizonLabel}
+                      {verdictCfg.horizonLabel}
                     </span>
                   </div>
 
@@ -604,8 +565,8 @@ function StockInspectorComponent({
                 </div>
 
                 {/* Risk Reward Vector Bar */}
-                <div className="mt-4 pt-3 border-t border-white/[0.06]">
-                  <span className="text-[11px] font-mono text-slate-400 block mb-1">
+                <div className="pt-2 border-t border-white/[0.06]">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-1">
                     Statistical Bounds (95% CI vs 80% CI)
                   </span>
                   {hasValidForecast && forecastLower95 && forecastUpper80 ? (
@@ -615,7 +576,7 @@ function StockInspectorComponent({
                       targetPrice={forecastUpper80}
                     />
                   ) : (
-                    <div className="text-xs font-mono text-slate-500 py-1 italic">
+                    <div className="text-[11px] font-mono text-slate-500 py-1 italic">
                       Forecast bounds pending active model evaluation
                     </div>
                   )}
@@ -623,21 +584,83 @@ function StockInspectorComponent({
               </div>
             </div>
 
-            {/* Row 3: Investment Memo Component */}
-            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-              <InvestmentMemoCard symbol={symbol} initialMemo={memo} />
+            {/* Row 3: Factor Pentagon Radar + Key Telemetry */}
+            <div className="grid grid-cols-1 @[520px]:grid-cols-2 min-[640px]:grid-cols-2 gap-4 items-stretch">
+              {/* Factor Radar Card */}
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 sm:p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col items-center justify-between relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent pointer-events-none" />
+                <span className="text-xs font-mono font-semibold text-slate-200 mb-1 self-start uppercase tracking-wider">
+                  Quantitative Factor Pentagon
+                </span>
+                <FactorPentagonRadar
+                  roe={factorRoe}
+                  debtToEquity={factorDe}
+                  opm={factorOpm}
+                  momentum20d={factorMom}
+                  conviction={factorConv}
+                  enableBenchmarkToggle={true}
+                />
+              </div>
+
+              {/* Factor Telemetry 2x2 Grid */}
+              <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 sm:p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-3 relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent pointer-events-none" />
+                <span className="text-xs font-mono font-semibold text-slate-200 border-b border-white/[0.06] pb-2 uppercase tracking-wider">
+                  Fundamental &amp; Risk Telemetry
+                </span>
+
+                <div className="grid grid-cols-2 gap-2.5 flex-1 items-center">
+                  <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                    <div className="text-[10px] text-slate-400 font-mono">RETURN ON EQUITY</div>
+                    <div className="text-sm font-bold text-white font-mono mt-0.5 tabular-nums">
+                      {factorRoe !== null ? `${factorRoe.toFixed(1)}%` : "Awaiting Filing"}
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                    <div className="text-[10px] text-slate-400 font-mono">DEBT-TO-EQUITY</div>
+                    <div className="text-sm font-bold text-white font-mono mt-0.5 tabular-nums">
+                      {factorDe !== null ? `${factorDe.toFixed(2)}x` : "Awaiting BS"}
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                    <div className="text-[10px] text-slate-400 font-mono">OPERATING MARGIN</div>
+                    <div className="text-sm font-bold text-white font-mono mt-0.5 tabular-nums">
+                      {factorOpm !== null ? `${factorOpm.toFixed(1)}%` : "Awaiting Filing"}
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                    <div className="text-[10px] text-slate-400 font-mono">20D MOMENTUM</div>
+                    <div
+                      className={cn(
+                        "text-sm font-bold font-mono mt-0.5 tabular-nums",
+                        factorMom !== null && factorMom >= 0 ? "text-emerald-400" : "text-rose-400"
+                      )}
+                    >
+                      {factorMom !== null ? `${factorMom >= 0 ? "+" : ""}${factorMom.toFixed(1)}%` : "—"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-white/[0.06] text-[10px] text-slate-500 flex items-center justify-between">
+                  <span>Audit Tier: Clean Factor Pipeline</span>
+                  <span className="text-cyan-400 font-semibold">Normalized V8</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 4: Investment Memo Component (Compact Mode) */}
+            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 sm:p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+              <InvestmentMemoCard symbol={symbol} initialMemo={memo} compact={true} />
             </div>
           </>
-        ) : inspectorTab === "catalysts" ? (
-          /* Market Pulse & Causal Catalysts Tab */
-          <div className="space-y-4">
-            <CausalCatalystFeed currentSymbol={symbol} />
-          </div>
         ) : (
-          /* News & Exchange Disclosures Tab */
+          /* Tab 2: Live Intelligence & Filings Hub */
           <div className="space-y-4">
-            <CausalCatalystFeed currentSymbol={symbol} compact={true} />
-            <NewsImpactCard symbol={symbol} articles={news} loading={isSyncing} />
+            <UnifiedIntelligenceHub
+              symbol={symbol}
+              initialNews={news}
+              compact={true}
+            />
           </div>
         )}
       </div>

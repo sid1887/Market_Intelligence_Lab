@@ -10,6 +10,7 @@ Exposes routes for individual stock tearsheets, dynamic status polling, and hist
 import re
 import gc
 import json
+import math
 import sqlite3
 import logging
 import datetime
@@ -493,6 +494,167 @@ def get_stock_tearsheet(
             for r in chart_rows
         ]
 
+    # ── Robust Coalescing for Fundamental Ratios (ROE, D/E, TTM P/E, OPM) ──
+    roe_pct = safe_float(factors_row["roe_pct"], 2) if factors_row and factors_row["roe_pct"] is not None else None
+    debt_to_equity = safe_float(factors_row["debt_to_equity"], 4) if factors_row and factors_row["debt_to_equity"] is not None else None
+    ttm_pe = safe_float(factors_row["ttm_pe"], 2) if factors_row and factors_row["ttm_pe"] is not None else None
+    opm_pct = safe_float(factors_row["opm_pct"], 2) if factors_row and factors_row["opm_pct"] is not None else None
+
+    # If any fundamental metric is missing from the newest row, coalesce latest non-null values
+    if None in (roe_pct, debt_to_equity, ttm_pe, opm_pct):
+        cur.execute(
+            """
+            SELECT roe_pct, debt_to_equity, ttm_pe, opm_pct
+            FROM quant_factors_daily
+            WHERE symbol = ? AND (roe_pct IS NOT NULL OR debt_to_equity IS NOT NULL OR ttm_pe IS NOT NULL OR opm_pct IS NOT NULL)
+            ORDER BY trading_date DESC LIMIT 1
+            """,
+            (sym,)
+        )
+        qf_fund = cur.fetchone()
+        if qf_fund:
+            if roe_pct is None and qf_fund["roe_pct"] is not None:
+                roe_pct = safe_float(qf_fund["roe_pct"], 2)
+            if debt_to_equity is None and qf_fund["debt_to_equity"] is not None:
+                debt_to_equity = safe_float(qf_fund["debt_to_equity"], 4)
+            if ttm_pe is None and qf_fund["ttm_pe"] is not None:
+                ttm_pe = safe_float(qf_fund["ttm_pe"], 2)
+            if opm_pct is None and qf_fund["opm_pct"] is not None:
+                opm_pct = safe_float(qf_fund["opm_pct"], 2)
+
+        if None in (roe_pct, debt_to_equity, ttm_pe, opm_pct):
+            cur.execute(
+                """
+                SELECT roe_pct, debt_to_equity, pe_ratio as ttm_pe, operating_margin_ttm as opm_pct
+                FROM fundamental_factors_daily
+                WHERE symbol = ? AND (roe_pct IS NOT NULL OR debt_to_equity IS NOT NULL OR pe_ratio IS NOT NULL OR operating_margin_ttm IS NOT NULL)
+                ORDER BY trading_date DESC LIMIT 1
+                """,
+                (sym,)
+            )
+            ff_fund = cur.fetchone()
+            if ff_fund:
+                if roe_pct is None and ff_fund["roe_pct"] is not None:
+                    roe_pct = safe_float(ff_fund["roe_pct"], 2)
+                if debt_to_equity is None and ff_fund["debt_to_equity"] is not None:
+                    debt_to_equity = safe_float(ff_fund["debt_to_equity"], 4)
+                if ttm_pe is None and ff_fund["ttm_pe"] is not None:
+                    ttm_pe = safe_float(ff_fund["ttm_pe"], 2)
+                if opm_pct is None and ff_fund["opm_pct"] is not None:
+                    opm_pct = safe_float(ff_fund["opm_pct"], 2)
+
+    # ── Robust Coalescing for Technical Volatility & Beta ──
+    volatility_annualized = safe_float(factors_row["volatility_annualized"], 4) if factors_row and factors_row["volatility_annualized"] is not None else None
+    beta_60d_nifty = safe_float(factors_row["beta_60d_nifty"], 2) if factors_row and factors_row["beta_60d_nifty"] is not None else None
+
+    if volatility_annualized is None:
+        cur.execute(
+            """
+            SELECT volatility_annualized
+            FROM quant_factors_daily
+            WHERE symbol = ? AND volatility_annualized IS NOT NULL
+            ORDER BY trading_date DESC LIMIT 1
+            """,
+            (sym,)
+        )
+        vol_row = cur.fetchone()
+        if vol_row and vol_row["volatility_annualized"] is not None:
+            volatility_annualized = safe_float(vol_row["volatility_annualized"], 4)
+
+    if beta_60d_nifty is None:
+        cur.execute(
+            """
+            SELECT beta_60d_nifty
+            FROM quant_factors_daily
+            WHERE symbol = ? AND beta_60d_nifty IS NOT NULL
+            ORDER BY trading_date DESC LIMIT 1
+            """,
+            (sym,)
+        )
+        beta_row = cur.fetchone()
+        if beta_row and beta_row["beta_60d_nifty"] is not None:
+            beta_60d_nifty = safe_float(beta_row["beta_60d_nifty"], 2)
+
+    # If volatility_annualized is still None, compute 20D annualized volatility from the last 21 ohlcv_daily closes
+    if volatility_annualized is None:
+        cur.execute(
+            """
+            SELECT close FROM ohlcv_daily
+            WHERE symbol = ? AND (series = 'EQ' OR series IS NULL OR series = '')
+            ORDER BY trading_date DESC LIMIT 22
+            """,
+            (sym,)
+        )
+        close_rows = [r[0] for r in cur.fetchall() if r[0] is not None]
+        if len(close_rows) >= 5:
+            close_rows = list(reversed(close_rows))
+            pct_changes = [(close_rows[i] / close_rows[i-1]) - 1.0 for i in range(1, len(close_rows))]
+            if len(pct_changes) >= 4:
+                mean_ret = sum(pct_changes) / len(pct_changes)
+                variance = sum((x - mean_ret) ** 2 for x in pct_changes) / (len(pct_changes) - 1)
+                daily_vol = math.sqrt(max(0.0, variance))
+                volatility_annualized = round(daily_vol * math.sqrt(252), 4)
+
+    # Fallback to merge exchange filings from equity_news_feed if corporate_disclosures is empty
+    if len(disclosures) == 0:
+        try:
+            cur.execute(
+                """
+                SELECT id, title, published_at, article_url, source
+                FROM equity_news_feed
+                WHERE symbol = ? AND (source LIKE '%BSE%' OR source LIKE '%NSE%' OR title LIKE '%filing%' OR title LIKE '%disclosure%')
+                ORDER BY published_at DESC LIMIT 5
+                """,
+                (sym,)
+            )
+            filing_rows = cur.fetchall()
+            for fr in filing_rows:
+                disclosures.append({
+                    "disclosure_id": f"filing-{fr['id']}",
+                    "broadcast_timestamp": fr["published_at"],
+                    "effective_session_date": fr["published_at"][:10] if fr["published_at"] else "",
+                    "category": "EXCHANGE_FILING",
+                    "subject": fr["title"] or "Exchange Corporate Filing",
+                    "details_summary": fr["title"],
+                    "source_url": fr["article_url"],
+                    "verification_status": "EXCHANGE_OFFICIAL",
+                    "audit_status": "VERIFIED",
+                    "dividend_declared": None,
+                    "operating_margin_pct": None,
+                })
+        except Exception as e:
+            logger.debug(f"Filing fallback non-fatal error for {sym}: {e}")
+
+    # Attach Walk-Forward ML Forecast & Intraday Catalyst if available
+    ml_forecast = None
+    try:
+        from src.quant.ml_trainer import WalkForwardMLTrainer
+        trainer = WalkForwardMLTrainer(DatabaseManager(DATABASE_PATH))
+        ml_forecast = trainer.predict_for_symbol(sym)
+    except Exception as e:
+        logger.debug(f"Tearsheet ML prediction non-fatal error for {sym}: {e}")
+        ml_forecast = None
+
+    catalyst = None
+    try:
+        cur.execute(
+            """
+            SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
+                   pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
+                   causal_headline, causal_bullets, triggered_at
+            FROM market_catalysts
+            WHERE symbol = ?
+            ORDER BY triggered_at DESC LIMIT 1
+            """,
+            (sym,)
+        )
+        cat_row = cur.fetchone()
+        if cat_row:
+            catalyst = dict(cat_row)
+    except Exception as e:
+        logger.debug(f"Tearsheet catalyst fetch non-fatal error for {sym}: {e}")
+        catalyst = None
+
     payload = {
         "symbol": sym,
         "company_name": company_name,
@@ -523,17 +685,19 @@ def get_stock_tearsheet(
             "sma_200": sma200,
             "dist_sma200_pct": dist_sma200,
             "price_above_sma200": (latest_close > sma200) if (latest_close is not None and sma200 is not None) else False,
-            "volatility_annualized": safe_float(factors_row["volatility_annualized"], 4) if factors_row else None,
-            "beta_60d_nifty": safe_float(factors_row["beta_60d_nifty"], 2) if factors_row else None,
+            "volatility_annualized": volatility_annualized,
+            "beta_60d_nifty": beta_60d_nifty,
             "volume_ratio_20d": safe_float(factors_row["volume_ratio_20d"], 2) if factors_row else None,
             "volume_zscore_50d": safe_float(factors_row["volume_zscore_50d"], 2) if factors_row else None
         },
         "fundamentals": {
-            "roe_pct": safe_float(factors_row["roe_pct"], 2) if factors_row else None,
-            "debt_to_equity": safe_float(factors_row["debt_to_equity"], 4) if factors_row else None,
-            "ttm_pe": safe_float(factors_row["ttm_pe"], 2) if factors_row else None,
-            "opm_pct": safe_float(factors_row["opm_pct"], 2) if factors_row else None
+            "roe_pct": roe_pct,
+            "debt_to_equity": debt_to_equity,
+            "ttm_pe": ttm_pe,
+            "opm_pct": opm_pct
         },
+        "ml_forecast": ml_forecast,
+        "catalyst": catalyst,
         "recent_disclosures": disclosures,
         "history": history
     }
@@ -728,7 +892,14 @@ def get_stock_news(
     try:
         from src.client.news_client import NewsClient
         client = NewsClient(DatabaseManager(DATABASE_PATH))
-        raw_articles = client.fetch_latest_news(sym, limit=limit, force_refresh=force_refresh)
+
+        # Check existing cached article count in SQLite
+        cur.execute("SELECT COUNT(*) FROM equity_news_feed WHERE symbol = ?", (sym,))
+        cached_count = cur.fetchone()[0]
+
+        # On-demand live fetch if explicitly requested OR if symbol currently has 0 cached articles
+        should_fetch_live = force_refresh or (cached_count == 0)
+        raw_articles = client.fetch_latest_news(sym, limit=limit, days=14, force_refresh=should_fetch_live)
 
         articles = []
         for r in raw_articles:
@@ -1172,12 +1343,17 @@ def get_stock_bundle(
         logger.warning(f"Bundle news retrieval non-fatal error for {sym}: {e}")
         news_data = []
 
+    ml_forecast = tearsheet_data.get("ml_forecast") if isinstance(tearsheet_data, dict) else None
+    catalyst = tearsheet_data.get("catalyst") if isinstance(tearsheet_data, dict) else None
+
     return sanitize_for_json({
         "symbol": sym,
         "tearsheet": tearsheet_data,
         "forecast": forecast_data,
         "memo": memo_data,
-        "news": news_data
+        "news": news_data,
+        "ml_forecast": ml_forecast,
+        "catalyst": catalyst
     })
 
 

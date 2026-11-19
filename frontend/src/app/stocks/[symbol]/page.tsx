@@ -15,32 +15,42 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
   ),
 });
 
-import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
+import UnifiedIntelligenceHub, { Disclosure } from "@/components/UnifiedIntelligenceHub";
+import { NewsArticle } from "@/components/NewsImpactCard";
+import { FactorPentagonRadar } from "@/components/FactorPentagonRadar";
+import { RiskRewardVectorBar } from "@/components/RiskRewardVectorBar";
+import { RadialConvictionGauge } from "@/components/RadialConvictionGauge";
+import { BentoCard } from "@/components/ui/BentoCard";
 import Navbar from "@/components/Navbar";
 import { cn } from "@/lib/utils";
-import { requestLifecycle, API_BASE, DEFAULT_HEADERS, apiFetch, peekCachedData, clearMemoryCache } from "@/lib/api";
+import { milEvents } from "@/lib/store";
+import {
+  requestLifecycle,
+  API_BASE,
+  DEFAULT_HEADERS,
+  apiFetch,
+  peekCachedData,
+  clearMemoryCache,
+  toggleWatchlist,
+} from "@/lib/api";
 
 const TEARSHEET_SECTIONS = [
   { id: "tearsheet-overview", label: "Overview" },
-  { id: "tearsheet-chart", label: "Chart & Forecast" },
+  { id: "tearsheet-chart", label: "Chart & 20D Cone" },
+  { id: "tearsheet-attribution", label: "Quant Attribution & Radar" },
   { id: "tearsheet-thesis", label: "Investment Memo" },
   { id: "tearsheet-health", label: "Fundamentals & Risk" },
-  { id: "tearsheet-filings", label: "Filings & Wire" },
-  { id: "tearsheet-news", label: "News Wire" },
+  { id: "tearsheet-wire", label: "Live Intelligence & Filings" },
 ];
+
 import {
   ArrowLeft,
   TrendingUp,
   TrendingDown,
   Target,
   ShieldAlert,
-  FileText,
-  ExternalLink,
-  ShieldCheck,
   AlertTriangle,
-  Clock,
-  Sparkles,
   Activity,
   CheckCircle2,
   Loader2,
@@ -48,21 +58,11 @@ import {
   SearchX,
   Share2,
   Check,
+  BrainCircuit,
+  Zap,
+  Star,
+  Layers,
 } from "lucide-react";
-
-interface Disclosure {
-  disclosure_id: string;
-  broadcast_timestamp: string;
-  effective_session_date: string;
-  category: string;
-  subject: string;
-  details_summary: string | null;
-  source_url: string | null;
-  verification_status: string;
-  audit_status: string | null;
-  dividend_declared: number | null;
-  operating_margin_pct: number | null;
-}
 
 interface TearsheetData {
   symbol: string;
@@ -105,6 +105,19 @@ interface TearsheetData {
     ttm_pe: number | null;
     opm_pct: number | null;
   };
+  ml_forecast?: {
+    forecast_horizon_days?: number;
+    predicted_excess_return?: number;
+    conviction_score?: number;
+    signal?: string;
+    primary_driver?: string;
+    horizons?: {
+      "5d"?: { return?: number; conviction?: number; active?: boolean };
+      "20d"?: { return?: number; conviction?: number };
+      "60d"?: { return?: number; conviction?: number };
+    };
+  } | null;
+  catalyst?: unknown;
   recent_disclosures: Disclosure[];
   history: CandleData[];
 }
@@ -118,31 +131,54 @@ export default function StockTearsheetPage() {
     return symbol ? peekCachedData<TearsheetData>(`/stocks/${symbol}/tearsheet`) : null;
   });
   const [forecast, setForecast] = useState<ForecastData | null>(() => {
-    return symbol ? peekCachedData<ForecastData>(`/stocks/${symbol}/forecast`) : null;
+    return symbol ? peekCachedData<ForecastData>(`/stocks/${symbol}/forecast?horizon_days=20`) : null;
   });
-  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
-  const [newsLoading, setNewsLoading] = useState<boolean>(true);
   const [memo, setMemo] = useState<InvestmentMemo | null>(() => {
     return symbol ? peekCachedData<InvestmentMemo>(`/stocks/${symbol}/memo`) : null;
   });
-  const [loading, setLoading] = useState<boolean>(() => {
-    return symbol ? !peekCachedData<TearsheetData>(`/stocks/${symbol}/tearsheet`) : true;
-  });
+  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
+
+  const [loading, setLoading] = useState(!data);
+  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState<boolean>(false);
   const [activeSection, setActiveSection] = useState<string>("tearsheet-overview");
+  const [isBookmarked, setIsBookmarked] = useState<boolean>(Boolean(data?.is_watchlist));
 
   useEffect(() => {
+    if (data?.is_watchlist !== undefined) {
+      setIsBookmarked(Boolean(data.is_watchlist));
+    }
+  }, [data?.is_watchlist]);
+
+  const handleToggleWatchlist = async () => {
+    if (!symbol) return;
+    const nextState = !isBookmarked;
+    setIsBookmarked(nextState);
+    const res = await toggleWatchlist(symbol, nextState);
+    if (!res.success) {
+      setIsBookmarked(!nextState);
+    }
+  };
+
+  const handleOpenCopilot = () => {
+    if (!symbol) return;
+    milEvents.emit("mil:open-copilot", { symbol });
+  };
+
+  // Synchronize active section with viewport scroll
+  useEffect(() => {
     const handleScroll = () => {
-      const scrollPos = window.scrollY + 140;
+      const scrollPos = window.scrollY + 120;
       for (let i = TEARSHEET_SECTIONS.length - 1; i >= 0; i--) {
-        const el = document.getElementById(TEARSHEET_SECTIONS[i].id);
+        const sec = TEARSHEET_SECTIONS[i];
+        const el = document.getElementById(sec.id);
         if (el && el.offsetTop <= scrollPos) {
-          setActiveSection(TEARSHEET_SECTIONS[i].id);
+          setActiveSection(sec.id);
           break;
         }
       }
     };
+
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
@@ -162,12 +198,16 @@ export default function StockTearsheetPage() {
   const handleShare = () => {
     if (typeof window !== "undefined") {
       const url = window.location.href;
-      navigator.clipboard.writeText(url).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }).catch(() => {});
+      navigator.clipboard
+        .writeText(url)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => {});
     }
   };
+
   const [ingestion, setIngestion] = useState<{
     isIngesting: boolean;
     progressPct: number;
@@ -177,7 +217,7 @@ export default function StockTearsheetPage() {
     isIngesting: false,
     progressPct: 0,
     step: "IDLE",
-    detail: ""
+    detail: "",
   });
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -186,7 +226,7 @@ export default function StockTearsheetPage() {
   const startPolling = useCallback((generation: number, signal: AbortSignal) => {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     pollIntervalRef.current = setInterval(async () => {
-      if (!requestLifecycle.isLatest('stock_detail_active', generation) || signal.aborted) {
+      if (!requestLifecycle.isLatest("stock_detail_active", generation) || signal.aborted) {
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         return;
       }
@@ -198,7 +238,7 @@ export default function StockTearsheetPage() {
         });
         if (!statusRes.ok) return;
         const statusJson = await statusRes.json();
-        if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
+        if (!requestLifecycle.isLatest("stock_detail_active", generation)) return;
 
         if (statusJson.status === "READY") {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -212,7 +252,7 @@ export default function StockTearsheetPage() {
             isIngesting: true,
             progressPct: statusJson.progress_pct || 50,
             step: statusJson.step || "INGESTING",
-            detail: statusJson.detail || "Ingesting..."
+            detail: statusJson.detail || "Ingesting...",
           });
         }
       } catch (e: unknown) {
@@ -224,7 +264,7 @@ export default function StockTearsheetPage() {
 
   const fetchTearsheet = useCallback(async () => {
     if (!symbol) return;
-    const { signal, generation } = requestLifecycle.prepareRequest('stock_detail_active');
+    const { signal, generation } = requestLifecycle.prepareRequest("stock_detail_active");
 
     try {
       setLoading(true);
@@ -237,18 +277,20 @@ export default function StockTearsheetPage() {
         cache: "no-store",
       });
 
-      if (!requestLifecycle.isLatest('stock_detail_active', generation)) {
-        return; // Dropped: Out-of-order response superseded by a newer ticker request
+      if (!requestLifecycle.isLatest("stock_detail_active", generation)) {
+        return;
       }
 
       if (res.status === 202) {
         const json = await res.json();
-        if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
+        if (!requestLifecycle.isLatest("stock_detail_active", generation)) return;
         setIngestion({
           isIngesting: true,
           progressPct: json.progress_pct || 25,
           step: json.step || "QUEUED",
-          detail: json.message || "Discovered unseeded ticker. Ingesting 24-month historical series, fundamentals, and factors..."
+          detail:
+            json.message ||
+            "Discovered unseeded ticker. Ingesting 24-month historical series, fundamentals, and factors...",
         });
         setLoading(false);
         startPolling(generation, signal);
@@ -256,7 +298,7 @@ export default function StockTearsheetPage() {
       }
 
       if (res.status === 404) {
-        if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
+        if (!requestLifecycle.isLatest("stock_detail_active", generation)) return;
         setNotFound(true);
         setLoading(false);
         return;
@@ -267,47 +309,29 @@ export default function StockTearsheetPage() {
       }
 
       const json = await res.json();
-      if (!requestLifecycle.isLatest('stock_detail_active', generation)) return;
+      if (!requestLifecycle.isLatest("stock_detail_active", generation)) return;
       setData(json);
 
-      // Fetch Forecast, News, and Memo concurrently with SWR caching & monotonic signal guard
-      setNewsLoading(true);
+      // Fetch secondary intelligence concurrently
       const [fRes, nRes, mRes] = await Promise.allSettled([
         apiFetch<ForecastData>(`/stocks/${symbol}/forecast?horizon_days=20`, { signal }),
-        apiFetch<{ articles: NewsArticle[] }>(`/stocks/${symbol}/news?limit=5`, { signal }),
-        apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal })
+        apiFetch<{ articles: NewsArticle[] }>(`/stocks/${symbol}/news?limit=8`, { signal }),
+        apiFetch<InvestmentMemo>(`/stocks/${symbol}/memo`, { signal }),
       ]);
 
-      if (!requestLifecycle.isLatest('stock_detail_active', generation)) {
-        return; // Dropped: superseded while secondary fetches were in-flight
+      if (!requestLifecycle.isLatest("stock_detail_active", generation)) {
+        return;
       }
 
       if (fRes.status === "fulfilled" && fRes.value) {
-        try {
-          const fJson = fRes.value;
-          if (requestLifecycle.isLatest('stock_detail_active', generation)) {
-            setForecast(fJson);
-          }
-        } catch {}
+        setForecast(fRes.value);
       }
-
       if (nRes.status === "fulfilled" && nRes.value) {
-        try {
-          const nJson = nRes.value;
-          if (requestLifecycle.isLatest('stock_detail_active', generation)) {
-            setNewsArticles(nJson.articles || []);
-          }
-        } catch {}
+        setNewsArticles(nRes.value.articles || []);
       }
-      setNewsLoading(false);
 
       if (mRes.status === "fulfilled" && mRes.value) {
-        try {
-          const mJson = mRes.value;
-          if (requestLifecycle.isLatest('stock_detail_active', generation)) {
-            setMemo(mJson);
-          }
-        } catch {}
+        setMemo(mRes.value);
       }
 
       setIngestion({ isIngesting: false, progressPct: 100, step: "READY", detail: "Ready" });
@@ -315,15 +339,15 @@ export default function StockTearsheetPage() {
       setError(null);
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") {
-        return; // Stale fetch aborted cleanly; do not update UI or show error
+        return;
       }
-      if (requestLifecycle.isLatest('stock_detail_active', generation)) {
+      if (requestLifecycle.isLatest("stock_detail_active", generation)) {
         console.error("Tearsheet fetch error:", err);
         const msg = err instanceof Error ? err.message : "Failed to load stock data";
         setError(msg);
       }
     } finally {
-      if (requestLifecycle.isLatest('stock_detail_active', generation)) {
+      if (requestLifecycle.isLatest("stock_detail_active", generation)) {
         setLoading(false);
       }
     }
@@ -349,7 +373,7 @@ export default function StockTearsheetPage() {
       window.removeEventListener("mil:tearsheet-refresh", handleRefresh);
       window.removeEventListener("mil:screener-refresh", handleRefresh);
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-      requestLifecycle.cleanup('stock_detail_active');
+      requestLifecycle.cleanup("stock_detail_active");
     };
   }, [symbol, fetchTearsheet]);
 
@@ -382,7 +406,6 @@ export default function StockTearsheetPage() {
               </p>
             </div>
 
-            {/* Progress Bar & Percentage */}
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-mono text-slate-400">
                 <span>Pipeline Progress</span>
@@ -396,21 +419,18 @@ export default function StockTearsheetPage() {
               </div>
             </div>
 
-            {/* Checklist */}
             <div className="space-y-3.5 bg-[#050810]/70 p-5 rounded-2xl border border-white/[0.06] font-mono text-xs">
-              {/* Step 1 */}
               <div className="flex items-center space-x-3">
                 {isStep1Done ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                 ) : (
                   <Loader2 className="w-5 h-5 text-cyan-400 animate-spin shrink-0" />
                 )}
-                <span className={isStep1Done ? "text-slate-200 line-through text-slate-400" : "text-cyan-300 font-semibold"}>
+                <span className={isStep1Done ? "line-through text-slate-400" : "text-cyan-300 font-semibold"}>
                   Resolving NSE Security Master & ISIN
                 </span>
               </div>
 
-              {/* Step 2 */}
               <div className="flex items-center space-x-3">
                 {isStep2Done ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -424,7 +444,6 @@ export default function StockTearsheetPage() {
                 </span>
               </div>
 
-              {/* Step 3 */}
               <div className="flex items-center space-x-3">
                 {isStep3Done ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -434,11 +453,10 @@ export default function StockTearsheetPage() {
                   <Circle className="w-5 h-5 text-slate-600 shrink-0" />
                 )}
                 <span className={isStep3Done ? "text-slate-400 line-through" : isStep3Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
-                  Ingesting P&L & Balance Sheet Statements
+                  Ingesting P&amp;L &amp; Balance Sheet Statements
                 </span>
               </div>
 
-              {/* Step 4 */}
               <div className="flex items-center space-x-3">
                 {isStep4Done ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
@@ -448,14 +466,14 @@ export default function StockTearsheetPage() {
                   <Circle className="w-5 h-5 text-slate-600 shrink-0" />
                 )}
                 <span className={isStep4Done ? "text-slate-400 line-through" : isStep4Active ? "text-cyan-300 font-semibold" : "text-slate-500"}>
-                  Computing 200-Day SMAs & Factor Analytics
+                  Computing 200-Day SMAs &amp; Factor Analytics
                 </span>
               </div>
             </div>
 
             <div className="text-center">
               <p className="text-[11px] text-slate-500 font-mono">
-                Auto-refreshing every 1.5s · Background Worker Active
+                Auto-refreshing every 1.5s &middot; Background Worker Active
               </p>
             </div>
           </div>
@@ -504,7 +522,7 @@ export default function StockTearsheetPage() {
           <div className="h-28 bg-slate-900/80 rounded-xl" />
           <div className="h-96 bg-slate-900/80 rounded-xl" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            {[1, 2, 3, 4].map(i => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-32 bg-slate-900/80 rounded-xl" />
             ))}
           </div>
@@ -537,13 +555,38 @@ export default function StockTearsheetPage() {
 
   const isUp = data.technicals.ret_1d >= 0;
   const isAboveSma200 = data.technicals.price_above_sma200;
+  const currentPrice = data.latest_ohlcv.close;
+
+  // Forecast bounds for RiskRewardVectorBar
+  const lastProjection = forecast?.projections?.[forecast.projections.length - 1];
+  const hasValidForecast = Boolean(
+    lastProjection &&
+      typeof lastProjection.lower_95 === "number" &&
+      typeof lastProjection.upper_80 === "number" &&
+      currentPrice > 0
+  );
+  const forecastLower95 = hasValidForecast ? lastProjection!.lower_95 : null;
+  const forecastUpper80 = hasValidForecast ? lastProjection!.upper_80 : null;
+
+  // Factor Pentagon metrics
+  const factorRoe = data.fundamentals.roe_pct;
+  const factorDe = data.fundamentals.debt_to_equity;
+  const factorOpm = data.fundamentals.opm_pct;
+  const factorMom =
+    data.technicals.ret_20d !== null && data.technicals.ret_20d !== undefined
+      ? data.technicals.ret_20d * 100
+      : null;
+  const factorConv =
+    data.ml_forecast?.conviction_score ??
+    memo?.institutional_conviction_score ??
+    null;
 
   return (
     <div className="min-h-screen bg-[#040609] text-slate-100 flex flex-col font-sans selection:bg-cyan-500/20 selection:text-cyan-300 relative">
       <Navbar />
       <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 pb-24">
-        {/* Back Link & Navigation Bar */}
-        <div className="flex items-center justify-between">
+        {/* Top Back & Session Info Bar */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <Link
             href="/"
             className="inline-flex items-center space-x-2 text-xs font-mono text-slate-400 hover:text-white transition-colors group px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:border-cyan-500/40"
@@ -578,7 +621,7 @@ export default function StockTearsheetPage() {
         </div>
 
         {/* Sticky Mobile/Desktop Section Jump Sub-Navigation */}
-        <div className="sticky top-14 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 bg-[#050811]/90 backdrop-blur-md border-b border-white/[0.08] flex items-center gap-1.5 overflow-x-auto no-scrollbar shadow-lg">
+        <div className="sticky top-14 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 bg-[#050811]/90 backdrop-blur-md border-b border-white/[0.08] flex items-center gap-1.5 overflow-x-auto thin-scrollbar shadow-lg">
           {TEARSHEET_SECTIONS.map((sec) => (
             <button
               key={sec.id}
@@ -595,438 +638,578 @@ export default function StockTearsheetPage() {
           ))}
         </div>
 
-      {/* Hero Header Card */}
-      <div id="tearsheet-overview" className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-                {data.symbol}
-              </h1>
-              <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 font-mono">
-                {data.isin}
-              </span>
-              <span className="text-[11px] sm:text-xs px-3 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_10px_rgba(6,182,212,0.2)]">
-                {data.sector}
-              </span>
-              {data.is_watchlist ? (
-                <span className="text-[11px] sm:text-xs px-3 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 font-semibold flex items-center space-x-1.5 shadow-[0_0_10px_rgba(99,102,241,0.2)]">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>WATCHLIST HOLDING</span>
-                </span>
-              ) : null}
-              {data.is_nifty50 ? (
-                <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 font-mono">
-                  NIFTY 50 CONSTITUENT
-                </span>
-              ) : null}
-            </div>
+        {/* Hero Header Card */}
+        <div
+          id="tearsheet-overview"
+          className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] relative overflow-hidden space-y-4"
+        >
+          {/* Top specular hairline */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent pointer-events-none" />
 
-            <p className="text-sm text-slate-300 mt-1.5 font-medium truncate">{data.company_name}</p>
-            {data.notes && (
-              <p className="text-xs text-slate-400 mt-1 italic font-mono max-w-2xl bg-white/[0.02] p-2 rounded-lg border border-white/[0.04]">
-                Strategy Notes: &ldquo;{data.notes}&rdquo;
-              </p>
-            )}
-          </div>
-
-          {/* Right Price & Return Stack (Responsive) */}
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6 pt-2 sm:pt-0 sm:text-right shrink-0">
-            <div>
-              <span className="text-[11px] sm:text-xs text-slate-400 font-mono block">Latest Close</span>
-              <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight tabular-nums">
-                ₹{data.latest_ohlcv.close.toFixed(2)}
-              </div>
-            </div>
-
-            <div
-              className={`flex flex-col items-center justify-center px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl border font-mono ${
-                isUp
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                  : "bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.2)]"
-              }`}
-            >
-              <div className="flex items-center space-x-1 text-sm font-bold tabular-nums">
-                {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                <span>{data.technicals.ret_1d_pct >= 0 ? "+" : ""}{data.technicals.ret_1d_pct.toFixed(2)}%</span>
-              </div>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">1D Change</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Watchlist Target Price / Stop Loss Ribbon */}
-        {(data.target_price || data.stop_loss) && (
-          <div className="mt-4 pt-3.5 border-t border-white/[0.06] flex flex-wrap items-center gap-4 text-xs font-mono">
-            {data.target_price && (
-              <span className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-                <Target className="w-3.5 h-3.5" />
-                <span className="tabular-nums">Target Objective: <strong>₹{data.target_price.toFixed(2)}</strong> ({(((data.target_price / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% upside)</span>
-              </span>
-            )}
-            {data.stop_loss && (
-              <span className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span className="tabular-nums">Downside Stop: <strong>₹{data.stop_loss.toFixed(2)}</strong> ({(((data.stop_loss / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% risk)</span>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bento Grid Row 1: StockChart (8 cols) + 20-Day Forecast Cone (4 cols) */}
-      <div id="tearsheet-chart" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-28">
-        {/* Candlestick Chart */}
-        <section className={forecast && forecast.projections && forecast.projections.length > 0 ? "xl:col-span-8" : "xl:col-span-12"}>
-          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-            <StockChart
-              symbol={data.symbol}
-              data={data.history}
-              sma200={data.technicals.sma_200}
-              forecast={forecast}
-            />
-          </div>
-        </section>
-
-        {/* Milestone B7.0: 20-Day Econometric Forecast & Tail Risk Card */}
-        {forecast && forecast.projections && forecast.projections.length > 0 && (
-          <section className="xl:col-span-4 bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col justify-between">
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
-                <div className="flex items-center space-x-2.5">
-                  <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
-                    <Activity className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white font-mono tracking-tight">
-                      20D Forecast &amp; Tail Risk
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-mono">
-                      GARCH(1,1) &middot; OU Mean-Reversion
-                    </p>
-                  </div>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
+                    {data.symbol}
+                  </h1>
+                  <button
+                    onClick={handleToggleWatchlist}
+                    className="p-1 rounded-lg hover:bg-white/[0.08] transition-colors"
+                    title={isBookmarked ? "Remove from Watchlist" : "Pin to Watchlist"}
+                  >
+                    <Star
+                      className={cn(
+                        "w-5 h-5 transition-all",
+                        isBookmarked
+                          ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.6)]"
+                          : "text-slate-500 hover:text-amber-300"
+                      )}
+                    />
+                  </button>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 font-mono">
+                  {data.isin}
+                </span>
+                <span className="text-[11px] sm:text-xs px-3 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 font-semibold shadow-[0_0_10px_rgba(6,182,212,0.2)]">
+                  {data.sector}
+                </span>
+                {data.is_nifty50 && (
+                  <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 font-mono font-bold">
+                    NIFTY 50
+                  </span>
+                )}
+              </div>
+
+              <p className="text-sm text-slate-300 font-medium">{data.company_name}</p>
+
+              {data.notes && (
+                <p className="text-xs text-slate-400 italic font-mono max-w-2xl bg-white/[0.02] p-2.5 rounded-lg border border-white/[0.04]">
+                  Strategy Notes: &ldquo;{data.notes}&rdquo;
+                </p>
+              )}
+            </div>
+
+            {/* Right Side: Spot Price & Action CTAs */}
+            <div className="flex flex-wrap items-center gap-4 lg:gap-6 shrink-0 lg:text-right">
+              <div>
+                <span className="text-xs text-slate-400 font-mono block">Latest Close</span>
+                <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight tabular-nums">
+                  ₹{data.latest_ohlcv.close.toFixed(2)}
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  "flex flex-col items-center justify-center px-4 py-2 rounded-xl border font-mono",
+                  isUp
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                    : "bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.2)]"
+                )}
+              >
+                <div className="flex items-center space-x-1 text-sm font-bold tabular-nums">
+                  {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                  <span>
+                    {data.technicals.ret_1d_pct >= 0 ? "+" : ""}
+                    {data.technicals.ret_1d_pct.toFixed(2)}%
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
+                  1D Change
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleOpenCopilot}
+                  title="Launch Quant Copilot Committee for this stock"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono font-bold text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 rounded-xl transition-all shadow-sm"
+                >
+                  <BrainCircuit className="w-4 h-4 text-cyan-400" />
+                  <span>Ask Copilot</span>
+                </button>
+
+                <Link
+                  href={`/portfolio?symbol=${data.symbol}`}
+                  title="Trade stock in Paper Trading Blotter"
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono font-bold text-emerald-300 bg-emerald-950/50 hover:bg-emerald-900/70 border border-emerald-500/40 rounded-xl transition-all shadow-sm"
+                >
+                  <Zap className="w-4 h-4 text-emerald-400" />
+                  <span>Paper Trade</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* Watchlist Target Price / Stop Loss Ribbon */}
+          {(data.target_price || data.stop_loss) && (
+            <div className="pt-3 border-t border-white/[0.06] flex flex-wrap items-center gap-4 text-xs font-mono">
+              {data.target_price && (
+                <span className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                  <Target className="w-3.5 h-3.5" />
+                  <span className="tabular-nums">
+                    Target Objective: <strong>₹{data.target_price.toFixed(2)}</strong> (
+                    {(((data.target_price / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% upside)
+                  </span>
+                </span>
+              )}
+              {data.stop_loss && (
+                <span className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span className="tabular-nums">
+                    Downside Stop: <strong>₹{data.stop_loss.toFixed(2)}</strong> (
+                    {(((data.stop_loss / data.latest_ohlcv.close) - 1.0) * 100).toFixed(1)}% risk)
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Bento Grid Row 1: StockChart (8 cols) + 20-Day Forecast Cone (4 cols) */}
+        <div id="tearsheet-chart" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-28">
+          <section
+            className={
+              forecast && forecast.projections && forecast.projections.length > 0
+                ? "xl:col-span-8"
+                : "xl:col-span-12"
+            }
+          >
+            <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+              <StockChart
+                symbol={data.symbol}
+                data={data.history}
+                sma200={data.technicals.sma_200}
+                forecast={forecast}
+              />
+            </div>
+          </section>
+
+          {/* 20-Day Econometric Forecast & Tail Risk Card */}
+          {forecast && forecast.projections && forecast.projections.length > 0 && (
+            <section className="xl:col-span-4 bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex flex-col justify-between">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+                      <Activity className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white font-mono tracking-tight">
+                        20D Forecast &amp; Tail Risk
+                      </h3>
+                      <p className="text-[11px] text-slate-400 font-mono">
+                        GARCH(1,1) &middot; OU Mean-Reversion
+                      </p>
+                    </div>
+                  </div>
+
                   <span
-                    className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold border ${
+                    className={cn(
+                      "text-xs px-2.5 py-0.5 rounded-full font-mono font-semibold border",
                       forecast.volatility_regime === "LOW"
                         ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                         : forecast.volatility_regime === "NORMAL"
                         ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
                         : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                    }`}
+                    )}
                   >
                     {forecast.volatility_regime} DISPERSION
                   </span>
                 </div>
-              </div>
 
-              {/* Forecast Telemetry Grid (2x2) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                {/* 1. Expected 20D Price */}
-                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
-                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">Expected 20D Price</span>
-                  <div className="text-xl font-black text-cyan-300 mt-1 tabular-nums">
-                    ₹{forecast.projections[forecast.projections.length - 1].expected.toFixed(2)}
+                {/* Forecast Telemetry Grid (2x2) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                  {/* Expected 20D Price */}
+                  <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                    <span className="text-[11px] text-slate-400 block uppercase tracking-wider">
+                      Expected 20D Price
+                    </span>
+                    <div className="text-xl font-black text-cyan-300 mt-1 tabular-nums">
+                      ₹{forecast.projections[forecast.projections.length - 1].expected.toFixed(2)}
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-1 tabular-nums">
+                      {(() => {
+                        const expPrice =
+                          forecast.projections[forecast.projections.length - 1].expected;
+                        const diff = expPrice - data.latest_ohlcv.close;
+                        const pct = (diff / data.latest_ohlcv.close) * 100;
+                        return (
+                          <span
+                            className={
+                              diff >= 0
+                                ? "text-emerald-400 font-semibold"
+                                : "text-rose-400 font-semibold"
+                            }
+                          >
+                            {diff >= 0 ? "+" : ""}
+                            {diff.toFixed(2)} ({pct >= 0 ? "+" : ""}
+                            {pct.toFixed(1)}%)
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1 tabular-nums">
-                    {(() => {
-                      const expPrice = forecast.projections[forecast.projections.length - 1].expected;
-                      const diff = expPrice - data.latest_ohlcv.close;
-                      const pct = (diff / data.latest_ohlcv.close) * 100;
-                      return (
-                        <span className={diff >= 0 ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
-                          {diff >= 0 ? "+" : ""}{diff.toFixed(2)} ({pct >= 0 ? "+" : ""}{pct.toFixed(1)}%)
+
+                  {/* 80% Trajectory Band */}
+                  <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                    <span className="text-[11px] text-slate-400 block uppercase tracking-wider">
+                      80% Trajectory Band
+                    </span>
+                    <div className="text-sm font-bold text-white mt-1.5 tabular-nums">
+                      ₹{forecast.projections[forecast.projections.length - 1].lower_80.toFixed(0)} – ₹
+                      {forecast.projections[forecast.projections.length - 1].upper_80.toFixed(0)}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">High Probability Band</div>
+                  </div>
+
+                  {/* 95% Downside Floor */}
+                  <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                    <span className="text-[11px] text-slate-400 block uppercase tracking-wider">
+                      95% Downside Floor
+                    </span>
+                    <div className="text-xl font-black text-rose-400 mt-1 tabular-nums">
+                      ₹{forecast.projections[forecast.projections.length - 1].lower_95.toFixed(2)}
+                    </div>
+                    <div className="text-[10px] text-rose-400/90 mt-1 tabular-nums font-semibold">
+                      {(() => {
+                        const floorPrice =
+                          forecast.projections[forecast.projections.length - 1].lower_95;
+                        const maxDrawdownPct =
+                          ((floorPrice / data.latest_ohlcv.close) - 1.0) * 100;
+                        return `${maxDrawdownPct.toFixed(1)}% Max Tail Risk`;
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Model Calibration */}
+                  <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
+                    <span className="text-[11px] text-slate-400 block uppercase tracking-wider">
+                      Annualized Vol
+                    </span>
+                    <div className="text-xl font-black text-white mt-1 tabular-nums">
+                      {(forecast.annualized_volatility * 100).toFixed(1)}%
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1 tabular-nums">
+                      {forecast.garch_parameters ? (
+                        <span>
+                          α+β: <strong>{forecast.garch_parameters.persistence.toFixed(3)}</strong>
                         </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* 2. 80% Expected Range */}
-                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
-                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">80% Trajectory Band</span>
-                  <div className="text-sm font-bold text-white mt-1.5 tabular-nums">
-                    ₹{forecast.projections[forecast.projections.length - 1].lower_80.toFixed(0)} – ₹{forecast.projections[forecast.projections.length - 1].upper_80.toFixed(0)}
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1">
-                    High Probability Band
-                  </div>
-                </div>
-
-                {/* 3. 95% Tail Risk Floor */}
-                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
-                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">95% Downside Floor</span>
-                  <div className="text-xl font-black text-rose-400 mt-1 tabular-nums">
-                    ₹{forecast.projections[forecast.projections.length - 1].lower_95.toFixed(2)}
-                  </div>
-                  <div className="text-[10px] text-rose-400/90 mt-1 tabular-nums font-semibold">
-                    {(() => {
-                      const floorPrice = forecast.projections[forecast.projections.length - 1].lower_95;
-                      const maxDrawdownPct = ((floorPrice / data.latest_ohlcv.close) - 1.0) * 100;
-                      return `${maxDrawdownPct.toFixed(1)}% Max Tail Risk`;
-                    })()}
-                  </div>
-                </div>
-
-                {/* 4. Model Calibration */}
-                <div className="bg-[#050810]/70 p-4 rounded-xl border border-white/[0.06] font-mono">
-                  <span className="text-[11px] text-slate-400 block uppercase tracking-wider">Annualized Vol</span>
-                  <div className="text-xl font-black text-white mt-1 tabular-nums">
-                    {(forecast.annualized_volatility * 100).toFixed(1)}%
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-1 tabular-nums">
-                    {forecast.garch_parameters ? (
-                      <span>α+β: <strong>{forecast.garch_parameters.persistence.toFixed(3)}</strong></span>
-                    ) : (
-                      <span>Calibrated</span>
-                    )}
+                      ) : (
+                        <span>Calibrated</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs font-mono text-slate-400">
-              <span>Risk Anchor:</span>
-              <span className="text-cyan-300 font-semibold">GARCH(1,1) Volatility Envelope</span>
-            </div>
-          </section>
-        )}
-      </div>
-
-      {/* Milestone B9.0: Institutional Investment Decision Memo */}
-      <section id="tearsheet-thesis" className="scroll-mt-28">
-        <InvestmentMemoCard symbol={data.symbol} initialMemo={memo} />
-      </section>
-
-      {/* Core 4-Card Grid: Fundamentals & Technicals */}
-      <section id="tearsheet-health" className="space-y-4 scroll-mt-28">
-        <div className="flex items-center space-x-2">
-          <Activity className="w-4 h-4 text-cyan-400" />
-          <h2 className="text-base font-bold text-white font-mono tracking-tight">
-            Fundamentals & Technical Positioning
-          </h2>
+              <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs font-mono text-slate-400">
+                <span>Risk Anchor:</span>
+                <span className="text-cyan-300 font-semibold">GARCH(1,1) Volatility Envelope</span>
+              </div>
+            </section>
+          )}
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {/* Card 1: Debt-to-Equity */}
-          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Debt-to-Equity (D/E)</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
-              {data.fundamentals.debt_to_equity !== null ? data.fundamentals.debt_to_equity.toFixed(4) : "N/A"}
-            </div>
-            <div className="mt-2.5 flex items-center space-x-1.5 text-[11px] font-mono">
-              {data.fundamentals.debt_to_equity !== null && data.fundamentals.debt_to_equity < 0.5 ? (
-                <span className="text-emerald-400 font-semibold flex items-center space-x-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>&lt; 0.5 Conservative Threshold Met</span>
-                </span>
-              ) : (
-                <span className="text-amber-400 font-semibold flex items-center space-x-1">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Elevated Leverage Ratio</span>
-                </span>
-              )}
-            </div>
+        {/* Section: Quantitative Attribution & Factor Radar */}
+        <section id="tearsheet-attribution" className="space-y-4 scroll-mt-28">
+          <div className="flex items-center space-x-2">
+            <Layers className="w-4 h-4 text-cyan-400" />
+            <h2 className="text-base font-bold text-white font-mono tracking-tight">
+              Quantitative Multi-Horizon Attribution &amp; Factor Pentagon
+            </h2>
           </div>
 
-          {/* Card 2: Return on Equity (ROE %) */}
-          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Return on Equity (ROE)</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
-              {data.fundamentals.roe_pct !== null ? `${data.fundamentals.roe_pct.toFixed(2)}%` : "N/A"}
-            </div>
-            <div className="mt-2.5 flex items-center space-x-1.5 text-[11px] font-mono">
-              {data.fundamentals.roe_pct !== null && data.fundamentals.roe_pct > 15.0 ? (
-                <span className="text-emerald-400 font-semibold flex items-center space-x-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>&gt; 15% Hurdle Cleared (High Quality)</span>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 1. Multi-Horizon ML Alpha Consensus */}
+            <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-4">
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-semibold text-white uppercase tracking-wider">
+                    ML Multi-Horizon Alpha
+                  </span>
+                  <span className="text-xs font-mono font-bold text-cyan-300 px-2.5 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-500/40">
+                    {data.ml_forecast?.signal || "CALIBRATED"}
+                  </span>
+                </div>
+
+                <div className="space-y-3 pt-3 font-mono">
+                  {/* 20D Tactical Horizon */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-slate-300 flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-bold">
+                          20D Tactical
+                        </span>
+                        <span className="text-slate-500 text-[10px]">(62.5% weight)</span>
+                      </span>
+                      <span className="text-cyan-300 font-semibold tabular-nums text-xs">
+                        {data.ml_forecast?.predicted_excess_return !== undefined
+                          ? `${(data.ml_forecast.predicted_excess_return * 100).toFixed(1)}%`
+                          : "Active"}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-900/80 rounded-full overflow-hidden border border-white/[0.06]">
+                      <div className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full w-3/4 shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
+                    </div>
+                  </div>
+
+                  {/* 60D Trend Horizon */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-slate-300 flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 font-bold">
+                          60D Trend
+                        </span>
+                        <span className="text-slate-500 text-[10px]">(37.5% weight)</span>
+                      </span>
+                      <span className="text-emerald-300 font-semibold tabular-nums text-xs">
+                        {data.technicals.sma_200 && data.latest_ohlcv.close > data.technicals.sma_200
+                          ? "Bullish Drift"
+                          : "Neutral/Defensive"}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-900/80 rounded-full overflow-hidden border border-white/[0.06]">
+                      <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full w-2/3 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                    </div>
+                  </div>
+
+                  {/* 5D Gate */}
+                  <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05] flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">5D Mean-Reversion Gate:</span>
+                    <span className="font-bold text-slate-300">
+                      {data.technicals.ret_5d !== null
+                        ? `${data.technicals.ret_5d >= 0 ? "+" : ""}${(data.technicals.ret_5d * 100).toFixed(1)}% (5D Return)`
+                        : "Filtering Noise"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-white/[0.06] text-[11px] font-mono text-slate-400 flex items-center justify-between">
+                <span>Primary Alpha Factor:</span>
+                <span className="text-cyan-300 font-semibold truncate max-w-[180px]">
+                  {data.ml_forecast?.primary_driver || "Low-Vol Quality Momentum"}
                 </span>
-              ) : (
-                <span className="text-slate-400">Sub-15% Capital Return</span>
-              )}
+              </div>
+            </div>
+
+            {/* 2. Factor Pentagon Radar */}
+            <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col items-center justify-between">
+              <span className="text-xs font-mono font-semibold text-slate-200 mb-1 self-start uppercase tracking-wider">
+                Quantitative Factor Pentagon
+              </span>
+              <FactorPentagonRadar
+                roe={factorRoe}
+                debtToEquity={factorDe}
+                opm={factorOpm}
+                momentum20d={factorMom}
+                conviction={factorConv}
+                enableBenchmarkToggle={true}
+              />
+            </div>
+
+            {/* 3. Institutional Conviction & Risk-Reward Bounds */}
+            <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wider">
+                    Institutional Conviction
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">Target: 3–12 Months</span>
+                </div>
+
+                <div className="flex items-center justify-center py-2">
+                  <RadialConvictionGauge score={factorConv} />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-white/[0.06]">
+                <span className="text-[10px] font-mono text-slate-400 block mb-1">
+                  Statistical Bounds (95% CI vs 80% CI)
+                </span>
+                {hasValidForecast && forecastLower95 && forecastUpper80 ? (
+                  <RiskRewardVectorBar
+                    currentPrice={currentPrice}
+                    stopPrice={forecastLower95}
+                    targetPrice={forecastUpper80}
+                  />
+                ) : (
+                  <div className="text-[11px] font-mono text-slate-500 py-1 italic">
+                    Forecast bounds pending active model evaluation
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+        </section>
 
-          {/* Card 3: 60-Day Rolling Beta vs Nifty 50 */}
-          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">60D Rolling Beta (vs Nifty 50)</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
-              {data.technicals.beta_60d_nifty !== null ? data.technicals.beta_60d_nifty.toFixed(2) : "N/A"}
-            </div>
-            <div className="mt-2.5 text-[11px] font-mono text-slate-400">
-              {data.technicals.beta_60d_nifty !== null && Math.abs(data.technicals.beta_60d_nifty) < 0.5
-                ? "Low systematic benchmark exposure"
-                : "Standard market systematic co-movement"}
-            </div>
+        {/* Institutional Investment Decision Memo */}
+        <section id="tearsheet-thesis" className="scroll-mt-28">
+          <InvestmentMemoCard symbol={data.symbol} initialMemo={memo} />
+        </section>
+
+        {/* Core 4-Card Bento Grid: Fundamentals & Technicals (with strict null checking) */}
+        <section id="tearsheet-health" className="space-y-4 scroll-mt-28">
+          <div className="flex items-center space-x-2">
+            <Activity className="w-4 h-4 text-cyan-400" />
+            <h2 className="text-base font-bold text-white font-mono tracking-tight">
+              Fundamentals &amp; Technical Positioning
+            </h2>
           </div>
 
-          {/* Card 4: Distance from 200-day SMA */}
-          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider block">Distance from 200 SMA</span>
-            <div className="text-2xl font-extrabold font-mono text-white mt-1.5 tabular-nums">
-              {data.technicals.dist_sma200_pct !== null ? `${data.technicals.dist_sma200_pct >= 0 ? "+" : ""}${data.technicals.dist_sma200_pct.toFixed(2)}%` : "N/A"}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Debt-to-Equity (D/E) */}
+            <BentoCard
+              title="DEBT-TO-EQUITY (D/E)"
+              value={
+                data.fundamentals.debt_to_equity !== null
+                  ? `${data.fundamentals.debt_to_equity.toFixed(2)}x`
+                  : "Awaiting BS"
+              }
+              subLabel={
+                data.fundamentals.debt_to_equity === null
+                  ? "Awaiting Balance Sheet"
+                  : data.fundamentals.debt_to_equity < 0.5
+                  ? "< 0.5 Conservative Threshold Met"
+                  : "Elevated Leverage Ratio"
+              }
+              isPositive={
+                data.fundamentals.debt_to_equity === null
+                  ? undefined
+                  : data.fundamentals.debt_to_equity < 0.5
+              }
+              badge={
+                data.fundamentals.debt_to_equity !== null && data.fundamentals.debt_to_equity === 0
+                  ? "ZERO DEBT"
+                  : undefined
+              }
+            />
+
+            {/* Card 2: Return on Equity (ROE %) */}
+            <BentoCard
+              title="RETURN ON EQUITY (ROE)"
+              value={
+                data.fundamentals.roe_pct !== null
+                  ? `${data.fundamentals.roe_pct.toFixed(1)}%`
+                  : "Awaiting Filing"
+              }
+              subLabel={
+                data.fundamentals.roe_pct === null
+                  ? "Awaiting Earnings Filing"
+                  : data.fundamentals.roe_pct > 15.0
+                  ? "> 15% Hurdle Cleared (High Quality)"
+                  : "Sub-15% Capital Return"
+              }
+              isPositive={
+                data.fundamentals.roe_pct === null
+                  ? undefined
+                  : data.fundamentals.roe_pct > 15.0
+              }
+              badge={
+                data.fundamentals.roe_pct !== null && data.fundamentals.roe_pct > 25
+                  ? "TOP DECILE"
+                  : undefined
+              }
+            />
+
+            {/* Card 3: 60-Day Rolling Beta vs Nifty 50 */}
+            <BentoCard
+              title="60D ROLLING BETA"
+              value={
+                data.technicals.beta_60d_nifty !== null
+                  ? data.technicals.beta_60d_nifty.toFixed(2)
+                  : "Awaiting Cal"
+              }
+              subLabel={
+                data.technicals.beta_60d_nifty === null
+                  ? "Awaiting Benchmark Calibration"
+                  : Math.abs(data.technicals.beta_60d_nifty) < 0.5
+                  ? "Low systematic benchmark exposure"
+                  : "Standard market systematic co-movement"
+              }
+              isPositive={undefined}
+            />
+
+            {/* Card 4: Distance from 200-day SMA */}
+            <BentoCard
+              title="DISTANCE FROM 200 SMA"
+              value={
+                data.technicals.dist_sma200_pct !== null
+                  ? `${data.technicals.dist_sma200_pct >= 0 ? "+" : ""}${data.technicals.dist_sma200_pct.toFixed(1)}%`
+                  : "Awaiting Trend"
+              }
+              subLabel={
+                data.technicals.dist_sma200_pct === null
+                  ? "Awaiting Trend History"
+                  : isAboveSma200
+                  ? "✓ Price > 200 SMA (Structural Uptrend)"
+                  : "⚠️ Price < 200 SMA (Below Trend)"
+              }
+              isPositive={
+                data.technicals.dist_sma200_pct === null ? undefined : isAboveSma200
+              }
+            />
+          </div>
+
+          {/* Supplementary Metrics Ribbon */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2 text-xs font-mono">
+            <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+              <span className="text-slate-400 block text-[11px]">20-Day SMA</span>
+              <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
+                {data.technicals.sma_20 !== null ? `₹${data.technicals.sma_20.toFixed(2)}` : "—"}
+              </span>
             </div>
-            <div className="mt-2.5 flex items-center space-x-1.5 text-[11px] font-mono">
-              <span className={isAboveSma200 ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
-                {isAboveSma200 ? "✓ Price > 200 SMA (Structural Uptrend)" : "⚠️ Price < 200 SMA (Below Trend)"}
+
+            <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+              <span className="text-slate-400 block text-[11px]">50-Day SMA</span>
+              <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
+                {data.technicals.sma_50 !== null ? `₹${data.technicals.sma_50.toFixed(2)}` : "—"}
+              </span>
+            </div>
+
+            <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+              <span className="text-slate-400 block text-[11px]">200-Day SMA</span>
+              <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
+                {data.technicals.sma_200 !== null ? `₹${data.technicals.sma_200.toFixed(2)}` : "—"}
+              </span>
+            </div>
+
+            <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+              <span className="text-slate-400 block text-[11px]">TTM P/E Ratio</span>
+              <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
+                {data.fundamentals.ttm_pe !== null ? `${data.fundamentals.ttm_pe.toFixed(1)}x` : "—"}
+              </span>
+            </div>
+
+            <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+              <span className="text-slate-400 block text-[11px]">Operating Margin</span>
+              <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
+                {data.fundamentals.opm_pct !== null ? `${data.fundamentals.opm_pct.toFixed(1)}%` : "—"}
+              </span>
+            </div>
+
+            <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
+              <span className="text-slate-400 block text-[11px]">20D Volatility</span>
+              <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
+                {data.technicals.volatility_annualized !== null
+                  ? `${(data.technicals.volatility_annualized * 100).toFixed(1)}%`
+                  : "—"}
               </span>
             </div>
           </div>
-        </div>
-
-        {/* Supplementary Metrics Ribbon */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2 text-xs font-mono">
-          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
-            <span className="text-slate-400 block text-[11px]">20-Day SMA</span>
-            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
-              {data.technicals.sma_20 !== null ? `₹${data.technicals.sma_20.toFixed(2)}` : "—"}
-            </span>
-          </div>
-
-          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
-            <span className="text-slate-400 block text-[11px]">50-Day SMA</span>
-            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
-              {data.technicals.sma_50 !== null ? `₹${data.technicals.sma_50.toFixed(2)}` : "—"}
-            </span>
-          </div>
-
-          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
-            <span className="text-slate-400 block text-[11px]">200-Day SMA</span>
-            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
-              {data.technicals.sma_200 !== null ? `₹${data.technicals.sma_200.toFixed(2)}` : "—"}
-            </span>
-          </div>
-
-          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
-            <span className="text-slate-400 block text-[11px]">TTM P/E Ratio</span>
-            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
-              {data.fundamentals.ttm_pe !== null ? `${data.fundamentals.ttm_pe.toFixed(1)}x` : "—"}
-            </span>
-          </div>
-
-          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
-            <span className="text-slate-400 block text-[11px]">Operating Margin</span>
-            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
-              {data.fundamentals.opm_pct !== null ? `${data.fundamentals.opm_pct.toFixed(1)}%` : "—"}
-            </span>
-          </div>
-
-          <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
-            <span className="text-slate-400 block text-[11px]">20D Volatility</span>
-            <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
-              {data.technicals.volatility_annualized !== null ? `${(data.technicals.volatility_annualized * 100).toFixed(1)}%` : "—"}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* 2-Column Responsive Grid: Corporate Disclosures (Left) + Real-Time News (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Section: Recent Corporate Filings & Disclosures Timeline */}
-        <section id="tearsheet-filings" className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4 scroll-mt-28">
-          <div className="flex items-center justify-between pb-3.5 border-b border-white/[0.06]">
-            <div className="flex items-center space-x-2.5">
-              <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
-                <FileText className="w-4 h-4" />
-              </div>
-              <h2 className="text-base font-bold text-white font-mono tracking-tight">
-                Corporate Disclosures &amp; Filings
-              </h2>
-            </div>
-            <span className="text-xs text-slate-400 font-mono">Official Broadcasts</span>
-          </div>
-
-          {data.recent_disclosures.length === 0 ? (
-            <p className="text-xs text-slate-500 font-mono py-6 text-center">
-              No official exchange disclosures recorded in local database for {data.symbol}.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {data.recent_disclosures.map(d => {
-                const isQuarantined = d.verification_status === "SYNTHETIC_SEED_QUARANTINED";
-                const isVerified = d.verification_status === "VERIFIED";
-                const isFlagged = d.verification_status === "SOURCE_UNVERIFIED";
-
-                return (
-                  <div
-                    key={d.disclosure_id}
-                    className={`border rounded-xl p-4 transition-all flex flex-col justify-between gap-3 text-xs font-mono ${
-                      isQuarantined
-                        ? "bg-rose-950/20 border-rose-900/60"
-                        : "bg-[#050810]/70 border-white/[0.06] hover:border-white/[0.14]"
-                    }`}
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-slate-100 text-sm">{d.category}</span>
-                        <span
-                          className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold ${
-                            isQuarantined
-                              ? "bg-rose-950 text-rose-300 border border-rose-800"
-                              : isVerified
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                              : isFlagged
-                              ? "bg-amber-500/10 text-amber-300 border border-amber-500/30"
-                              : "bg-white/[0.05] text-slate-400 border border-white/[0.08]"
-                          }`}
-                        >
-                          {isQuarantined ? "SYNTHETIC_SEED_QUARANTINED" : d.verification_status}
-                        </span>
-                        {isQuarantined && (
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800 font-mono">
-                            ⚠ QUARANTINED
-                          </span>
-                        )}
-                        <span className="text-slate-400 text-[11px] flex items-center space-x-1 tabular-nums">
-                          <Clock className="w-3 h-3 text-slate-500" />
-                          <span>{d.effective_session_date}</span>
-                        </span>
-                      </div>
-
-                      <p className="text-slate-200 font-medium">{d.subject}</p>
-                      {d.details_summary && (
-                        <p className="text-slate-400 text-[11px] leading-relaxed line-clamp-2">{d.details_summary}</p>
-                      )}
-                    </div>
-
-                    {/* Direct Document Action Link */}
-                    <div>
-                      {isQuarantined ? (
-                        <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-rose-950/50 border border-rose-900/60 text-rose-300 text-xs font-mono font-medium opacity-80 cursor-not-allowed">
-                          <span>Quarantined Filing</span>
-                        </span>
-                      ) : d.source_url ? (
-                        <a
-                          href={d.source_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-white transition-all text-xs font-mono font-medium shadow-[0_0_10px_rgba(6,182,212,0.15)]"
-                        >
-                          <span>{d.source_url.toLowerCase().endsWith(".pdf") ? "View Official PDF" : "Open Exchange Filing"}</span>
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      ) : (
-                        <span className="text-slate-600 text-xs italic">No Direct URL</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </section>
 
-        {/* Section: Real-Time Equity News & Impact Analysis (Milestone B7.5) */}
-        <div id="tearsheet-news" className="scroll-mt-28">
-          <NewsImpactCard
+        {/* Unified Live Intelligence & Corporate Filings Hub */}
+        <section id="tearsheet-wire" className="scroll-mt-28">
+          <UnifiedIntelligenceHub
             symbol={data.symbol}
-            articles={newsArticles}
-            loading={newsLoading}
+            initialDisclosures={data.recent_disclosures}
+            initialNews={newsArticles}
           />
-        </div>
-      </div>
+        </section>
       </main>
     </div>
   );

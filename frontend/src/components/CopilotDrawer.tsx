@@ -500,6 +500,16 @@ export default function CopilotDrawer({
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
 
+  const [internalSymbol, setInternalSymbol] = useState<string>(activeSymbol || "RELIANCE");
+
+  useEffect(() => {
+    if (activeSymbol) {
+      setInternalSymbol(activeSymbol);
+    }
+  }, [activeSymbol]);
+
+  const effectiveSymbol = internalSymbol || activeSymbol || "RELIANCE";
+
   const [prompt, setPrompt] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -554,6 +564,9 @@ export default function CopilotDrawer({
   useEffect(() => {
     const unsub = milEvents.on("mil:open-copilot", (payload) => {
       setInternalIsOpen(true);
+      if (payload?.symbol) {
+        setInternalSymbol(payload.symbol);
+      }
       if (payload?.initialPrompt) {
         void runDeliberationRef.current?.(payload.initialPrompt);
       }
@@ -615,11 +628,11 @@ export default function CopilotDrawer({
 
   // Eagerly fetch ML Alpha Forecast when context symbol changes and drawer is open
   useEffect(() => {
-    if (!activeSymbol || !isOpen) return;
+    if (!effectiveSymbol || !isOpen) return;
     let isCancelled = false;
     const fetchMlForecast = async () => {
       try {
-        const res = await fetch(`${API_BASE}/ml/forecast/${encodeURIComponent(activeSymbol)}`);
+        const res = await fetch(`${API_BASE}/ml/forecast/${encodeURIComponent(effectiveSymbol)}`);
         if (res.ok) {
           const data = await res.json();
           if (!isCancelled && !data.error) {
@@ -634,7 +647,7 @@ export default function CopilotDrawer({
     return () => {
       isCancelled = true;
     };
-  }, [activeSymbol, isOpen]);
+  }, [effectiveSymbol, isOpen]);
 
   const [bullElapsed, setBullElapsed] = useState("00:00");
   const [bearElapsed, setBearElapsed] = useState("00:00");
@@ -671,7 +684,7 @@ export default function CopilotDrawer({
 
   const handleExportMarkdown = useCallback(() => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const targetSymbol = activeSymbol || "NSE_UNIVERSE";
+    const targetSymbol = effectiveSymbol || "NSE_UNIVERSE";
     let md = `# Market Intelligence Lab — Quant Copilot Deliberation\n`;
     md += `**Target Symbol:** ${targetSymbol}\n`;
     md += `**Generated Date:** ${new Date().toLocaleString("en-IN")}\n`;
@@ -705,7 +718,7 @@ export default function CopilotDrawer({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [activeSymbol, activePrice, activeVerdict, state.judgeText, state.bullText, state.bearText, chatHistory]);
+  }, [effectiveSymbol, activePrice, activeVerdict, state.judgeText, state.bullText, state.bearText, chatHistory]);
 
   const drawerRef = useFocusTrap<HTMLElement>(isOpen, handleClose);
 
@@ -739,7 +752,7 @@ export default function CopilotDrawer({
   const runDeliberation = async (customPrompt?: string) => {
     runDeliberationRef.current = runDeliberation;
     const userInstruction = customPrompt || prompt || "Debate Bull vs Bear Thesis";
-    const targetSymbol = activeSymbol || "NIFTY 50";
+    const targetSymbol = effectiveSymbol || "NIFTY 50";
     
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -749,8 +762,8 @@ export default function CopilotDrawer({
 
     setState({
       stage: "telemetry",
-      statusText: activeSymbol 
-        ? `Initializing deliberation engine for ${activeSymbol}...`
+      statusText: effectiveSymbol 
+        ? `Initializing deliberation engine for ${effectiveSymbol}...`
         : "Initializing quantitative deliberation engine...",
       progressPct: 5,
       conversationalText: "",
@@ -1076,16 +1089,16 @@ export default function CopilotDrawer({
               <div className="px-3 sm:px-5 py-2 bg-[#050810]/80 border-b border-white/[0.06] flex items-center justify-between font-mono text-xs shrink-0 overflow-hidden">
                 <div className="flex items-center space-x-2 min-w-0">
                   <span className="text-slate-400 text-[11px] uppercase tracking-wider whitespace-nowrap shrink-0">Context:</span>
-                  {activeSymbol ? (
+                  {effectiveSymbol ? (
                     <span className="text-white font-bold tracking-tight px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.1] shadow-sm truncate">
-                      {activeSymbol}
+                      {effectiveSymbol}
                     </span>
                   ) : (
                     <span className="text-slate-400 italic text-[11px] whitespace-nowrap">Market Overview</span>
                   )}
                   {activePrice !== undefined ? (
                     <span className="text-slate-200 font-semibold tabular-nums whitespace-nowrap">₹{activePrice.toFixed(2)}</span>
-                  ) : activeSymbol ? (
+                  ) : effectiveSymbol ? (
                     <span className="text-slate-500 text-[11px] flex items-center space-x-1 whitespace-nowrap">
                       <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
                       <span>Syncing...</span>
@@ -1098,7 +1111,7 @@ export default function CopilotDrawer({
                   </span>
                 ) : (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-mono text-slate-400 border border-white/[0.08] whitespace-nowrap shrink-0">
-                    {activeSymbol ? "Pending Verdict" : "NIFTY 50"}
+                    {effectiveSymbol ? "Pending Verdict" : "NIFTY 50"}
                   </span>
                 )}
               </div>
@@ -1147,7 +1160,7 @@ export default function CopilotDrawer({
                       <div>
                         <h4 className="text-xs font-bold text-white font-mono">Quant Copilot Ready</h4>
                         <p className="text-[11px] text-slate-400 font-sans">
-                          Grounded multi-turn intelligence for {activeSymbol || "NSE Equities"}.
+                          Grounded multi-turn intelligence for {effectiveSymbol || "NSE Equities"}.
                         </p>
                       </div>
                     </div>
@@ -1157,9 +1170,9 @@ export default function CopilotDrawer({
                       </span>
                       <div className="grid gap-1.5">
                         {[
-                          `What was ${activeSymbol || "NIFTY 50"}'s last major dip?`,
-                          `Compare ${activeSymbol || "NIFTY 50"} vs sector peers`,
-                          `Summarize ${activeSymbol || "NIFTY 50"}'s 20D risk/reward profile`
+                          `What was ${effectiveSymbol || "NIFTY 50"}'s last major dip?`,
+                          `Compare ${effectiveSymbol || "NIFTY 50"} vs sector peers`,
+                          `Summarize ${effectiveSymbol || "NIFTY 50"}'s 20D risk/reward profile`
                         ].map((q, idx) => (
                           <button
                             key={idx}
@@ -1199,9 +1212,9 @@ export default function CopilotDrawer({
                                 <div className="flex items-center space-x-2">
                                   <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
                                   <span className="font-bold font-mono text-[11px] text-white">Quant Copilot</span>
-                                  {activeSymbol && (
+                                  {effectiveSymbol && (
                                     <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-semibold">
-                                      {activeSymbol}
+                                      {effectiveSymbol}
                                     </span>
                                   )}
                                 </div>
@@ -1253,9 +1266,9 @@ export default function CopilotDrawer({
                       <div className="flex items-center space-x-2">
                         <BrainCircuit className="w-3.5 h-3.5 text-cyan-400" />
                         <span className="font-bold font-mono text-[11px] text-white">Quant Copilot</span>
-                        {activeSymbol && (
+                        {effectiveSymbol && (
                           <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-semibold">
-                            {activeSymbol}
+                            {effectiveSymbol}
                           </span>
                         )}
                       </div>
@@ -1736,7 +1749,7 @@ export default function CopilotDrawer({
                   </button>
 
                   <button
-                    onClick={() => runDeliberation(activeSymbol ? `Direct Alpha Brief for ${activeSymbol}` : "Direct Alpha Brief")}
+                    onClick={() => runDeliberation(effectiveSymbol ? `Direct Alpha Brief for ${effectiveSymbol}` : "Direct Alpha Brief")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
                     className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-500/10 border border-white/[0.08] hover:border-cyan-500/40 text-[11px] font-mono text-cyan-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0"
                   >
@@ -1754,7 +1767,7 @@ export default function CopilotDrawer({
                   </button>
 
                   <button
-                    onClick={() => runDeliberation(activeSymbol ? `Compare ${activeSymbol} vs sector peer` : "Compare top market leaders")}
+                    onClick={() => runDeliberation(effectiveSymbol ? `Compare ${effectiveSymbol} vs sector peer` : "Compare top market leaders")}
                     disabled={state.stage !== "idle" && state.stage !== "complete" && state.stage !== "error"}
                     className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-purple-500/10 border border-white/[0.08] hover:border-purple-500/40 text-[11px] font-mono text-purple-300 transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0"
                   >
@@ -1789,8 +1802,8 @@ export default function CopilotDrawer({
                       value={prompt}
                       onChange={e => setPrompt(e.target.value)}
                       placeholder={
-                        activeSymbol
-                          ? `Ask Quant Copilot about ${activeSymbol}...`
+                        effectiveSymbol
+                          ? `Ask Quant Copilot about ${effectiveSymbol}...`
                           : "Ask Quant Copilot about NIFTY 50, sector rotations, or backtests..."
                       }
                       className="w-full bg-[#050810] border border-white/[0.1] rounded-xl px-4 py-2.5 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all"

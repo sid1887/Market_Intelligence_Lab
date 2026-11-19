@@ -674,9 +674,9 @@ function ScreenerWorkspaceComponent({
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#070b14] text-slate-100 select-none min-h-0">
       {/* Top Filter and Navigation Strip */}
-      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-[#050811]">
-        {/* Left: View Mode Toggle & Search */}
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-[#050811]">
+        {/* Left: View Mode Toggle & Search (Zone 1) */}
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           {onViewModeChange && (
             <div className="flex items-center p-0.5 rounded-lg bg-[#050811] border border-white/[0.06] shrink-0">
               <button
@@ -691,7 +691,7 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <TableIcon className="w-3 h-3" />
-                  <span className="hidden sm:inline">Screener</span>
+                  <span className="hidden xl:inline">Screener</span>
                 </span>
               </button>
 
@@ -707,7 +707,7 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <LayoutGrid className="w-3 h-3" />
-                  <span className="hidden sm:inline">Heatmap</span>
+                  <span className="hidden xl:inline">Heatmap</span>
                 </span>
               </button>
 
@@ -723,21 +723,21 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <Grid3X3 className="w-3 h-3" />
-                  <span className="hidden sm:inline">Cards</span>
+                  <span className="hidden xl:inline">Cards</span>
                 </span>
               </button>
             </div>
           )}
 
           {/* Quick Search Input */}
-          <div className="relative flex-1 min-w-[140px] max-w-xs">
+          <div className="relative flex-1 min-w-[160px] max-w-sm">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               ref={searchInputRef}
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter ticker, name, sector..."
+              placeholder="Filter ticker, company name, sector..."
               aria-label="Filter tickers, company names, or sectors"
               className="w-full bg-[#050811] border border-white/[0.08] focus:border-cyan-500/60 rounded-md pl-8 pr-7 py-1 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none transition-all"
             />
@@ -753,8 +753,8 @@ function ScreenerWorkspaceComponent({
           </div>
         </div>
 
-        {/* Right: Column Picker, As of Date & Candidate Count */}
-        <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400 shrink-0">
+        {/* Right: Column Picker, As of Date & Candidate Count (Zone 2) */}
+        <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 shrink-0">
           <div className="relative">
             <button
               onClick={() => setShowColumnPicker((v) => !v)}
@@ -804,12 +804,15 @@ function ScreenerWorkspaceComponent({
           </div>
 
           {asOfDate && (
-            <span className="px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
-              Session: <strong className="text-slate-200">{asOfDate}</strong>
+            <span className="hidden sm:inline px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
+              <span className="text-slate-500">Session: </span>
+              <strong className="text-slate-200">{asOfDate}</strong>
             </span>
           )}
           <span className="px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
-            <strong className="text-cyan-400">{filteredCandidates.length}</strong> / {candidates.length} Equities
+            <strong className="text-cyan-400">{filteredCandidates.length}</strong>
+            <span className="hidden sm:inline text-slate-500"> / {candidates.length}</span>
+            <span className="text-slate-400"> Equities</span>
           </span>
         </div>
       </div>

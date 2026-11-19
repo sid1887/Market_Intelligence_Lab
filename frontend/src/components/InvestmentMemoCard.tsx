@@ -16,6 +16,7 @@ import {
 import { motion } from "framer-motion";
 import { RadialConvictionGauge } from "./RadialConvictionGauge";
 import { apiFetch } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 export interface DiagnosticItem {
   id: string;
@@ -79,9 +80,10 @@ export interface InvestmentMemo {
 interface InvestmentMemoCardProps {
   symbol: string;
   initialMemo?: InvestmentMemo | null;
+  compact?: boolean;
 }
 
-export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMemoCardProps) {
+export default function InvestmentMemoCard({ symbol, initialMemo, compact = false }: InvestmentMemoCardProps) {
   const [memo, setMemo] = useState<InvestmentMemo | null>(initialMemo || null);
   const [loading, setLoading] = useState<boolean>(!initialMemo);
   const [error, setError] = useState<string | null>(null);
@@ -273,7 +275,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+        <div className={cn("grid gap-3.5 pt-1", compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3")}>
           <div className="space-y-1 bg-white/[0.02] p-2.5 rounded-lg border border-white/[0.04]">
             <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider block">Operating Segments</span>
             <p className="text-slate-300 leading-relaxed text-[11px]">{memo.business_profile.operating_segments}</p>
@@ -302,7 +304,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
           <span className="text-[11px] text-slate-400">4 Core Prudence Diagnostics</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className={cn("grid gap-3", compact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4")}>
           {memo.health_checklist.map((diag) => {
             const isPass = diag.status === "PASS";
             const isCaution = diag.status === "CAUTION";
@@ -339,7 +341,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
       </div>
 
       {/* 4. Two-Column Synthesis: Bull Case vs Bear Risks */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 font-mono">
+      <div className={cn("grid gap-4 font-mono", compact ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2")}>
         {/* Bull Case */}
         <div className="bg-emerald-950/20 border-l-4 border-l-emerald-500 border border-emerald-500/20 rounded-xl p-4 sm:p-5 space-y-3">
           <div className="flex items-center space-x-2 text-emerald-400 font-bold text-xs pb-2 border-b border-emerald-500/20">

@@ -57,7 +57,8 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#040609] transition-all">
+    <>
+      <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#040609] transition-all">
       <div className="max-w-[1600px] mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-3 sm:gap-4">
         {/* Brand Terminal Identity */}
         <div className="flex items-center space-x-3 shrink-0">
@@ -165,12 +166,13 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Native Web Push & Causal Radar Modal */}
-      <PushNotificationModal
-        isOpen={isPushModalOpen}
-        onClose={() => setIsPushModalOpen(false)}
-        onSubscriptionChange={(sub) => setIsPushSubscribed(sub)}
-      />
+        {/* Native Web Push & Causal Radar Modal */}
+        <PushNotificationModal
+          isOpen={isPushModalOpen}
+          onClose={() => setIsPushModalOpen(false)}
+          onSubscriptionChange={(sub) => setIsPushSubscribed(sub)}
+        />
+      </header>
 
       {/* ──────────────── FIXED MOBILE BOTTOM NAVIGATION BAR (< 768px) ──────────────── */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609] border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
@@ -206,6 +208,6 @@ export default function Navbar() {
         {/* Dynamic Ingest Quick Action in Bottom Bar */}
         <IngestStatusButton compact />
       </nav>
-    </header>
+    </>
   );
 }
