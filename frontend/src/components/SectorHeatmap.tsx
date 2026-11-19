@@ -118,13 +118,16 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
               </div>
             </div>
 
-            {/* Treemap / Heatmap Glass Tiles */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pt-1">
+            {/* Weighted Treemap Heatmap Glass Tiles (A7) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
               {stocks.map((stock) => {
                 const isActive = stock.symbol === activeSymbol;
                 const ret = stock.excess_ret_20d ?? 0;
                 const retPct = (ret * 100).toFixed(1);
                 const score = Math.round(stock.blended_score ?? stock.composite_score ?? 0);
+                const isHero =
+                  (stock.target_allocation_pct && stock.target_allocation_pct >= 2.5) ||
+                  score >= 80;
 
                 let colorClasses =
                   "bg-white/[0.02] border-white/[0.06] text-slate-300 hover:border-cyan-500/30";
@@ -158,17 +161,31 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
                     }}
                     className={cn(
                       "cursor-pointer rounded-xl border p-2.5 flex flex-col justify-between transition-all duration-150 min-h-[68px]",
+                      isHero ? "col-span-2 min-h-[76px] bg-gradient-to-br from-white/[0.04] to-transparent" : "col-span-1",
                       colorClasses
                     )}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-xs tracking-tight text-white">
-                        {stock.symbol}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-xs tracking-tight text-white">
+                          {stock.symbol}
+                        </span>
+                        {isHero && stock.target_allocation_pct && (
+                          <span className="text-[9px] px-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
+                            {stock.target_allocation_pct.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-black/60 text-cyan-300 border border-white/[0.08] tabular-nums">
                         {score}
                       </span>
                     </div>
+
+                    {isHero && stock.company_name && (
+                      <div className="text-[10px] text-slate-400 truncate my-0.5 max-w-[190px]">
+                        {stock.company_name}
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between mt-1 text-[10px] font-mono">
                       <span className="text-slate-400 truncate text-[10px] tabular-nums">

@@ -20,9 +20,11 @@ import {
   Maximize2,
   Minimize2,
   Cpu,
-  BarChart3
+  BarChart3,
+  Download,
 } from "lucide-react";
 import { RobustSSEParser, ServerSentEvent } from "@/lib/sseParser";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 export interface MLForecastData {
   symbol?: string;
@@ -90,7 +92,7 @@ export function FormattedMarkdown({
     const parts: React.ReactNode[] = [];
     let remaining = text;
     let keyIdx = 0;
-    const tokenRegex = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/;
+    const tokenRegex = /(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/;
 
     while (remaining.length > 0) {
       const match = remaining.match(tokenRegex);
@@ -104,7 +106,25 @@ export function FormattedMarkdown({
       }
 
       const rawToken = match[0];
-      if (rawToken.startsWith("**") && rawToken.endsWith("**")) {
+      if (rawToken.startsWith("[") && rawToken.includes("](") && rawToken.endsWith(")")) {
+        const linkMatch = rawToken.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (linkMatch) {
+          const [, label, url] = linkMatch;
+          parts.push(
+            <a
+              key={keyIdx++}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+            >
+              {label}
+            </a>
+          );
+        } else {
+          parts.push(rawToken);
+        }
+      } else if (rawToken.startsWith("**") && rawToken.endsWith("**")) {
         parts.push(
           <strong key={keyIdx++} className="font-semibold text-slate-100">
             {rawToken.slice(2, -2)}
@@ -251,6 +271,32 @@ export function FormattedMarkdown({
           return <hr key={idx} className="border-t border-white/[0.08] my-2" />;
         }
 
+        // H1 Header (# Title)
+        if (trimmed.startsWith("# ")) {
+          const headerText = trimmed.replace(/^#\s+/, "");
+          return (
+            <div
+              key={idx}
+              className="font-mono font-bold text-sm sm:text-base pt-2 pb-1 border-b border-white/[0.15] text-white tracking-wide mt-2"
+            >
+              {headerText}
+            </div>
+          );
+        }
+
+        // H2 Header (## Title)
+        if (trimmed.startsWith("## ")) {
+          const headerText = trimmed.replace(/^##\s+/, "");
+          return (
+            <div
+              key={idx}
+              className="font-mono font-bold text-sm pt-2 pb-1 border-b border-white/[0.1] text-white tracking-wide mt-2"
+            >
+              {headerText}
+            </div>
+          );
+        }
+
         // H3 Header (### Title)
         if (trimmed.startsWith("### ")) {
           const headerText = trimmed.replace(/^###\s+/, "");
@@ -272,16 +318,29 @@ export function FormattedMarkdown({
           );
         }
 
-        // H2 Header (## Title)
-        if (trimmed.startsWith("## ")) {
-          const headerText = trimmed.replace(/^##\s+/, "");
+        // H4-H6 Header (#### Title)
+        if (/^#{4,6}\s+/.test(trimmed)) {
+          const headerText = trimmed.replace(/^#{4,6}\s+/, "");
           return (
             <div
               key={idx}
-              className="font-mono font-bold text-sm pt-2 pb-1 border-b border-white/[0.1] text-white tracking-wide mt-2"
+              className="font-mono font-semibold text-xs text-slate-300 tracking-wide uppercase mt-1.5"
             >
               {headerText}
             </div>
+          );
+        }
+
+        // Blockquote (> Quote)
+        if (trimmed.startsWith("> ")) {
+          const quoteText = trimmed.replace(/^>\s+/, "");
+          return (
+            <blockquote
+              key={idx}
+              className="border-l-2 border-cyan-500/60 pl-3 py-1 my-1.5 text-slate-300 italic bg-white/[0.02] rounded-r text-xs font-sans"
+            >
+              {parseInline(quoteText)}
+            </blockquote>
           );
         }
 
@@ -433,6 +492,46 @@ export default function CopilotDrawer({
       setInternalIsOpen(false);
     }
   }, [onClose]);
+
+  const handleExportMarkdown = useCallback(() => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const targetSymbol = activeSymbol || "NSE_UNIVERSE";
+    let md = `# Market Intelligence Lab — Quant Copilot Deliberation\n`;
+    md += `**Target Symbol:** ${targetSymbol}\n`;
+    md += `**Generated Date:** ${new Date().toLocaleString("en-IN")}\n`;
+    if (activePrice) md += `**Settled Price:** ₹${activePrice.toFixed(2)}\n`;
+    if (activeVerdict) md += `**Institutional Verdict:** ${activeVerdict.replace(/_/g, " ")}\n`;
+    md += `\n---\n\n`;
+
+    if (state.judgeText) {
+      md += `## Portfolio Manager Judge Synthesis\n\n${state.judgeText}\n\n`;
+    }
+    if (state.bullText) {
+      md += `## Bullish Momentum Thesis\n\n${state.bullText}\n\n`;
+    }
+    if (state.bearText) {
+      md += `## Bearish Risk Thesis\n\n${state.bearText}\n\n`;
+    }
+
+    if (chatHistory.length > 0) {
+      md += `## Multi-Turn Deliberation Transcript\n\n`;
+      chatHistory.forEach((msg) => {
+        md += `### ${msg.role === "user" ? "User Inquiry" : "Quant Copilot"}\n\n${msg.content}\n\n`;
+      });
+    }
+
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `MIL_Deliberation_${targetSymbol}_${timestamp}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [activeSymbol, activePrice, activeVerdict, state.judgeText, state.bullText, state.bearText, chatHistory]);
+
+  const drawerRef = useFocusTrap<HTMLElement>(isOpen, handleClose);
 
   // Global Keyboard Shortcut: ⌘J / Ctrl+J
   useEffect(() => {
@@ -658,9 +757,22 @@ export default function CopilotDrawer({
 
             {/* Slide-in Drawer Container */}
             <motion.aside
+              ref={drawerRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Quantitative Copilot Deliberation Drawer"
+              tabIndex={-1}
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={{ left: 0, right: 0.5 }}
+              onDragEnd={(_, info) => {
+                if (info.offset.x > 100 || info.velocity.x > 300) {
+                  handleClose();
+                }
+              }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
               className={`fixed top-0 right-0 bottom-0 z-50 flex flex-col bg-[#06090f] border-l border-white/[0.1] shadow-[-20px_0_60px_rgba(0,0,0,0.85)] h-[100dvh] max-h-[100dvh] ${
                 isExpanded ? "w-full md:w-[720px]" : "w-full sm:w-[480px] lg:w-[520px]"
@@ -688,7 +800,14 @@ export default function CopilotDrawer({
                 </div>
 
                 {/* Right controls */}
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    onClick={handleExportMarkdown}
+                    title="Export deliberation transcript to Markdown (.md)"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => setIsExpanded(!isExpanded)}
                     title={isExpanded ? "Restore width" : "Expand width"}

@@ -10,7 +10,9 @@ import {
   ColorType,
   CrosshairMode,
   IChartApi,
-  ISeriesApi
+  ISeriesApi,
+  IPriceLine,
+  Time
 } from "lightweight-charts";
 
 export interface CandleData {
@@ -49,6 +51,12 @@ export interface ForecastData {
   projections: ProjectionStep[];
 }
 
+export interface PriceLevel {
+  id: string;
+  price: number;
+  label: string;
+}
+
 interface StockChartProps {
   symbol: string;
   data: CandleData[];
@@ -72,11 +80,39 @@ export default function StockChart({
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const dynamicPriceLinesRef = useRef<IPriceLine[]>([]);
 
   const [activeRange, setActiveRange] = useState<"3M" | "6M" | "1Y" | "3Y" | "5Y" | "MAX">("1Y");
   const [showForecast, setShowForecast] = useState<boolean>(true);
+  const [showAthl, setShowAthl] = useState<boolean>(false);
+  const [priceLevels, setPriceLevels] = useState<PriceLevel[]>([]);
+  const [isAddLevelOpen, setIsAddLevelOpen] = useState(false);
+  const [customPriceInput, setCustomPriceInput] = useState("");
   const [hoverData, setHoverData] = useState<CandleData | null>(null);
   const [hoverProjection, setHoverProjection] = useState<ProjectionStep | null>(null);
+
+  // Load custom price levels from localStorage (L6)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`mil:chart-levels:${symbol}`);
+      if (saved) {
+        setPriceLevels(JSON.parse(saved));
+      } else {
+        setPriceLevels([]);
+      }
+    } catch {
+      setPriceLevels([]);
+    }
+  }, [symbol]);
+
+  const updatePriceLevels = (newLevels: PriceLevel[]) => {
+    setPriceLevels(newLevels);
+    try {
+      localStorage.setItem(`mil:chart-levels:${symbol}`, JSON.stringify(newLevels));
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     if (!chartContainerRef.current || !data || data.length === 0) return;
@@ -197,6 +233,16 @@ export default function StockChart({
 
     candlestickSeries.setData(candlePayload);
     volumeSeries.setData(volumePayload);
+
+    // Initial visible range configuration
+    if (activeRange === "MAX") {
+      chart.timeScale().fitContent();
+    } else if (filteredData.length > 0) {
+      chart.timeScale().setVisibleRange({
+        from: filteredData[0].time as unknown as Time,
+        to: filteredData[filteredData.length - 1].time as unknown as Time,
+      });
+    }
 
     const isNarrowViewport = container.clientWidth < 640;
 
@@ -347,7 +393,104 @@ export default function StockChart({
         chartRef.current = null;
       }
     };
-  }, [data, activeRange, showForecast, forecast, chartHeight, sma200]);
+    // activeRange is purposefully decoupled so range changes adjust timeScale without remounting chart
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, showForecast, forecast, chartHeight, sma200]);
+
+  // Smoothly adjust visible range without tearing down / remounting chart (H4)
+  useEffect(() => {
+    if (!chartRef.current || !data || data.length === 0) return;
+    const sortedData = [...data].sort((a, b) => (a.time > b.time ? 1 : -1));
+    let slice = sortedData;
+    if (activeRange === "3M") slice = sortedData.slice(-63);
+    else if (activeRange === "6M") slice = sortedData.slice(-126);
+    else if (activeRange === "1Y") slice = sortedData.slice(-252);
+    else if (activeRange === "3Y") slice = sortedData.slice(-756);
+    else if (activeRange === "5Y") slice = sortedData.slice(-1260);
+    else if (activeRange === "MAX") slice = sortedData;
+
+    if (activeRange === "MAX") {
+      chartRef.current.timeScale().fitContent();
+    } else if (slice.length > 0) {
+      chartRef.current.timeScale().setVisibleRange({
+        from: slice[0].time as unknown as Time,
+        to: slice[slice.length - 1].time as unknown as Time,
+      });
+    }
+  }, [activeRange, data]);
+
+  // Synchronize ATH/ATL Markers (L7) & Custom Drawn Price Levels (L6)
+  useEffect(() => {
+    const series = candlestickSeriesRef.current;
+    if (!series || !data || data.length === 0) return;
+
+    // Clear previously registered dynamic price lines
+    dynamicPriceLinesRef.current.forEach((line) => {
+      try {
+        series.removePriceLine(line);
+      } catch {
+        // ignore
+      }
+    });
+    dynamicPriceLinesRef.current = [];
+
+    const isNarrow = chartContainerRef.current ? chartContainerRef.current.clientWidth < 640 : false;
+
+    // 1. ATH / ATL Markers (L7)
+    if (showAthl) {
+      const sortedData = [...data].sort((a, b) => (a.time > b.time ? 1 : -1));
+      let slice = sortedData;
+      if (activeRange === "3M") slice = sortedData.slice(-63);
+      else if (activeRange === "6M") slice = sortedData.slice(-126);
+      else if (activeRange === "1Y") slice = sortedData.slice(-252);
+      else if (activeRange === "3Y") slice = sortedData.slice(-756);
+      else if (activeRange === "5Y") slice = sortedData.slice(-1260);
+
+      if (slice.length > 0) {
+        const ath = Math.max(...slice.map((d) => d.high));
+        const atl = Math.min(...slice.map((d) => d.low));
+
+        if (ath > 0) {
+          const athLine = series.createPriceLine({
+            price: ath,
+            color: "rgba(16, 185, 129, 0.8)",
+            lineWidth: 1,
+            lineStyle: 2,
+            axisLabelVisible: !isNarrow,
+            title: isNarrow ? "" : `ATH ₹${ath.toFixed(1)}`,
+          });
+          dynamicPriceLinesRef.current.push(athLine);
+        }
+
+        if (atl > 0) {
+          const atlLine = series.createPriceLine({
+            price: atl,
+            color: "rgba(244, 63, 94, 0.8)",
+            lineWidth: 1,
+            lineStyle: 2,
+            axisLabelVisible: !isNarrow,
+            title: isNarrow ? "" : `ATL ₹${atl.toFixed(1)}`,
+          });
+          dynamicPriceLinesRef.current.push(atlLine);
+        }
+      }
+    }
+
+    // 2. Custom Drawn Price Levels (L6)
+    priceLevels.forEach((lvl) => {
+      if (lvl.price > 0) {
+        const line = series.createPriceLine({
+          price: lvl.price,
+          color: "rgba(168, 85, 247, 0.85)",
+          lineWidth: 1,
+          lineStyle: 3,
+          axisLabelVisible: !isNarrow,
+          title: isNarrow ? "" : (lvl.label || `Lvl ₹${lvl.price.toFixed(1)}`),
+        });
+        dynamicPriceLinesRef.current.push(line);
+      }
+    });
+  }, [showAthl, priceLevels, activeRange, data]);
 
   const latest = hoverData || (data && data.length > 0 ? data[data.length - 1] : null);
   const isUp = latest ? latest.close >= latest.open : true;
@@ -390,8 +533,105 @@ export default function StockChart({
           ) : null}
         </div>
 
-        {/* Right: Forecast Cone Toggle & Timeframe Selector */}
+        {/* Right: Controls & Tools */}
         <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+          {/* ATH / ATL Markers Toggle (L7) */}
+          <button
+            onClick={() => setShowAthl(!showAthl)}
+            title="Toggle All-Time High / All-Time Low Markers for Visible Horizon"
+            className={`flex items-center space-x-1.5 px-2 py-1 rounded-xl text-[10px] font-mono transition-all border ${
+              showAthl
+                ? "bg-emerald-950/70 border-emerald-500/50 text-emerald-300 font-bold shadow-[0_0_10px_rgba(16,185,129,0.25)]"
+                : "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                showAthl ? "bg-emerald-400 shadow-[0_0_6px_#34d399]" : "bg-slate-600"
+              }`}
+            />
+            <span>ATH/ATL</span>
+          </button>
+
+          {/* Price Level Drawing Tool (L6) */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setIsAddLevelOpen(!isAddLevelOpen);
+                if (!customPriceInput && latest) {
+                  setCustomPriceInput(latest.close.toFixed(2));
+                }
+              }}
+              title="Add Horizontal Support/Resistance Level"
+              className={`flex items-center space-x-1 px-2 py-1 rounded-xl text-[10px] font-mono transition-all border ${
+                priceLevels.length > 0 || isAddLevelOpen
+                  ? "bg-purple-950/70 border-purple-500/50 text-purple-300 font-semibold shadow-[0_0_10px_rgba(168,85,247,0.25)]"
+                  : "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span className="text-purple-400 font-bold">+</span>
+              <span>Level</span>
+              {priceLevels.length > 0 && (
+                <span className="ml-0.5 px-1 bg-purple-500/20 text-purple-300 rounded text-[9px]">
+                  {priceLevels.length}
+                </span>
+              )}
+            </button>
+
+            {isAddLevelOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-30 w-56 p-2.5 bg-[#090d16] border border-purple-500/30 rounded-xl shadow-2xl backdrop-blur-xl text-[10px] font-mono animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/[0.08]">
+                  <span className="text-slate-200 font-bold">Add Price Level</span>
+                  <button
+                    onClick={() => setIsAddLevelOpen(false)}
+                    className="text-slate-500 hover:text-slate-300"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={customPriceInput}
+                    onChange={(e) => setCustomPriceInput(e.target.value)}
+                    placeholder={latest ? latest.close.toFixed(2) : "0.00"}
+                    className="flex-1 bg-white/[0.05] border border-white/[0.1] rounded px-2 py-1 text-slate-100 focus:outline-none focus:border-purple-500 text-xs font-mono"
+                  />
+                  <button
+                    onClick={() => {
+                      const p = parseFloat(customPriceInput);
+                      if (!isNaN(p) && p > 0) {
+                        const newLevels = [
+                          ...priceLevels,
+                          { id: `lvl-${Date.now()}`, price: p, label: `S/R ₹${p.toFixed(1)}` },
+                        ];
+                        updatePriceLevels(newLevels);
+                        setCustomPriceInput("");
+                        setIsAddLevelOpen(false);
+                      }
+                    }}
+                    className="px-2 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded"
+                  >
+                    Add
+                  </button>
+                </div>
+                {priceLevels.length > 0 && (
+                  <div className="pt-1.5 border-t border-white/[0.06] flex items-center justify-between">
+                    <span className="text-slate-500 text-[9px]">{priceLevels.length} active</span>
+                    <button
+                      onClick={() => updatePriceLevels([])}
+                      className="text-rose-400 hover:text-rose-300 text-[9px] underline"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* 20D Forecast Cone Toggle */}
           <button
             onClick={() => setShowForecast(!showForecast)}
@@ -408,7 +648,7 @@ export default function StockChart({
 
           {/* Time Horizon Selector (Obsidian Glass Pills) */}
           <div className="flex items-center space-x-1 bg-black/50 p-1 rounded-xl border border-white/[0.08] text-[10px] font-mono">
-            {(["3M", "6M", "1Y", "3Y", "MAX"] as const).map(range => (
+            {(["3M", "6M", "1Y", "3Y", "5Y", "MAX"] as const).map(range => (
               <button
                 key={range}
                 onClick={() => setActiveRange(range)}
@@ -425,9 +665,33 @@ export default function StockChart({
         </div>
       </div>
 
+      {/* Active Custom Price Level Chips */}
+      {priceLevels.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 pb-2 mb-2 border-b border-white/[0.04] text-[9px] font-mono">
+          <span className="text-purple-400 font-semibold">Active Levels:</span>
+          {priceLevels.map((lvl) => (
+            <span
+              key={lvl.id}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-500/30 text-purple-300"
+            >
+              ₹{lvl.price.toFixed(2)}
+              <button
+                onClick={() => updatePriceLevels(priceLevels.filter((l) => l.id !== lvl.id))}
+                className="hover:text-rose-400 ml-0.5"
+                title="Remove level"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Chart Canvas Mount Point */}
       <div
         ref={chartContainerRef}
+        role="region"
+        aria-label={`${symbol} Candlestick and Volume Chart`}
         style={{ height: chartHeight }}
         className="w-full relative min-h-[320px]"
       />
@@ -462,6 +726,24 @@ export default function StockChart({
           {sma200 && (
             <span className="text-slate-400">
               200SMA: <strong className="text-amber-400">₹{sma200.toFixed(2)}</strong>
+            </span>
+          )}
+          {showAthl && (
+            <>
+              <span className="flex items-center space-x-1 text-emerald-400">
+                <span className="w-2.5 h-0.5 bg-emerald-400" />
+                <span>ATH</span>
+              </span>
+              <span className="flex items-center space-x-1 text-rose-400">
+                <span className="w-2.5 h-0.5 bg-rose-400" />
+                <span>ATL</span>
+              </span>
+            </>
+          )}
+          {priceLevels.length > 0 && (
+            <span className="flex items-center space-x-1 text-purple-400">
+              <span className="w-2.5 h-0.5 bg-purple-400" />
+              <span>S/R ({priceLevels.length})</span>
             </span>
           )}
         </div>

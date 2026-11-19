@@ -18,7 +18,17 @@ const StockChart = dynamic(() => import("@/components/StockChart"), {
 import NewsImpactCard, { NewsArticle } from "@/components/NewsImpactCard";
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
 import Navbar from "@/components/Navbar";
+import { cn } from "@/lib/utils";
 import { requestLifecycle, API_BASE, DEFAULT_HEADERS, apiFetch, clearMemoryCache } from "@/lib/api";
+
+const TEARSHEET_SECTIONS = [
+  { id: "tearsheet-overview", label: "Overview" },
+  { id: "tearsheet-chart", label: "Chart & Forecast" },
+  { id: "tearsheet-thesis", label: "Investment Memo" },
+  { id: "tearsheet-health", label: "Fundamentals & Risk" },
+  { id: "tearsheet-filings", label: "Filings & Wire" },
+  { id: "tearsheet-news", label: "News Wire" },
+];
 import {
   ArrowLeft,
   TrendingUp,
@@ -35,7 +45,9 @@ import {
   CheckCircle2,
   Loader2,
   Circle,
-  SearchX
+  SearchX,
+  Share2,
+  Check,
 } from "lucide-react";
 
 interface Disclosure {
@@ -110,6 +122,44 @@ export default function StockTearsheetPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
+  const [activeSection, setActiveSection] = useState<string>("tearsheet-overview");
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollPos = window.scrollY + 140;
+      for (let i = TEARSHEET_SECTIONS.length - 1; i >= 0; i--) {
+        const el = document.getElementById(TEARSHEET_SECTIONS[i].id);
+        if (el && el.offsetTop <= scrollPos) {
+          setActiveSection(TEARSHEET_SECTIONS[i].id);
+          break;
+        }
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    setActiveSection(id);
+    const el = document.getElementById(id);
+    if (el) {
+      const yOffset = -110;
+      const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      window.scrollTo({ top: y, behavior: "smooth" });
+    }
+  };
+
+  const [copied, setCopied] = useState<boolean>(false);
+
+  const handleShare = () => {
+    if (typeof window !== "undefined") {
+      const url = window.location.href;
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => {});
+    }
+  };
   const [ingestion, setIngestion] = useState<{
     isIngesting: boolean;
     progressPct: number;
@@ -494,13 +544,51 @@ export default function StockTearsheetPage() {
             <span>Back to Screener Workbench</span>
           </Link>
 
-          <span className="text-xs text-slate-400 font-mono px-3 py-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            Settled Session: <strong className="text-white tabular-nums">{data.as_of_date}</strong>
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleShare}
+              className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/40 text-xs font-mono text-slate-300 hover:text-white transition-all shadow-sm"
+              title="Share Tearsheet Link"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300 font-semibold">Copied Link!</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Share</span>
+                </>
+              )}
+            </button>
+
+            <span className="text-xs text-slate-400 font-mono px-3 py-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              Settled Session: <strong className="text-white tabular-nums">{data.as_of_date}</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* Sticky Mobile/Desktop Section Jump Sub-Navigation */}
+        <div className="sticky top-14 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 bg-[#050811]/90 backdrop-blur-md border-b border-white/[0.08] flex items-center gap-1.5 overflow-x-auto no-scrollbar shadow-lg">
+          {TEARSHEET_SECTIONS.map((sec) => (
+            <button
+              key={sec.id}
+              onClick={() => scrollToSection(sec.id)}
+              className={cn(
+                "px-3 py-1 rounded-lg text-xs font-mono whitespace-nowrap transition-all",
+                activeSection === sec.id
+                  ? "bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_10px_rgba(6,182,212,0.2)]"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+              )}
+            >
+              {sec.label}
+            </button>
+          ))}
         </div>
 
       {/* Hero Header Card */}
-      <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
+      <div id="tearsheet-overview" className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 sm:p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -579,7 +667,7 @@ export default function StockTearsheetPage() {
       </div>
 
       {/* Bento Grid Row 1: StockChart (8 cols) + 20-Day Forecast Cone (4 cols) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div id="tearsheet-chart" className="grid grid-cols-1 xl:grid-cols-12 gap-6 scroll-mt-28">
         {/* Candlestick Chart */}
         <section className={forecast && forecast.projections && forecast.projections.length > 0 ? "xl:col-span-8" : "xl:col-span-12"}>
           <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-4 shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
@@ -700,12 +788,12 @@ export default function StockTearsheetPage() {
       </div>
 
       {/* Milestone B9.0: Institutional Investment Decision Memo */}
-      <section>
+      <section id="tearsheet-thesis" className="scroll-mt-28">
         <InvestmentMemoCard symbol={data.symbol} initialMemo={memo} />
       </section>
 
       {/* Core 4-Card Grid: Fundamentals & Technicals */}
-      <section className="space-y-4">
+      <section id="tearsheet-health" className="space-y-4 scroll-mt-28">
         <div className="flex items-center space-x-2">
           <Activity className="w-4 h-4 text-cyan-400" />
           <h2 className="text-base font-bold text-white font-mono tracking-tight">
@@ -829,7 +917,7 @@ export default function StockTearsheetPage() {
       {/* 2-Column Responsive Grid: Corporate Disclosures (Left) + Real-Time News (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Section: Recent Corporate Filings & Disclosures Timeline */}
-        <section className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
+        <section id="tearsheet-filings" className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-6 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4 scroll-mt-28">
           <div className="flex items-center justify-between pb-3.5 border-b border-white/[0.06]">
             <div className="flex items-center space-x-2.5">
               <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
@@ -923,7 +1011,7 @@ export default function StockTearsheetPage() {
         </section>
 
         {/* Section: Real-Time Equity News & Impact Analysis (Milestone B7.5) */}
-        <div>
+        <div id="tearsheet-news" className="scroll-mt-28">
           <NewsImpactCard
             symbol={data.symbol}
             articles={newsArticles}

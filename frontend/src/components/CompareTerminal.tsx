@@ -45,21 +45,28 @@ const POPULAR_SUGGESTIONS = [
   "BHARTIARTL",
 ];
 
+const getTodayDate = () => new Date().toISOString().split("T")[0];
+const getYearsAgoDate = (years: number) => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d.toISOString().split("T")[0];
+};
+
 const TIMEFRAME_PRESETS = [
   { label: "COVID Crash 2020", start: "2020-01-01", end: "2020-06-30", isRegime: true },
   { label: "2022 Rate Cycle", start: "2022-01-01", end: "2022-12-31", isRegime: true },
   { label: "2024 Election Volatility", start: "2024-05-01", end: "2024-06-30", isRegime: true },
-  { label: "1Y", start: "2025-11-06", end: "2026-11-06" },
-  { label: "3Y", start: "2023-11-06", end: "2026-11-06" },
-  { label: "5Y", start: "2021-11-06", end: "2026-11-06" },
-  { label: "MAX", start: "2015-01-01", end: "2026-11-06" },
+  { label: "1Y", start: getYearsAgoDate(1), end: getTodayDate() },
+  { label: "3Y", start: getYearsAgoDate(3), end: getTodayDate() },
+  { label: "5Y", start: getYearsAgoDate(5), end: getTodayDate() },
+  { label: "MAX", start: "2015-01-01", end: getTodayDate() },
 ];
 
 export default function CompareTerminal() {
   const [symbols, setSymbols] = useState<string[]>(["TCS", "INFY", "HCLTECH"]);
   const [newSymbolInput, setNewSymbolInput] = useState<string>("");
-  const [startDate, setStartDate] = useState<string>("2021-11-06");
-  const [endDate, setEndDate] = useState<string>("2026-11-06");
+  const [startDate, setStartDate] = useState<string>(() => getYearsAgoDate(5));
+  const [endDate, setEndDate] = useState<string>(() => getTodayDate());
   const [activePreset, setActivePreset] = useState<string>("5Y");
 
   const [loading, setLoading] = useState<boolean>(false);

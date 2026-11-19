@@ -14,6 +14,7 @@ import {
   Send,
   Loader2,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   checkPushSubscription,
@@ -22,6 +23,19 @@ import {
   sendTestPushAlert,
   PushPermissionStatus,
 } from "@/lib/pushNotifications";
+import { cn } from "@/lib/utils";
+
+export interface NotificationPreferences {
+  minMovePct: number;
+  minRvol: number;
+  scope: "all" | "holdings_only";
+}
+
+export const DEFAULT_PUSH_PREFS: NotificationPreferences = {
+  minMovePct: 3.0,
+  minRvol: 2.5,
+  scope: "all",
+};
 
 interface PushNotificationModalProps {
   isOpen: boolean;
@@ -40,6 +54,25 @@ export default function PushNotificationModal({
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  const [prefs, setPrefs] = useState<NotificationPreferences>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("mil:push-preferences");
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return DEFAULT_PUSH_PREFS;
+  });
+
+  const updatePref = <K extends keyof NotificationPreferences>(key: K, value: NotificationPreferences[K]) => {
+    setPrefs((prev) => {
+      const next = { ...prev, [key]: value };
+      try {
+        localStorage.setItem("mil:push-preferences", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -242,6 +275,87 @@ export default function PushNotificationModal({
               <span>{feedback.text}</span>
             </motion.div>
           )}
+
+          {/* Notification Threshold Preferences (L12) */}
+          <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3 font-mono text-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-white/[0.04]">
+              <span className="flex items-center gap-1.5 text-slate-300 font-bold">
+                <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                Alert Thresholds &amp; Channel Scope
+              </span>
+              <span className="text-[10px] text-cyan-400">Auto-saved</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+              <div>
+                <label className="text-slate-400 block mb-1">Price Anomaly Trigger</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {[2.0, 3.0, 5.0].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => updatePref("minMovePct", val)}
+                      className={cn(
+                        "py-1 px-1.5 rounded-lg border text-center transition-colors",
+                        prefs.minMovePct === val
+                          ? "bg-cyan-950/80 border-cyan-500/50 text-cyan-300 font-bold"
+                          : "border-white/[0.06] text-slate-400 hover:bg-white/[0.03]"
+                      )}
+                    >
+                      &ge; {val.toFixed(1)}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-400 block mb-1">RVOL Surge Trigger</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {[1.5, 2.5, 4.0].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => updatePref("minRvol", val)}
+                      className={cn(
+                        "py-1 px-1.5 rounded-lg border text-center transition-colors",
+                        prefs.minRvol === val
+                          ? "bg-cyan-950/80 border-cyan-500/50 text-cyan-300 font-bold"
+                          : "border-white/[0.06] text-slate-400 hover:bg-white/[0.03]"
+                      )}
+                    >
+                      &ge; {val.toFixed(1)}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-slate-400 block mb-1 text-[11px]">Universe Alert Scope</label>
+              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                <button
+                  onClick={() => updatePref("scope", "all")}
+                  className={cn(
+                    "py-1.5 px-2 rounded-lg border text-left transition-colors",
+                    prefs.scope === "all"
+                      ? "bg-cyan-950/80 border-cyan-500/50 text-cyan-300 font-bold"
+                      : "border-white/[0.06] text-slate-400 hover:bg-white/[0.03]"
+                  )}
+                >
+                  All 1,143 Equities
+                </button>
+                <button
+                  onClick={() => updatePref("scope", "holdings_only")}
+                  className={cn(
+                    "py-1.5 px-2 rounded-lg border text-left transition-colors",
+                    prefs.scope === "holdings_only"
+                      ? "bg-cyan-950/80 border-cyan-500/50 text-cyan-300 font-bold"
+                      : "border-white/[0.06] text-slate-400 hover:bg-white/[0.03]"
+                  )}
+                >
+                  Watchlist &amp; Portfolio Only
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex items-center justify-end space-x-3 pt-2 border-t border-white/[0.08]">

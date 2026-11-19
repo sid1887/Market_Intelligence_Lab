@@ -1,5 +1,5 @@
 # Company Research Tearsheet — INFY (Infosys Ltd.)
-**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-15 12:43:52 UTC`  
+**As-of Trading Session:** `2026-10-23` | **Generated:** `2026-11-18 16:22:09 UTC`  
 **ISIN:** `INE009A01021` | **Industry:** `Information Technology` | **Sector:** `Information Technology`  
 **System Status:** Local-First SQLite Research Lab | **Execution Capabilities:** Permanently Disabled  
 

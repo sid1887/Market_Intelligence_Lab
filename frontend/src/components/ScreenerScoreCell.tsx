@@ -35,7 +35,14 @@ export const ScreenerScoreCell: React.FC<{ score: number; className?: string }> 
       <span className={cn("text-xs font-bold tabular-nums tracking-tight", getTextColor(normalized))}>
         {normalized.toFixed(1)}
       </span>
-      <div className="w-14 h-1.5 bg-black/60 rounded-full overflow-hidden border border-white/[0.08] p-[1px]">
+      <div
+        role="progressbar"
+        aria-label={`Score: ${normalized.toFixed(1)} out of 100`}
+        aria-valuenow={Math.round(normalized)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="w-14 h-1.5 bg-black/60 rounded-full overflow-hidden border border-white/[0.08] p-[1px]"
+      >
         <motion.div
           className={cn("h-full rounded-full bg-gradient-to-r transition-all", getBarGradient(normalized))}
           initial={{ width: 0 }}

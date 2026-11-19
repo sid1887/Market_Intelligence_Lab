@@ -573,6 +573,25 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
         cur.execute(sql)
         rows = cur.fetchall()
 
+        # Fetch real 10-day price history for sparkline visualization
+        sparklines = {}
+        if rows:
+            symbols = [r["symbol"] for r in rows]
+            placeholders = ",".join(["?"] * len(symbols))
+            cur.execute(f"""
+                SELECT symbol, close FROM (
+                    SELECT symbol, close, trading_date,
+                           ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) as rn
+                    FROM ohlcv_daily
+                    WHERE symbol IN ({placeholders})
+                ) WHERE rn <= 10 ORDER BY symbol, trading_date ASC
+            """, symbols)
+            for s_row in cur.fetchall():
+                sym = s_row["symbol"]
+                c_val = safe_float(s_row["close"], 2)
+                if c_val is not None:
+                    sparklines.setdefault(sym, []).append(c_val)
+
         watchlist = []
         for r in rows:
             close_val = safe_float(r["close"], 2)
@@ -609,7 +628,8 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
                 "ttm_pe": safe_float(r["ttm_pe"], 2),
                 "roe_pct": safe_float(r["roe_pct"], 2),
                 "debt_to_equity": safe_float(r["debt_to_equity"], 4),
-                "opm_pct": safe_float(r["opm_pct"], 2)
+                "opm_pct": safe_float(r["opm_pct"], 2),
+                "sparkline": sparklines.get(r["symbol"], [])
             })
 
         return sanitize_for_json({
@@ -618,6 +638,71 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Watchlist retrieval error: {str(e)}")
+
+
+class WatchlistAddRequest(BaseModel):
+    symbol: str
+    target_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@app.post("/api/v1/watchlist")
+def add_to_watchlist(
+    payload: WatchlistAddRequest,
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """Adds or updates an equity symbol in user_watchlists with automated securities_master metadata."""
+    sym = payload.symbol.strip().upper()
+    try:
+        # Lookup company_name & sector from securities_master
+        sec = conn.execute(
+            "SELECT company_name, sector FROM securities_master WHERE symbol = ?", (sym,)
+        ).fetchone()
+        comp_name = sec["company_name"] if sec and sec["company_name"] else sym
+        sector = sec["sector"] if sec and sec["sector"] else "Equity"
+        today_str = datetime.date.today().isoformat()
+
+        conn.execute("""
+            INSERT INTO user_watchlists (symbol, company_name, sector, added_date, target_price, stop_loss, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET
+                target_price = COALESCE(excluded.target_price, user_watchlists.target_price),
+                stop_loss = COALESCE(excluded.stop_loss, user_watchlists.stop_loss),
+                notes = COALESCE(excluded.notes, user_watchlists.notes)
+        """, (sym, comp_name, sector, today_str, payload.target_price, payload.stop_loss, payload.notes))
+        conn.commit()
+
+        return {
+            "status": "ok",
+            "message": f"{sym} added to active user watchlist.",
+            "symbol": sym,
+            "is_watchlist": True
+        }
+    except Exception as e:
+        logger.error(f"Error adding {sym} to watchlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to add to watchlist: {str(e)}")
+
+
+@app.delete("/api/v1/watchlist/{symbol}")
+def remove_from_watchlist(
+    symbol: str,
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """Removes an equity symbol from user_watchlists."""
+    sym = symbol.strip().upper()
+    try:
+        conn.execute("DELETE FROM user_watchlists WHERE symbol = ?", (sym,))
+        conn.commit()
+        return {
+            "status": "ok",
+            "message": f"{sym} removed from active user watchlist.",
+            "symbol": sym,
+            "is_watchlist": False
+        }
+    except Exception as e:
+        logger.error(f"Error removing {sym} from watchlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to remove from watchlist: {str(e)}")
 
 
 @app.get("/macro")

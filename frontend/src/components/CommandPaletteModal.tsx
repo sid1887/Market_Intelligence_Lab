@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ArrowRight, Command } from "lucide-react";
+import { Search, ArrowRight, Command, History } from "lucide-react";
 import { ScreenerCandidate } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -21,19 +21,36 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
 }) => {
   const [query, setQuery] = useState("");
   const [cursorIndex, setCursorIndex] = useState(0);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("mil:recent-searches");
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return [];
+  });
+
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const filtered = query.trim()
-    ? candidates
+  const filtered = useMemo(() => {
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      return candidates
         .filter(
           (c) =>
-            c.symbol.toLowerCase().includes(query.toLowerCase()) ||
-            c.company_name.toLowerCase().includes(query.toLowerCase()) ||
-            (c.sector || "").toLowerCase().includes(query.toLowerCase())
+            c.symbol.toLowerCase().includes(q) ||
+            c.company_name.toLowerCase().includes(q) ||
+            (c.sector || "").toLowerCase().includes(q)
         )
-        .slice(0, 10)
-    : candidates.slice(0, 10);
+        .slice(0, 10);
+    }
+    // No query: show top 10 quant picks sorted by blended score
+    return [...candidates]
+      .sort((a, b) => (b.blended_score ?? 0) - (a.blended_score ?? 0))
+      .slice(0, 10);
+  }, [candidates, query]);
 
   // Auto-focus input
   useEffect(() => {
@@ -45,35 +62,12 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     setCursorIndex(0);
   }, [query]);
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setCursorIndex((i) => Math.min(i + 1, filtered.length - 1));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setCursorIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === "Enter" && filtered[cursorIndex]) {
-        e.preventDefault();
-        onSelect(filtered[cursorIndex].symbol);
-        onClose();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [filtered, cursorIndex, onSelect, onClose]);
-
-  // Scroll active item into view
-  useEffect(() => {
-    const el = listRef.current?.querySelector(`[data-idx="${cursorIndex}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [cursorIndex]);
-
   const handleSelect = (symbol: string) => {
+    try {
+      const updated = [symbol, ...recentSearches.filter((s) => s !== symbol)].slice(0, 5);
+      setRecentSearches(updated);
+      localStorage.setItem("mil:recent-searches", JSON.stringify(updated));
+    } catch {}
     onSelect(symbol);
     onClose();
   };
@@ -112,6 +106,37 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
               ESC
             </kbd>
           </div>
+
+          {/* Recent Searches Quick Access */}
+          {recentSearches.length > 0 && (
+            <div className="flex items-center gap-1.5 px-4 py-1.5 bg-white/[0.01] border-b border-white/[0.04] overflow-x-auto no-scrollbar">
+              <span className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-slate-500 shrink-0 mr-1">
+                <History className="w-3 h-3 text-slate-500" />
+                Recent:
+              </span>
+              {recentSearches.map((sym) => (
+                <button
+                  key={sym}
+                  onClick={() => handleSelect(sym)}
+                  className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-slate-800/60 border border-slate-700/50 text-slate-300 hover:bg-slate-700/60 hover:text-white hover:border-slate-500 transition-colors shrink-0"
+                >
+                  {sym}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  setRecentSearches([]);
+                  try {
+                    localStorage.removeItem("mil:recent-searches");
+                  } catch {}
+                }}
+                className="ml-auto text-[10px] font-mono text-slate-600 hover:text-slate-400 transition-colors shrink-0"
+                title="Clear recent searches"
+              >
+                Clear
+              </button>
+            </div>
+          )}
 
           {/* Focus Watchlist Quick Access */}
           {watchlistSymbols.length > 0 && (

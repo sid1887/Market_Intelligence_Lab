@@ -528,18 +528,29 @@ class CausalCatalystEngine:
         return results
 
     @staticmethod
-    def get_live_catalysts(limit: int = 20) -> List[Dict[str, Any]]:
+    def get_live_catalysts(limit: int = 20, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """Fetches recent catalysts from SQLite for frontend pulse feeds, deduplicated by symbol."""
         init_catalyst_tables()
         with _get_db() as conn:
-            # Query up to 4x limit to ensure unique symbols after deduplication
-            rows = conn.execute("""
-                SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
-                       pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
-                       causal_headline, causal_bullets, triggered_at
-                FROM market_catalysts
-                ORDER BY triggered_at DESC LIMIT ?
-            """, (limit * 4,)).fetchall()
+            if symbol:
+                clean_sym = symbol.strip().upper()
+                rows = conn.execute("""
+                    SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
+                           pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
+                           causal_headline, causal_bullets, triggered_at
+                    FROM market_catalysts
+                    WHERE UPPER(symbol) = ?
+                    ORDER BY triggered_at DESC LIMIT ?
+                """, (clean_sym, limit)).fetchall()
+            else:
+                # Query up to 4x limit to ensure unique symbols after deduplication
+                rows = conn.execute("""
+                    SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
+                           pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
+                           causal_headline, causal_bullets, triggered_at
+                    FROM market_catalysts
+                    ORDER BY triggered_at DESC LIMIT ?
+                """, (limit * 4,)).fetchall()
 
             out = []
             seen_symbols = set()

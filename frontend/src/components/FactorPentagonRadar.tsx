@@ -4,14 +4,29 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-interface FactorRadarProps {
+export interface FactorRadarMetrics {
   roe?: number | null;          // e.g. 0 to 40+
   debtToEquity?: number | null; // e.g. 0 to 2.0 (inverted: lower is better)
   opm?: number | null;          // e.g. 0 to 35+
   momentum20d?: number | null;  // e.g. -15 to +15 (excess_ret_20d * 100)
   conviction?: number | null;   // 0 to 100
+}
+
+export interface FactorRadarProps extends FactorRadarMetrics {
+  comparison?: FactorRadarMetrics & { label?: string };
+  enableBenchmarkToggle?: boolean;
   className?: string;
 }
+
+// Default NSE 500 Median Baseline for comparison
+const DEFAULT_BASELINE: FactorRadarMetrics & { label: string } = {
+  roe: 15.0,
+  debtToEquity: 0.65,
+  opm: 16.5,
+  momentum20d: 0.0,
+  conviction: 50.0,
+  label: "NSE 500 Benchmark",
+};
 
 export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
   roe,
@@ -19,13 +34,19 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
   opm,
   momentum20d,
   conviction,
+  comparison,
+  enableBenchmarkToggle = true,
   className,
 }) => {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [showComparison, setShowComparison] = useState<boolean>(Boolean(comparison));
 
   const size = 220;
   const center = size / 2;
   const radius = 68;
+
+  // Active baseline target (custom prop or default NSE 500 median)
+  const activeComp = comparison || (enableBenchmarkToggle && showComparison ? DEFAULT_BASELINE : undefined);
 
   // Normalize metrics to 0.15 - 1.0 scale
   const normRoe = Math.min(Math.max((roe || 0) / 35, 0.15), 1);
@@ -44,6 +65,22 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
     conviction !== null && conviction !== undefined ? `${conviction.toFixed(0)}/100` : "—",
   ];
 
+  // Comparison normalization
+  const normCompRoe = activeComp ? Math.min(Math.max((activeComp.roe || 0) / 35, 0.15), 1) : 0.5;
+  const normCompSafety = activeComp ? Math.min(Math.max(1 - (activeComp.debtToEquity || 0) / 1.8, 0.15), 1) : 0.5;
+  const normCompOpm = activeComp ? Math.min(Math.max((activeComp.opm || 0) / 30, 0.15), 1) : 0.5;
+  const normCompMom = activeComp ? Math.min(Math.max(((activeComp.momentum20d || 0) + 12) / 24, 0.15), 1) : 0.5;
+  const normCompConv = activeComp ? Math.min(Math.max((activeComp.conviction || 50) / 100, 0.15), 1) : 0.5;
+
+  const compValues = [normCompRoe, normCompSafety, normCompOpm, normCompMom, normCompConv];
+  const rawCompValues = activeComp ? [
+    activeComp.roe !== null && activeComp.roe !== undefined ? `${activeComp.roe.toFixed(1)}%` : "—",
+    activeComp.debtToEquity !== null && activeComp.debtToEquity !== undefined ? `${activeComp.debtToEquity.toFixed(2)} D/E` : "—",
+    activeComp.opm !== null && activeComp.opm !== undefined ? `${activeComp.opm.toFixed(1)}%` : "—",
+    activeComp.momentum20d !== null && activeComp.momentum20d !== undefined ? `${activeComp.momentum20d > 0 ? "+" : ""}${activeComp.momentum20d.toFixed(1)}%` : "—",
+    activeComp.conviction !== null && activeComp.conviction !== undefined ? `${activeComp.conviction.toFixed(0)}/100` : "—",
+  ] : [];
+
   const getPoint = (index: number, scale: number): [number, number] => {
     const angle = (Math.PI * 2 * index) / 5 - Math.PI / 2;
     const x = center + radius * scale * Math.cos(angle);
@@ -57,13 +94,18 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
   };
 
   const polygonPoints = values.map((v, i) => getPointStr(i, v)).join(" ");
+  const comparisonPolygonPoints = compValues.map((v, i) => getPointStr(i, v)).join(" ");
 
   return (
     <div className={cn("relative flex flex-col items-center justify-center select-none w-full", className)}>
       <svg
+        role="img"
+        aria-label="Factor Quality Radar: ROE, Safety, OPM, Momentum, Conviction"
         viewBox={`0 0 ${size} ${size}`}
         className="w-[195px] h-[195px] overflow-visible"
       >
+        <title>Factor Quality Radar</title>
+        <desc>{`ROE: ${rawValues[0]}, Safety: ${rawValues[1]}, OPM: ${rawValues[2]}, Momentum: ${rawValues[3]}, Conviction: ${rawValues[4]}`}</desc>
         <defs>
           <radialGradient id="radarPentagonGlow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
@@ -117,7 +159,20 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
           );
         })}
 
-        {/* Morphing Data Pentagon Polygon */}
+        {/* Historical / Benchmark Comparison Polygon Overlay (L8) */}
+        {showComparison && activeComp && (
+          <motion.polygon
+            initial={false}
+            animate={{ points: comparisonPolygonPoints }}
+            transition={{ type: "spring", stiffness: 240, damping: 24 }}
+            fill="rgba(245, 158, 11, 0.08)"
+            stroke="rgba(245, 158, 11, 0.75)"
+            strokeWidth="1.5"
+            strokeDasharray="4 3"
+          />
+        )}
+
+        {/* Morphing Primary Data Pentagon Polygon */}
         <motion.polygon
           initial={false}
           animate={{ points: polygonPoints }}
@@ -127,7 +182,23 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
           strokeWidth="2"
         />
 
-        {/* Interactive Vertex Nodes */}
+        {/* Comparison Vertex Nodes */}
+        {showComparison && activeComp && compValues.map((v, i) => {
+          const [vx, vy] = getPoint(i, v);
+          return (
+            <circle
+              key={`comp-${i}`}
+              cx={vx}
+              cy={vy}
+              r={2.5}
+              fill="#f59e0b"
+              stroke="#040609"
+              strokeWidth="1"
+            />
+          );
+        })}
+
+        {/* Interactive Primary Vertex Nodes */}
         {values.map((v, i) => {
           const [vx, vy] = getPoint(i, v);
           const isHovered = hoveredIdx === i;
@@ -135,9 +206,20 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
           return (
             <g
               key={i}
+              role="button"
+              tabIndex={0}
+              aria-label={`${labels[i]}: ${rawValues[i]}`}
               onMouseEnter={() => setHoveredIdx(i)}
               onMouseLeave={() => setHoveredIdx(null)}
-              className="cursor-pointer"
+              onFocus={() => setHoveredIdx(i)}
+              onBlur={() => setHoveredIdx(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setHoveredIdx(i);
+                }
+              }}
+              className="cursor-pointer focus:outline-none"
             >
               <circle cx={vx} cy={vy} r={8} fill="transparent" />
               <motion.circle
@@ -155,7 +237,7 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
       </svg>
 
       {/* Floating Vertex Tooltip */}
-      <div className="h-5 flex items-center justify-center">
+      <div className="h-5 flex items-center justify-center my-0.5">
         <AnimatePresence mode="wait">
           {hoveredIdx !== null ? (
             <motion.div
@@ -163,10 +245,15 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
               initial={{ opacity: 0, y: 3 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -3 }}
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-[10px] font-mono text-cyan-200 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-500/40 text-[10px] font-mono text-cyan-200 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
             >
               <span className="font-bold text-white">{labels[hoveredIdx]}:</span>
               <span className="tabular-nums text-cyan-300 font-semibold">{rawValues[hoveredIdx]}</span>
+              {showComparison && activeComp && (
+                <span className="text-amber-400 font-normal">
+                  vs {rawCompValues[hoveredIdx]}
+                </span>
+              )}
             </motion.div>
           ) : (
             <span className="text-[10px] font-mono text-slate-500">
@@ -174,6 +261,28 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
             </span>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* Benchmark Overlay Toggle & Legend (L8) */}
+      <div className="flex items-center justify-center gap-3 pt-1 border-t border-white/[0.04] w-full text-[9px] font-mono">
+        <div className="flex items-center gap-1.5 text-cyan-400">
+          <span className="w-2.5 h-1 bg-cyan-400 rounded-full" />
+          <span>Active Stock</span>
+        </div>
+
+        <button
+          onClick={() => setShowComparison(!showComparison)}
+          title="Toggle Benchmark Overlay on Radar"
+          className={cn(
+            "flex items-center gap-1.5 px-1.5 py-0.5 rounded border transition-colors",
+            showComparison
+              ? "bg-amber-950/60 border-amber-500/40 text-amber-300 font-bold"
+              : "border-white/[0.06] text-slate-500 hover:text-slate-300"
+          )}
+        >
+          <span className="w-2.5 h-0.5 border-t border-amber-400 border-dashed" />
+          <span>{activeComp?.label || "Benchmark"}</span>
+        </button>
       </div>
     </div>
   );

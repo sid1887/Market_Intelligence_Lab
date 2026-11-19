@@ -53,9 +53,16 @@ ALIAS_MAP: Dict[str, str] = {
 
 
 class MultiAgentDeliberationEngine:
-    def __init__(self, bridge: Optional[QuantMCPBridge] = None):
-        self.bridge = bridge or QuantMCPBridge()
-        self.db = self.bridge.db
+    def __init__(self, bridge: Optional[Any] = None):
+        if bridge is not None and hasattr(bridge, "get_connection"):
+            self.db = bridge
+            self.bridge = QuantMCPBridge(db_manager=self.db)
+        elif bridge is not None and hasattr(bridge, "db"):
+            self.bridge = bridge
+            self.db = self.bridge.db
+        else:
+            self.bridge = bridge or QuantMCPBridge()
+            self.db = getattr(self.bridge, "db", None) or DatabaseManager()
 
     # ─────────────────────────────────────────────────────────────────────────────
     # 1. SYMBOL EXTRACTION & INTENT CLASSIFICATION
@@ -222,6 +229,20 @@ class MultiAgentDeliberationEngine:
         except Exception as se:
             logger.debug(f"Screener leader query: {se}")
 
+        # Account & portfolio telemetry for quant reasoning
+        portfolio_telemetry: Dict[str, Any] = {}
+        account_summary: Dict[str, Any] = {}
+        try:
+            from src.quant.execution_engine import PaperTradingEngine
+            exec_eng = PaperTradingEngine(self.db)
+            account_id = context_override.get("account_id", "paper_alpha_2") if context_override else "paper_alpha_2"
+            account_summary = exec_eng.get_account_summary(account_id)
+            portfolio_telemetry["paper_alpha_2"] = exec_eng.get_account_summary("paper_alpha_2")
+            portfolio_telemetry["paper_manual_1"] = exec_eng.get_account_summary("paper_manual_1")
+            portfolio_telemetry["paper_alpha_1"] = exec_eng.get_account_summary("paper_alpha_1")
+        except Exception as pe:
+            logger.debug(f"Portfolio telemetry query error: {pe}")
+
         primary_sym = target_syms[0] if target_syms else "NIFTY 50"
         primary_data = stocks_data.get(primary_sym, {})
 
@@ -245,6 +266,8 @@ class MultiAgentDeliberationEngine:
             "macro_environment": macro,
             "news_headlines": primary_data.get("news", []),
             "recent_news": primary_data.get("news", []),
+            "account_summary": account_summary,
+            "portfolio_telemetry": portfolio_telemetry,
             "user_watchlists": [dict(w) for w in watchlists],
             "portfolio_positions": [dict(p) for p in positions],
             "screener_leaders": screener_leaders,

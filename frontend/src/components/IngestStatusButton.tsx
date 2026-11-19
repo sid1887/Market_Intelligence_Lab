@@ -201,7 +201,7 @@ export default function IngestStatusButton({
         <>
           <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
           <span className="hidden sm:inline">
-            Syncing {progress}/{total || 1143} (Batch {currentBatch}/${totalBatches || 8})...
+            Syncing {progress}/{total || 1143} (Batch {currentBatch}/{totalBatches || 8})...
           </span>
           <span className="sm:hidden">
             {total ? Math.round((progress / total) * 100) : 0}%

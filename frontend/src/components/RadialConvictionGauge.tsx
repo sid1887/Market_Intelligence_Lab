@@ -40,10 +40,19 @@ export const RadialConvictionGauge: React.FC<RadialConvictionGaugeProps> = ({
   };
 
   const scheme = getColorScheme(numericScore);
-  const gradId = `radial-conviction-${radius}-${Math.floor(numericScore ?? 0)}`;
+  const reactId = React.useId();
+  const cleanId = reactId.replace(/:/g, "");
+  const gradId = `radial-conviction-${cleanId}`;
 
   return (
-    <div className={cn("relative flex items-center justify-center select-none", className)}>
+    <div
+      role="meter"
+      aria-label={label ? `${label}: ${numericScore !== null ? numericScore : "N/A"}` : `Conviction score: ${numericScore !== null ? numericScore : "N/A"} out of 100`}
+      aria-valuenow={numericScore !== null ? numericScore : undefined}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      className={cn("relative flex items-center justify-center select-none", className)}
+    >
       <svg
         height={radius * 2}
         width={radius * 2}

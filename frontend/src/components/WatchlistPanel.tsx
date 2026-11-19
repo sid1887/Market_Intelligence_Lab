@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { TrendingUp, TrendingDown, ArrowUpRight, Compass } from "lucide-react";
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 export interface WatchlistItem {
   symbol: string;
@@ -21,39 +22,55 @@ export interface WatchlistItem {
   roe_pct?: number | null;
   debt_to_equity?: number | null;
   volume?: number | null;
+  sparkline?: number[] | null;
 }
 
 interface WatchlistPanelProps {
   items: WatchlistItem[];
   loading?: boolean;
+  onSelectSymbol?: (symbol: string) => void;
 }
 
-function WatchlistSparkline({ isUp, distSma }: { isUp: boolean; distSma: number }) {
-  // Deterministic 10-point smooth sparkline path based on return & distance to SMA
-  const upwardPoints = distSma > 0
-    ? "0,16 7,15 14,12 21,14 28,9 35,11 42,6 49,8 56,3 64,2"
-    : "0,18 7,16 14,14 21,15 28,11 35,12 42,9 49,7 56,5 64,3";
-
-  const downwardPoints = distSma < 0
-    ? "0,3 7,5 14,7 21,5 28,10 35,8 42,13 49,12 56,17 64,19"
-    : "0,2 7,4 14,6 21,8 28,7 35,11 42,13 49,14 56,16 64,18";
-
-  const pts = isUp ? upwardPoints : downwardPoints;
+function WatchlistSparkline({
+  prices,
+  isUp,
+  distSma,
+}: {
+  prices?: number[] | null;
+  isUp: boolean;
+  distSma: number;
+}) {
   const strokeColor = isUp ? "#34d399" : "#fb7185";
 
+  let pts = "";
+  if (prices && prices.length >= 2) {
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const range = max - min || (max > 0 ? max * 0.01 : 1);
+    pts = prices
+      .map((p, i) => {
+        const x = ((i / (prices.length - 1)) * 62 + 1).toFixed(1);
+        const y = (18 - ((p - min) / range) * 15).toFixed(1);
+        return `${x},${y}`;
+      })
+      .join(" ");
+  } else {
+    // Graceful trend slope based on real return direction and distance to 200 SMA
+    pts = isUp
+      ? distSma > 0
+        ? "1,17 15,14 30,12 45,8 63,3"
+        : "1,18 15,16 30,13 45,9 63,4"
+      : distSma < 0
+      ? "1,3 15,7 30,11 45,15 63,18"
+      : "1,2 15,6 30,10 45,14 63,17";
+  }
+
   return (
-    <svg className="w-16 h-6 overflow-visible shrink-0" viewBox="0 0 64 20">
-      <defs>
-        <filter id={`sparkline-glow-${isUp ? "up" : "down"}`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow
-            dx="0"
-            dy="0"
-            stdDeviation="1.5"
-            floodColor={isUp ? "#10b981" : "#f43f5e"}
-            floodOpacity="0.5"
-          />
-        </filter>
-      </defs>
+    <svg
+      className="w-16 h-6 overflow-visible shrink-0"
+      viewBox="0 0 64 20"
+      aria-hidden="true"
+    >
       <polyline
         fill="none"
         stroke={strokeColor}
@@ -61,13 +78,12 @@ function WatchlistSparkline({ isUp, distSma }: { isUp: boolean; distSma: number 
         strokeLinecap="round"
         strokeLinejoin="round"
         points={pts}
-        filter={`url(#sparkline-glow-${isUp ? "up" : "down"})`}
       />
     </svg>
   );
 }
 
-export default function WatchlistPanel({ items, loading }: WatchlistPanelProps) {
+export default function WatchlistPanel({ items, loading, onSelectSymbol }: WatchlistPanelProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -116,9 +132,12 @@ export default function WatchlistPanel({ items, loading }: WatchlistPanelProps) 
               whileHover={{ y: -2, transition: { duration: 0.15 } }}
               whileTap={{ scale: 0.99 }}
             >
-              <Link
-                href={`/stocks/${stock.symbol}`}
-                className="group relative h-[82px] bg-[#06090f]/75 hover:bg-[#09101c]/90 border border-white/[0.08] hover:border-cyan-500/40 rounded-xl px-3.5 py-2.5 transition-all duration-200 shadow-lg hover:shadow-[0_0_24px_rgba(6,182,212,0.14)] flex items-center justify-between overflow-hidden block"
+              <div
+                onClick={() => onSelectSymbol?.(stock.symbol)}
+                className={cn(
+                  "group relative h-[82px] bg-[#06090f]/75 hover:bg-[#09101c]/90 border border-white/[0.08] hover:border-cyan-500/40 rounded-xl px-3.5 py-2.5 transition-all duration-200 shadow-lg hover:shadow-[0_0_24px_rgba(6,182,212,0.14)] flex items-center justify-between overflow-hidden cursor-pointer",
+                  onSelectSymbol ? "select-none" : ""
+                )}
               >
                 {/* Top specular highlight line on hover */}
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -136,11 +155,18 @@ export default function WatchlistPanel({ items, loading }: WatchlistPanelProps) 
                   <div className="flex items-center space-x-1.5">
                     <span className="text-[13px] font-bold text-white font-mono group-hover:text-cyan-300 transition-colors tracking-tight flex items-center gap-1">
                       {stock.symbol}
-                      <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-cyan-400" />
                     </span>
                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-slate-400 font-mono truncate max-w-[80px]">
                       {stock.sector}
                     </span>
+                    <Link
+                      href={`/stocks/${stock.symbol}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Open full tearsheet for ${stock.symbol}`}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-500 hover:text-cyan-300 p-0.5"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </Link>
                   </div>
                   <div className="flex items-baseline space-x-2">
                     <div className="text-[16px] font-black text-slate-100 font-mono tabular-nums tracking-tight leading-none">
@@ -172,9 +198,9 @@ export default function WatchlistPanel({ items, loading }: WatchlistPanelProps) 
                     <span>{stock.ret_1d_pct >= 0 ? "+" : ""}{stock.ret_1d_pct.toFixed(2)}%</span>
                   </div>
 
-                  <WatchlistSparkline isUp={isUp} distSma={dist} />
+                  <WatchlistSparkline prices={stock.sparkline} isUp={isUp} distSma={dist} />
                 </div>
-              </Link>
+              </div>
             </motion.div>
           );
         })}

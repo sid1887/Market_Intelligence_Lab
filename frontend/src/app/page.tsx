@@ -31,19 +31,67 @@ import StockInspector from "@/components/StockInspector";
 import CopilotDrawer from "@/components/CopilotDrawer";
 import IngestStatusButton from "@/components/IngestStatusButton";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
+import { PanelErrorBoundary } from "@/components/PanelErrorBoundary";
+import { KeyboardShortcutModal } from "@/components/KeyboardShortcutModal";
 
 export default function CockpitPage() {
   const [candidates, setCandidates] = useState<ScreenerCandidate[]>([]);
   const [asOfDate, setAsOfDate] = useState<string>("");
   const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<"table" | "heatmap">("table");
+  const [viewMode, setViewMode] = useState<"table" | "heatmap" | "cards">("table");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
   const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showShortcutModal, setShowShortcutModal] = useState(false);
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
+
+  // Resizable Split-Pane Ratio (M3)
+  const [splitPct, setSplitPct] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("mil:split-pct");
+      if (saved) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= 30 && val <= 75) return val;
+      }
+    }
+    return 54;
+  });
+
+  const isDraggingRef = React.useRef(false);
+
+  const startDragging = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const totalWidth = window.innerWidth;
+      const newPct = Math.min(Math.max((moveEvent.clientX / totalWidth) * 100, 30), 75);
+      setSplitPct(newPct);
+    };
+
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      setSplitPct((curr) => {
+        try {
+          localStorage.setItem("mil:split-pct", curr.toFixed(1));
+        } catch {}
+        return curr;
+      });
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }, []);
 
   // 1. Unified Real-Time Event Hub
   const {
@@ -78,7 +126,8 @@ export default function CockpitPage() {
       }
 
       if (wlRes.status === "fulfilled") {
-        setWatchlistSymbols((wlRes.value.watchlist || []).map((w) => w.symbol));
+        const items = wlRes.value.watchlist || [];
+        setWatchlistSymbols(items.map((w) => w.symbol));
       }
     } catch (err) {
       console.error("Cockpit initial load error:", err);
@@ -110,8 +159,8 @@ export default function CockpitPage() {
         }
       }
       const viewParam = params.get("view");
-      if (viewParam === "heatmap") {
-        setViewMode("heatmap");
+      if (viewParam === "heatmap" || viewParam === "cards") {
+        setViewMode(viewParam);
       }
     }
 
@@ -133,6 +182,8 @@ export default function CockpitPage() {
     }
     if (viewMode === "heatmap") {
       url.searchParams.set("view", "heatmap");
+    } else if (viewMode === "cards") {
+      url.searchParams.set("view", "cards");
     } else {
       url.searchParams.delete("view");
     }
@@ -154,12 +205,27 @@ export default function CockpitPage() {
     }
   }, []);
 
-  // Keyboard shortcut for command palette (⌘K)
+  // Global Keyboard Shortcuts (⌘K, ?, V) (M5)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setShowCommandPalette((prev) => !prev);
+      } else if (!isInput) {
+        if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          setShowShortcutModal((prev) => !prev);
+        } else if (e.key.toLowerCase() === "v" && !e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          setViewMode((prev) => (prev === "table" ? "heatmap" : "table"));
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -242,6 +308,15 @@ export default function CockpitPage() {
             <kbd className="text-[10px] text-cyan-400/80 bg-slate-900 px-1 rounded border border-cyan-500/30">⌘J</kbd>
           </button>
 
+          {/* Keyboard Shortcuts Cheatsheet (M5) */}
+          <button
+            onClick={() => setShowShortcutModal(true)}
+            title="Terminal Keyboard Shortcuts (?)"
+            className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-white/[0.04] border border-white/[0.06] transition-colors font-mono text-xs font-bold"
+          >
+            ?
+          </button>
+
           {/* Web Push Notification Bell */}
           <button
             onClick={() => setIsPushModalOpen(true)}
@@ -301,36 +376,54 @@ export default function CockpitPage() {
 
       {/* ──────────────── 3. RESPONSIVE MASTER-DETAIL SPLIT-PANE ──────────────── */}
       <div className="flex flex-1 overflow-hidden relative z-10 min-h-0 h-full pb-14 md:pb-0">
-        {/* Master: Screener Workspace (Always full-width on mobile, 54% or 100% on desktop) */}
+        {/* Master: Screener Workspace (Adjustable desktop width via splitPct, full-width on mobile or collapsed) */}
         <div
-          className={`${
-            isInspectorCollapsed ? "w-full" : "w-full lg:w-[54%]"
-          } flex flex-col h-full overflow-hidden shrink-0 min-h-0 bg-[#040609] border-r border-slate-800/80 transition-all duration-300 ease-in-out`}
+          style={{ width: isInspectorCollapsed ? "100%" : `${splitPct}%` }}
+          className="w-full flex flex-col h-full overflow-hidden shrink-0 min-h-0 bg-[#040609] transition-all duration-75 ease-out"
         >
-          <ScreenerWorkspace
-            candidates={candidates}
-            selectedSymbol={selectedSymbol}
-            onSelectSymbol={handleSelectSymbol}
-            asOfDate={asOfDate}
-            loading={pageLoading}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-          />
+          <PanelErrorBoundary panelName="Screener Workspace">
+            <ScreenerWorkspace
+              candidates={candidates}
+              selectedSymbol={selectedSymbol}
+              onSelectSymbol={handleSelectSymbol}
+              asOfDate={asOfDate}
+              loading={pageLoading}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+            />
+          </PanelErrorBoundary>
         </div>
+
+        {/* Resizable Divider Handle (M3) */}
+        {!isInspectorCollapsed && (
+          <div
+            onMouseDown={startDragging}
+            onDoubleClick={() => setSplitPct(54)}
+            title="Drag to resize panels (Double-click to reset to 54%)"
+            className="hidden lg:flex w-1.5 hover:w-2 bg-black/80 hover:bg-cyan-500/50 active:bg-cyan-400 cursor-col-resize items-center justify-center transition-all z-20 group relative border-x border-white/[0.04]"
+          >
+            <div className="w-[1px] h-8 bg-slate-700 group-hover:bg-cyan-300 transition-colors" />
+          </div>
+        )}
 
         {/* Desktop Detail: Stock Deep Inspector (>= 1024px) */}
         {!isInspectorCollapsed && (
-          <div className="hidden lg:flex flex-1 flex-col h-full overflow-hidden min-w-0 min-h-0 bg-[#040609] transition-all duration-300 ease-in-out">
-            <StockInspector
-              symbol={selectedSymbol}
-              activeCandidate={activeCandidate}
-              onClose={() => setIsInspectorCollapsed(true)}
-              onOpenCopilot={() => {
-                window.dispatchEvent(
-                  new KeyboardEvent("keydown", { key: "j", metaKey: true })
-                );
-              }}
-            />
+          <div
+            style={{ width: `${100 - splitPct}%` }}
+            className="hidden lg:flex flex-col h-full overflow-hidden min-w-0 min-h-0 bg-[#040609] transition-all duration-75 ease-out"
+          >
+            <PanelErrorBoundary panelName="Stock Inspector">
+              <StockInspector
+                symbol={selectedSymbol}
+                activeCandidate={activeCandidate}
+                onClose={() => setIsInspectorCollapsed(true)}
+                onOpenCopilot={() => {
+                  window.dispatchEvent(
+                    new KeyboardEvent("keydown", { key: "j", metaKey: true })
+                  );
+                }}
+              />
+            </PanelErrorBoundary>
           </div>
         )}
       </div>
@@ -398,11 +491,23 @@ export default function CockpitPage() {
           <LineChart className="w-4 h-4 mb-0.5 text-slate-400" />
           <span>Backtest</span>
         </Link>
+        <button
+          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }))}
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-cyan-300"
+        >
+          <BrainCircuit className="w-4 h-4 mb-0.5 text-cyan-400" />
+          <span>Copilot</span>
+        </button>
         {/* Dynamic Ingest in Mobile Bottom Bar */}
         <IngestStatusButton compact />
       </nav>
 
       {/* ──────────────── 6. MODALS & COCKPIT DRAWERS ──────────────── */}
+      <KeyboardShortcutModal
+        isOpen={showShortcutModal}
+        onClose={() => setShowShortcutModal(false)}
+      />
+
       <CopilotDrawer
         activeSymbol={selectedSymbol || "RELIANCE"}
         activePrice={activeCandidate?.close ?? undefined}

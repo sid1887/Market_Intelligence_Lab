@@ -57,26 +57,56 @@ export default function BacktestPage() {
   const [result, setResult] = useState<PortfolioBacktestResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load presets on mount
+  // Load URL search parameters or presets on mount (L13)
   useEffect(() => {
-    async function loadPresets() {
+    async function initBacktest() {
+      const urlConfig: Record<string, string> = {};
+      if (typeof window !== "undefined" && window.location.search) {
+        const params = new URLSearchParams(window.location.search);
+        params.forEach((val, key) => {
+          urlConfig[key] = val;
+        });
+      }
+
       try {
         const data = await fetchBacktestPresets();
         setPresets(data);
-        if (data.default_config) {
-          setStrategyMode(data.default_config.strategy_mode);
-          setTopN(data.default_config.top_n);
-          setRebalanceDays(data.default_config.rebalance_every_n_days);
-          setStartDate(data.default_config.start_date || "2024-10-21");
-          setEndDate(data.default_config.end_date || "2026-11-06");
-          setInitialCapital(data.default_config.initial_capital || 1000000);
-        }
+        const def = (data.default_config || {}) as Record<string, unknown>;
+
+        const mode = urlConfig.mode || (def.strategy_mode as string) || "BLENDED_20D_60D";
+        const n = urlConfig.topN ? parseInt(urlConfig.topN, 10) : ((def.top_n as number) || 15);
+        const reb = urlConfig.rebalance ? parseInt(urlConfig.rebalance, 10) : ((def.rebalance_every_n_days as number) || 20);
+        const sDate = urlConfig.startDate || (def.start_date as string) || "2024-10-21";
+        const eDate = urlConfig.endDate || (def.end_date as string) || "2026-11-06";
+        const cap = urlConfig.capital ? parseFloat(urlConfig.capital) : ((def.initial_capital as number) || 1000000);
+
+        setStrategyMode(mode);
+        setTopN(n);
+        setRebalanceDays(reb);
+        setStartDate(sDate);
+        setEndDate(eDate);
+        setInitialCapital(cap);
       } catch (err) {
         console.warn("Could not fetch backtest presets:", err);
       }
     }
-    loadPresets();
+    void initBacktest();
   }, []);
+
+  // Sync state to URL search parameters for bookmarking & sharing (L13)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams();
+    if (strategyMode) params.set("mode", strategyMode);
+    if (topN) params.set("topN", String(topN));
+    if (rebalanceDays) params.set("rebalance", String(rebalanceDays));
+    if (startDate) params.set("startDate", startDate);
+    if (endDate) params.set("endDate", endDate);
+    if (initialCapital) params.set("capital", String(initialCapital));
+
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, "", newUrl);
+  }, [strategyMode, topN, rebalanceDays, startDate, endDate, initialCapital]);
 
   const handleRunBacktest = useCallback(async () => {
     if (loading) return;

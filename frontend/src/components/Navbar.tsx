@@ -7,17 +7,15 @@ import { motion } from "framer-motion";
 import {
   Activity,
   LayoutDashboard,
-  BookmarkCheck,
   Search,
   LineChart,
   Briefcase,
   BrainCircuit,
-  Bell,
-  BellRing,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import IngestStatusButton from "./IngestStatusButton";
 import PushNotificationModal from "./PushNotificationModal";
+import NotificationCenterPopover from "./NotificationCenterPopover";
 import { checkPushSubscription, autoSyncPushSubscription } from "@/lib/pushNotifications";
 
 const NAV_LINKS = [
@@ -47,10 +45,13 @@ export default function Navbar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const sym = searchQuery.trim().toUpperCase();
-    if (sym) {
+    const sym = searchQuery.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    if (sym && sym.length >= 2) {
       router.push(`/stocks/${sym}`);
       setSearchQuery("");
+    } else {
+      // Trigger Command Palette for universe search
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
     }
   };
 
@@ -122,14 +123,20 @@ export default function Navbar() {
 
         {/* Action Buttons: Copilot ⌘J & Ingestion Status */}
         <div className="flex items-center space-x-2 shrink-0">
-          {/* Quick Tickers */}
-          <Link
-            href="/stocks/SUZLON"
-            className="hidden xl:flex items-center gap-1 px-2.5 py-1 text-xs font-mono text-slate-400 hover:text-emerald-300 bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.06] rounded-lg transition-colors"
+          {/* Command Palette ⌘K Quick Access */}
+          <button
+            onClick={() => {
+              window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+            }}
+            title="Open Command Palette (⌘K)"
+            className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono text-slate-400 hover:text-cyan-300 bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.06] rounded-lg transition-colors"
           >
-            <BookmarkCheck className="w-3 h-3 text-emerald-400" />
-            <span>SUZLON</span>
-          </Link>
+            <Search className="w-3 h-3 text-cyan-400" />
+            <span>Search</span>
+            <kbd className="text-[9px] text-slate-500 bg-black/40 px-1 py-0.2 rounded border border-white/[0.08]">
+              ⌘K
+            </kbd>
+          </button>
 
           {/* Copilot ⌘J Trigger */}
           <button
@@ -146,34 +153,11 @@ export default function Navbar() {
             </kbd>
           </button>
 
-          {/* Mobile Web Push & Causal Radar Notification Bell */}
-          <button
-            onClick={() => setIsPushModalOpen(true)}
-            title={
-              isPushSubscribed
-                ? "Mobile Web Push Connected (Causal Radar Active)"
-                : "Enable Mobile Web Push & Causal Catalyst Alerts"
-            }
-            className="relative flex items-center justify-center p-2 rounded-xl bg-white/[0.04] hover:bg-cyan-950/40 border border-white/[0.08] hover:border-cyan-500/40 text-slate-300 hover:text-cyan-300 transition-all shadow-sm"
-          >
-            {isPushSubscribed ? (
-              <BellRing className="w-4 h-4 text-cyan-400" />
-            ) : (
-              <Bell className="w-4 h-4 text-slate-400" />
-            )}
-
-            {/* Active Indicator Pulse Dot */}
-            <span className="absolute top-1 right-1 flex h-2 w-2">
-              {isPushSubscribed ? (
-                <>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </>
-              ) : (
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-400/60" />
-              )}
-            </span>
-          </button>
+          {/* Mobile Web Push & Causal Radar Notification Center */}
+          <NotificationCenterPopover
+            isPushSubscribed={isPushSubscribed}
+            onOpenPushSettings={() => setIsPushModalOpen(true)}
+          />
 
           {/* Real-time Durable Job Engine Status / Action Button (Isolated) */}
           <IngestStatusButton />
@@ -207,6 +191,16 @@ export default function Navbar() {
             </Link>
           );
         })}
+
+        {/* Mobile Copilot Trigger Button (H1) */}
+        <button
+          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true }))}
+          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono transition-colors text-slate-400 hover:text-cyan-300 active:scale-95"
+          aria-label="Toggle Quant Copilot Drawer"
+        >
+          <BrainCircuit className="w-4 h-4 mb-0.5 text-cyan-400" />
+          <span>Copilot</span>
+        </button>
 
         {/* Dynamic Ingest Quick Action in Bottom Bar */}
         <IngestStatusButton compact />

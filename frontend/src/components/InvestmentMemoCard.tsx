@@ -229,8 +229,38 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
         </div>
       </div>
 
+      {/* 1.1 Multi-Factor Conviction Weighting Breakdown Strip (H8) */}
+      {memo.conviction_breakdown && (
+        <div className="bg-[#080d1a]/50 border border-white/[0.06] rounded-xl p-3 font-mono">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2 pb-1.5 border-b border-white/[0.05]">
+            <span className="font-semibold text-slate-300">Factor Conviction Weighting Breakdown</span>
+            <span className="text-[10px] text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
+              {memo.conviction_breakdown.calibration_status || "Empirically Calibrated"}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            {Object.entries(memo.conviction_breakdown.weights).map(([factor, weight]) => {
+              const label = factor.replace(/_/g, " ");
+              const pct = Math.round(weight * 100);
+              return (
+                <div key={factor} className="bg-white/[0.02] border border-white/[0.04] rounded-lg p-2 flex flex-col items-center">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider">{label}</span>
+                  <span className="text-sm font-bold text-cyan-300 mt-0.5">{pct}%</span>
+                  <div className="w-full bg-black/60 rounded-full h-1 mt-1.5 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full rounded-full"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 2. Business Profile Card */}
-      <div className="bg-[#080d1a]/60 border border-white/[0.06] rounded-xl p-4.5 space-y-3 font-mono text-xs">
+      <div className="bg-[#080d1a]/60 border border-white/[0.06] rounded-xl p-4 sm:p-5 space-y-3 font-mono text-xs">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] pb-2 text-slate-400">
           <div className="flex items-center space-x-2">
             <Building2 className="w-4 h-4 text-cyan-400" />
@@ -311,7 +341,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
       {/* 4. Two-Column Synthesis: Bull Case vs Bear Risks */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 font-mono">
         {/* Bull Case */}
-        <div className="bg-emerald-950/20 border-l-4 border-l-emerald-500 border border-emerald-500/20 rounded-xl p-4.5 space-y-3">
+        <div className="bg-emerald-950/20 border-l-4 border-l-emerald-500 border border-emerald-500/20 rounded-xl p-4 sm:p-5 space-y-3">
           <div className="flex items-center space-x-2 text-emerald-400 font-bold text-xs pb-2 border-b border-emerald-500/20">
             <TrendingUp className="w-4 h-4" />
             <span>Bull Case: Quantified Growth Catalysts</span>
@@ -342,7 +372,7 @@ export default function InvestmentMemoCard({ symbol, initialMemo }: InvestmentMe
         </div>
 
         {/* Bear Case */}
-        <div className="bg-rose-950/20 border-l-4 border-l-rose-500 border border-rose-500/20 rounded-xl p-4.5 space-y-3">
+        <div className="bg-rose-950/20 border-l-4 border-l-rose-500 border border-rose-500/20 rounded-xl p-4 sm:p-5 space-y-3">
           <div className="flex items-center space-x-2 text-rose-400 font-bold text-xs pb-2 border-b border-rose-500/20">
             <TrendingDown className="w-4 h-4" />
             <span>Bear Case: Structural Headwinds &amp; Tail Risks</span>

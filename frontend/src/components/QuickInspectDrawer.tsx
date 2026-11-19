@@ -14,6 +14,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { RadialConvictionGauge } from "./RadialConvictionGauge";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 import { apiFetch } from "@/lib/api";
 
@@ -70,15 +71,33 @@ export default function QuickInspectDrawer({ symbol, onClose }: QuickInspectDraw
 
     const fetchData = async () => {
       try {
-        // Fetch Memo and 30-day History in parallel
-        const [memoJson, histJson] = await Promise.all([
+        // Fetch Memo and 30-day History in parallel with resilient partial failure tolerance (H10)
+        const [memoResult, histResult] = await Promise.allSettled([
           apiFetch<MemoData>(`/stocks/${symbol}/memo`),
           apiFetch<Candle[]>(`/stocks/${symbol}/history?limit=30`),
         ]);
 
-        if (isMounted) {
-          setMemo(memoJson);
-          setCandles(histJson ?? []);
+        if (!isMounted) return;
+
+        let hasData = false;
+        if (memoResult.status === "fulfilled" && memoResult.value) {
+          setMemo(memoResult.value);
+          hasData = true;
+        }
+
+        if (histResult.status === "fulfilled" && histResult.value) {
+          setCandles(histResult.value ?? []);
+          hasData = true;
+        }
+
+        if (!hasData) {
+          const memoErr = memoResult.status === "rejected" ? memoResult.reason : null;
+          const histErr = histResult.status === "rejected" ? histResult.reason : null;
+          setError(
+            (memoErr instanceof Error ? memoErr.message : null) ||
+            (histErr instanceof Error ? histErr.message : null) ||
+            "Failed to load stock telemetry"
+          );
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -150,6 +169,8 @@ export default function QuickInspectDrawer({ symbol, onClose }: QuickInspectDraw
     };
   }, [candles]);
 
+  const drawerRef = useFocusTrap<HTMLElement>(!!symbol, onClose);
+
   if (!symbol) return null;
 
   return (
@@ -165,9 +186,22 @@ export default function QuickInspectDrawer({ symbol, onClose }: QuickInspectDraw
 
       {/* Slide-over Drawer */}
       <motion.aside
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Quick Inspect: ${symbol}`}
+        tabIndex={-1}
         initial={{ x: "100%" }}
         animate={{ x: 0 }}
         exit={{ x: "100%" }}
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0, right: 0.5 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.x > 100 || info.velocity.x > 300) {
+            onClose();
+          }
+        }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className="fixed top-0 right-0 h-full w-[480px] max-w-full bg-[#06090f] border-l border-white/[0.1] z-50 shadow-[-20px_0_60px_rgba(0,0,0,0.85)] flex flex-col font-sans overflow-hidden"
       >

@@ -2,20 +2,58 @@
 // CRITICAL: ZERO-CACHE POLICY
 // Network requests pass through directly to guarantee host code changes reflect immediately on mobile PWA.
 
+const CACHE_NAME = "mil-shell-v1";
+const STATIC_ASSETS = ["/", "/manifest.webmanifest", "/icons/icon-192x192.png"];
+
 self.addEventListener("install", (event) => {
-  // Activate immediately without waiting for existing tabs to close
+  // Pre-cache core PWA shell assets
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  // Claim control over all open clients immediately
-  event.waitUntil(self.clients.claim());
+  // Clear obsolete caches
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      )
+    ).then(() => self.clients.claim())
+  );
 });
 
-// Pass-through fetch handler: never intercept or cache HTML or JS bundles
+// Network-First with Offline Cache Fallback for navigation and static assets
 self.addEventListener("fetch", (event) => {
-  // Allow browser to perform default network fetch
-  return;
+  // Never intercept or cache API requests (/api/*) or SSE streams
+  if (event.request.url.includes("/api/") || event.request.url.includes("/events/stream")) {
+    return;
+  }
+
+  // Navigation requests: Network-first, fallback to cached shell
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match("/"))
+    );
+    return;
+  }
+
+  // Static assets: Stale-while-revalidate
+  if (event.request.destination === "font" || event.request.destination === "image") {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        const networkFetch = fetch(event.request).then((response) => {
+          if (response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        }).catch(() => cached);
+        return cached || networkFetch;
+      })
+    );
+  }
 });
 
 // Native Web Push Notification Listener

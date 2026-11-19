@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
-import { cn } from "@/lib/utils";
+import { PositionsTable, OrdersBlotter, CapitalSeedModal } from "@/components/portfolio";
 import {
   fetchPortfolioSummary,
   fetchPortfolioPositions,
@@ -35,10 +34,8 @@ import {
   RefreshCw,
   Play,
   Layers,
-  Clock,
   ShieldCheck,
   AlertCircle,
-  FileText,
   DollarSign,
   PieChart,
   CheckCircle2,
@@ -48,10 +45,8 @@ import {
   Cpu,
   BrainCircuit,
   Check,
-  X,
   Target,
   Database,
-  RotateCcw,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -178,6 +173,12 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     loadData(activeAccount);
+
+    // Auto-refresh portfolio telemetry periodically (L4)
+    const interval = setInterval(() => {
+      loadData(activeAccount, false);
+    }, 30000);
+    return () => clearInterval(interval);
   }, [activeAccount, loadData]);
 
   // Load manual order preview whenever trade inputs change
@@ -434,6 +435,11 @@ export default function PortfolioPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 text-xs font-mono shadow-[0_4px_16px_rgba(0,0,0,0.4)]">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
+              <span>Live P&L Stream</span>
+            </div>
+
             <button
               onClick={() => setShowSystemTelemetry(!showSystemTelemetry)}
               className="px-3.5 py-2 rounded-xl bg-[#080c14]/80 border border-white/[0.08] hover:border-white/[0.16] hover:bg-white/[0.04] text-slate-300 hover:text-white text-xs font-mono flex items-center gap-2 transition-all duration-150 active:scale-[0.98] shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
@@ -1055,331 +1061,37 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* Active Holdings Table */}
-        <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-          <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <FileText className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-sm font-semibold text-white tracking-wide">
-                Active Positions ({positions.length} Equities)
-              </h2>
-            </div>
-            <span className="text-xs font-mono text-slate-400">
-              Account: {activeAccount} • Mark-to-Market
-            </span>
-          </div>
+        {/* Active Holdings Table (Extracted Subcomponent) */}
+        <PositionsTable
+          positions={positions}
+          formatINR={formatINR}
+          activeAccount={activeAccount}
+        />
 
-          {positions.length === 0 ? (
-            <div className="p-12 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-slate-400 flex items-center justify-center mx-auto">
-                <Wallet className="w-6 h-6" />
-              </div>
-              <p className="text-sm text-slate-200 font-medium">No Open Positions</p>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                {activeAccount === "paper_manual_1"
-                  ? "Use the FrontPage Discretionary Trade Ticket above to execute a trade."
-                  : "Click 'Run Rebalance Cycle' to deploy capital across top-ranked factor compounders."}
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left text-xs">
-                <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3.5 px-5">Symbol</th>
-                    <th className="py-3.5 px-5 text-right">Shares</th>
-                    <th className="py-3.5 px-5 text-right">Avg Entry</th>
-                    <th className="py-3.5 px-5 text-right">LTP (Close)</th>
-                    <th className="py-3.5 px-5 text-right">Market Value</th>
-                    <th className="py-3.5 px-5 text-right">Alloc %</th>
-                    <th className="py-3.5 px-5 text-right">Unrealized P&L</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.04] font-mono">
-                  {positions.map((pos) => {
-                    const isProfit = pos.unrealized_pnl >= 0;
-                    return (
-                      <tr key={pos.position_id} className="hover:bg-white/[0.03] transition-colors">
-                        <td className="py-3.5 px-5 font-bold">
-                          <Link
-                            href={`/stocks/${pos.symbol}`}
-                            className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 group"
-                          >
-                            <span>{pos.symbol}</span>
-                            <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </Link>
-                        </td>
-                        <td className="py-3.5 px-5 text-right text-slate-200 tabular-nums">
-                          {pos.quantity.toLocaleString("en-IN")}
-                        </td>
-                        <td className="py-3.5 px-5 text-right text-slate-400 tabular-nums">
-                          ₹{pos.average_entry_price.toFixed(2)}
-                        </td>
-                        <td className="py-3.5 px-5 text-right text-slate-200 font-semibold tabular-nums">
-                          ₹{pos.current_price.toFixed(2)}
-                        </td>
-                        <td className="py-3.5 px-5 text-right text-slate-100 tabular-nums">
-                          {formatINR(pos.market_value)}
-                        </td>
-                        <td className="py-3.5 px-5 text-right font-mono">
-                          <div className="flex flex-col items-end gap-1">
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className={cn(
-                                  "tabular-nums font-semibold text-xs",
-                                  pos.weight_pct > 35
-                                    ? "text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"
-                                    : "text-cyan-300"
-                                )}
-                              >
-                                {pos.weight_pct.toFixed(2)}%
-                              </span>
-                              {pos.weight_pct > 35 && (
-                                <span
-                                  className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/35"
-                                  title="Concentration Guard: Allocation exceeds 35% risk guardrail"
-                                >
-                                  Concentrated
-                                </span>
-                              )}
-                            </div>
-                            {/* Inline horizontal allocation progress bar */}
-                            <div className="w-24 h-1.5 bg-slate-900/90 rounded-full overflow-hidden border border-white/[0.06] p-[1px] flex items-center">
-                              <div
-                                className={cn(
-                                  "h-full rounded-full transition-all duration-300",
-                                  pos.weight_pct > 35
-                                    ? "bg-gradient-to-r from-amber-500 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
-                                    : "bg-gradient-to-r from-cyan-600 via-cyan-400 to-emerald-400 shadow-[0_0_6px_rgba(6,182,212,0.4)]"
-                                )}
-                                style={{ width: `${Math.min(100, Math.max(0, (pos.weight_pct / 40) * 100))}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td
-                          className={`py-3.5 px-5 text-right font-semibold tabular-nums ${
-                            isProfit ? "text-emerald-400" : "text-rose-400"
-                          }`}
-                        >
-                          {isProfit ? "+" : ""}
-                          {formatINR(pos.unrealized_pnl)}
-                          <span className="text-[11px] font-normal ml-1 text-slate-400 tabular-nums">
-                            ({isProfit ? "+" : ""}{pos.unrealized_pnl_pct.toFixed(2)}%)
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Execution Blotter / Orders History */}
-        <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-          <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <h2 className="text-sm font-semibold text-white tracking-wide">
-                Execution Blotter ({orders.length} Fills on {activeAccount})
-              </h2>
-            </div>
-            <span className="text-xs font-mono text-slate-400">
-              Audit-Ready Execution Log
-            </span>
-          </div>
-
-          {orders.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500 font-mono">
-              No executions logged yet for this account.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left text-xs">
-                <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-5">Timestamp</th>
-                    <th className="py-3 px-5">Action</th>
-                    <th className="py-3 px-5">Symbol</th>
-                    <th className="py-3 px-5 text-right">Quantity</th>
-                    <th className="py-3 px-5 text-right">Fill Price</th>
-                    <th className="py-3 px-5 text-right">Gross Value</th>
-                    <th className="py-3 px-5 text-right">Friction Paid</th>
-                    <th className="py-3 px-5">Thesis Note</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.04] font-mono">
-                  {orders.map((ord) => {
-                    const isBuy = ord.action === "BUY";
-                    const gross = ord.quantity * ord.fill_price;
-                    return (
-                      <tr key={ord.order_id} className="hover:bg-white/[0.03] transition-colors">
-                        <td className="py-3 px-5 text-slate-400 tabular-nums">
-                          {ord.executed_at ? ord.executed_at.slice(0, 19).replace("T", " ") : "—"}
-                        </td>
-                        <td className="py-3 px-5">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                              isBuy
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                                : "bg-rose-500/10 border-rose-500/30 text-rose-400"
-                            }`}
-                          >
-                            {ord.action}
-                          </span>
-                        </td>
-                        <td className="py-3 px-5 font-bold text-slate-200">
-                          <Link href={`/stocks/${ord.symbol}`} className="hover:text-cyan-400">
-                            {ord.symbol}
-                          </Link>
-                        </td>
-                        <td className="py-3 px-5 text-right text-slate-300 tabular-nums">
-                          {ord.quantity.toLocaleString("en-IN")}
-                        </td>
-                        <td className="py-3 px-5 text-right text-slate-300 tabular-nums">
-                          ₹{ord.fill_price.toFixed(2)}
-                        </td>
-                        <td className="py-3 px-5 text-right text-slate-100 font-medium tabular-nums">
-                          {formatINR(gross)}
-                        </td>
-                        <td className="py-3 px-5 text-right text-amber-400 font-medium tabular-nums">
-                          {formatINR(ord.friction_paid)}
-                        </td>
-                        <td className="py-3 px-5 text-slate-400 text-[11px] truncate max-w-[200px]">
-                          {ord.thesis_note || "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        {/* Execution Blotter / Orders History (Extracted Subcomponent) */}
+        <OrdersBlotter
+          orders={orders}
+          activeAccount={activeAccount}
+          formatINR={formatINR}
+        />
       </main>
 
-      {/* Capital Management Modal */}
-      {showCapitalModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="bg-[#080c14]/95 border border-white/[0.12] rounded-3xl max-w-md w-full p-6 space-y-5 shadow-[0_25px_70px_rgba(0,0,0,0.9)]">
-            <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
-              <div className="flex items-center gap-2.5">
-                <Sliders className="w-5 h-5 text-amber-400" />
-                <h3 className="font-bold text-white text-base">Capital Control: {activeAccount}</h3>
-              </div>
-              <button
-                onClick={() => setShowCapitalModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/[0.06] transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1.5">
-                  Preset Initial Seeds:
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[1600, 10000, 50000, 1000000].map((seed) => (
-                    <button
-                      key={seed}
-                      type="button"
-                      onClick={() => setCapitalInput(seed.toString())}
-                      className={`py-1.5 px-2 rounded-xl text-xs font-mono border transition-all tabular-nums ${
-                        capitalInput === seed.toString()
-                          ? "bg-amber-500/20 border-amber-500 text-amber-300 font-bold shadow-[0_0_10px_rgba(245,158,11,0.2)]"
-                          : "bg-[#050810] border-white/[0.08] text-slate-300 hover:bg-white/[0.05]"
-                      }`}
-                    >
-                      {formatINR(seed)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1.5">
-                  Custom Starting Capital (INR):
-                </label>
-                <input
-                  type="number"
-                  value={capitalInput}
-                  onChange={(e) => setCapitalInput(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#050810] border border-white/[0.1] font-mono text-sm text-white focus:outline-none focus:border-amber-400 tabular-nums"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1.5">
-                  Statutory Fee Tier:
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFeeTierInput("RETAIL_MICRO")}
-                    className={`py-2.5 px-3.5 rounded-xl text-xs font-mono border text-left transition-all ${
-                      feeTierInput === "RETAIL_MICRO"
-                        ? "bg-cyan-950/80 border-cyan-500 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                        : "bg-[#050810] border-white/[0.08] text-slate-400"
-                    }`}
-                  >
-                    <div>RETAIL_MICRO</div>
-                    <div className="text-[10px] text-slate-500">12 bps + ₹15 DP fee</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFeeTierInput("INSTITUTIONAL")}
-                    className={`py-2.5 px-3.5 rounded-xl text-xs font-mono border text-left transition-all ${
-                      feeTierInput === "INSTITUTIONAL"
-                        ? "bg-cyan-950/80 border-cyan-500 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                        : "bg-[#050810] border-white/[0.08] text-slate-400"
-                    }`}
-                  >
-                    <div>INSTITUTIONAL</div>
-                    <div className="text-[10px] text-slate-500">15 bps blended</div>
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleResetCapital(parseFloat(capitalInput), feeTierInput)}
-                disabled={capitalActionLoading || isNaN(parseFloat(capitalInput)) || parseFloat(capitalInput) <= 0}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(245,158,11,0.25)] transition-all"
-              >
-                {capitalActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
-                <span>Reset Capital & Clear Positions</span>
-              </button>
-
-              <div className="pt-3 border-t border-white/[0.08]">
-                <label className="text-xs font-mono text-slate-400 block mb-1.5">
-                  Deposit / Withdraw Cash (Keeps active positions):
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={cashDeltaInput}
-                    onChange={(e) => setCashDeltaInput(e.target.value)}
-                    placeholder="e.g. +500 or -200"
-                    className="flex-1 px-3.5 py-2 rounded-xl bg-[#050810] border border-white/[0.1] font-mono text-xs text-white focus:outline-none focus:border-cyan-400 tabular-nums"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAdjustCash}
-                    disabled={capitalActionLoading || !cashDeltaInput}
-                    className="px-4 py-2 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-white font-mono text-xs font-bold transition-all"
-                  >
-                    Apply Cash
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Capital Management Modal (Extracted Subcomponent) */}
+      <CapitalSeedModal
+        isOpen={showCapitalModal}
+        onClose={() => setShowCapitalModal(false)}
+        activeAccount={activeAccount}
+        capitalInput={capitalInput}
+        setCapitalInput={setCapitalInput}
+        feeTierInput={feeTierInput}
+        setFeeTierInput={setFeeTierInput}
+        cashDeltaInput={cashDeltaInput}
+        setCashDeltaInput={setCashDeltaInput}
+        capitalActionLoading={capitalActionLoading}
+        onResetCapital={handleResetCapital}
+        onAdjustCash={handleAdjustCash}
+        formatINR={formatINR}
+      />
     </div>
   );
 }

@@ -10,7 +10,7 @@ import {
   Zap,
   Loader2,
 } from "lucide-react";
-import { CausalCatalyst, fetchLiveCatalysts, apiFetch } from "@/lib/api";
+import { CausalCatalyst, fetchLiveCatalysts, fetchSymbolCatalyst, apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface CausalCatalystFeedProps {
@@ -27,18 +27,46 @@ export default function CausalCatalystFeed({
   const [catalysts, setCatalysts] = useState<CausalCatalyst[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [selectedCatalyst, setSelectedCatalyst] = useState<CausalCatalyst | null>(null);
+
+  // 60-second cooldown timer between manual universe scans
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownRemaining((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownRemaining]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await fetchLiveCatalysts(15);
-      setCatalysts(data);
+      let symbolCat: CausalCatalyst | null = null;
       if (currentSymbol) {
-        const found = data.find((c) => c.symbol.toUpperCase() === currentSymbol.toUpperCase());
+        try {
+          const symRes = await fetchSymbolCatalyst(currentSymbol, { fallback: true });
+          if (symRes.latest) {
+            symbolCat = symRes.latest;
+          }
+        } catch (err) {
+          console.warn(`Symbol catalyst lookup failed for ${currentSymbol}:`, err);
+        }
+      }
+
+      const data = await fetchLiveCatalysts(15);
+      const combined = symbolCat
+        ? [symbolCat, ...data.filter((c) => c.symbol.toUpperCase() !== currentSymbol?.toUpperCase())]
+        : data;
+
+      setCatalysts(combined);
+      if (symbolCat) {
+        setSelectedCatalyst(symbolCat);
+      } else if (currentSymbol) {
+        const found = combined.find((c) => c.symbol.toUpperCase() === currentSymbol.toUpperCase());
         setSelectedCatalyst(found || null);
-      } else if (data.length > 0) {
-        setSelectedCatalyst(data[0]);
+      } else if (combined.length > 0) {
+        setSelectedCatalyst(combined[0]);
       }
     } catch (err) {
       console.warn("Failed to load catalysts:", err);
@@ -52,9 +80,11 @@ export default function CausalCatalystFeed({
   }, [loadData]);
 
   const handleScanAnomalies = async () => {
+    if (scanning || cooldownRemaining > 0) return;
     setScanning(true);
     try {
       await apiFetch("/catalysts/scan", { method: "POST" });
+      setCooldownRemaining(60);
       await loadData();
     } catch (err) {
       console.error("Catalyst scan error:", err);
@@ -104,15 +134,22 @@ export default function CausalCatalystFeed({
         <div className="flex items-center space-x-2">
           <button
             onClick={handleScanAnomalies}
-            disabled={scanning}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-950/50 border border-white/[0.08] hover:border-cyan-500/40 text-cyan-300 font-semibold text-[11px] transition-all shadow-sm disabled:opacity-50"
+            disabled={scanning || cooldownRemaining > 0}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-cyan-950/50 border border-white/[0.08] hover:border-cyan-500/40 text-cyan-300 font-semibold text-[11px] transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title={cooldownRemaining > 0 ? `Scan cooldown active (${cooldownRemaining}s)` : "Trigger institutional intraday anomaly scan"}
           >
             {scanning ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
             ) : (
               <Zap className="w-3.5 h-3.5 text-cyan-400" />
             )}
-            <span>Scan Universe</span>
+            <span>
+              {scanning
+                ? "Scanning..."
+                : cooldownRemaining > 0
+                ? `Cooldown (${cooldownRemaining}s)`
+                : "Scan Universe"}
+            </span>
           </button>
         </div>
       </div>

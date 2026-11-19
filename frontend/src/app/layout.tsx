@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import TopographicBackground from "@/components/TopographicBackground";
 import "./globals.css";
 
 const inter = Inter({
@@ -45,7 +46,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="bg-[#040609] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 min-h-screen">
+      <body className="bg-[#040609] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 min-h-screen relative">
+        <TopographicBackground />
         {children}
       </body>
     </html>

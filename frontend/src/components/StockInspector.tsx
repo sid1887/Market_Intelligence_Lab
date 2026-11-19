@@ -10,12 +10,14 @@ import {
   FileText,
   Newspaper,
   Radio,
+  Star,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import CausalCatalystFeed from "./CausalCatalystFeed";
 import {
   apiFetch,
   fetchStockBundle,
+  toggleWatchlist,
   requestLifecycle,
   ScreenerCandidate,
   CandleData,
@@ -88,6 +90,21 @@ function StockInspectorComponent({
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [inspectorTab, setInspectorTab] = useState<"thesis" | "catalysts" | "news">("thesis");
+  const [isBookmarked, setIsBookmarked] = useState<boolean>(Boolean(activeCandidate?.is_watchlist));
+
+  useEffect(() => {
+    setIsBookmarked(Boolean(activeCandidate?.is_watchlist));
+  }, [symbol, activeCandidate?.is_watchlist]);
+
+  const handleToggleWatchlist = async () => {
+    if (!symbol) return;
+    const nextState = !isBookmarked;
+    setIsBookmarked(nextState);
+    const res = await toggleWatchlist(symbol, nextState);
+    if (!res.success) {
+      setIsBookmarked(!nextState);
+    }
+  };
 
   // Load bundle with 150ms debounce and AbortController
   useEffect(() => {
@@ -225,9 +242,25 @@ function StockInspectorComponent({
         {/* Top Row: Symbol + Sector + Verdict on Left | Spot + SMA Dist + Close on Right */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <h2 className="text-lg lg:text-xl font-bold font-mono tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.2)]">
-              {symbol}
-            </h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-lg lg:text-xl font-bold font-mono tracking-tight text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.2)]">
+                {symbol}
+              </h2>
+              <button
+                onClick={handleToggleWatchlist}
+                className="p-1 rounded-md hover:bg-white/[0.08] transition-colors"
+                title={isBookmarked ? "Remove from Watchlist" : "Pin to Watchlist"}
+              >
+                <Star
+                  className={cn(
+                    "w-4 h-4 transition-all",
+                    isBookmarked
+                      ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                      : "text-slate-500 hover:text-amber-300"
+                  )}
+                />
+              </button>
+            </div>
             {isSyncing && (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400 shrink-0" />
             )}
@@ -342,7 +375,44 @@ function StockInspectorComponent({
 
       {/* 3. Tab Body Container */}
       <div className="flex-1 overflow-y-auto p-5 space-y-5">
-        {inspectorTab === "thesis" ? (
+        {isSyncing && candles.length === 0 && !memo ? (
+          <div className="space-y-5 animate-pulse">
+            {/* Top bento grid skeleton */}
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+              <div className="xl:col-span-7 rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 h-[340px] flex flex-col justify-between">
+                <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+                  <div className="w-48 h-3.5 bg-white/[0.08] rounded" />
+                  <div className="w-24 h-3 bg-white/[0.04] rounded" />
+                </div>
+                <div className="flex-1 my-3 bg-white/[0.02] rounded-xl flex items-center justify-center border border-white/[0.03]">
+                  <span className="text-xs font-mono text-slate-500">
+                    Loading institutional market telemetry for {symbol}...
+                  </span>
+                </div>
+                <div className="h-6 w-48 bg-white/[0.04] rounded" />
+              </div>
+              <div className="xl:col-span-5 rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 h-[340px] flex flex-col justify-between space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-white/[0.06]">
+                  <div className="w-44 h-3.5 bg-white/[0.08] rounded" />
+                  <div className="w-16 h-3.5 bg-white/[0.06] rounded" />
+                </div>
+                <div className="space-y-3">
+                  <div className="w-full h-12 bg-white/[0.04] rounded-lg" />
+                  <div className="w-full h-12 bg-white/[0.04] rounded-lg" />
+                  <div className="w-full h-12 bg-white/[0.04] rounded-lg" />
+                </div>
+                <div className="w-full h-8 bg-white/[0.05] rounded-lg" />
+              </div>
+            </div>
+            {/* Bottom memo skeleton */}
+            <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-5 h-[180px] space-y-3">
+              <div className="w-48 h-4 bg-white/[0.08] rounded" />
+              <div className="w-full h-3 bg-white/[0.04] rounded" />
+              <div className="w-5/6 h-3 bg-white/[0.04] rounded" />
+              <div className="w-4/6 h-3 bg-white/[0.04] rounded" />
+            </div>
+          </div>
+        ) : inspectorTab === "thesis" ? (
           <>
             {/* Above-the-Fold 2-Column Bento Grid: Chart (60%) + Multi-Horizon Consensus (40%) */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">

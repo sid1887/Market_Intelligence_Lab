@@ -20,8 +20,17 @@ function MacroRibbonComponent({
   lastIngestTimestamp,
 }: MacroRibbonProps) {
   const [ingestElapsed, setIngestElapsed] = useState<string>("just now");
+  const [now, setNow] = useState<number>(Date.now());
   const prevValuesRef = useRef<Map<string, number | null>>(new Map());
   const [flashingKeys, setFlashingKeys] = useState<Record<string, "tick-up" | "tick-down">>({});
+
+  const isStale = lastTickAt !== null && now - lastTickAt > 30_000;
+
+  // Keep now updated every 5s for staleness detection (M7)
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   const effectiveIngestTime = lastIngestTimestamp || supervisorStatus?.last_ingestion_timestamp;
 
@@ -137,7 +146,14 @@ function MacroRibbonComponent({
         <span className="font-semibold tracking-wider text-[10px] text-slate-400 flex items-center gap-1.5">
           {isConnected ? (
             <>
-              <span className="text-emerald-400 font-bold">LIVE NSE</span>
+              {isStale ? (
+                <span className="text-amber-400 font-bold flex items-center gap-1" title="Data stream has not received a tick in >30s">
+                  <AlertTriangle className="w-3 h-3 text-amber-400" />
+                  <span>STALE</span>
+                </span>
+              ) : (
+                <span className="text-emerald-400 font-bold">LIVE NSE</span>
+              )}
               <span className="text-slate-500 font-normal">· {ingestElapsed}</span>
             </>
           ) : (

@@ -45,6 +45,7 @@ export function usePlatformEvents() {
   const lastEventIdRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectDelayRef = useRef<number>(1000);
 
   const dismissActiveJob = useCallback(() => {
     setActiveJob(null);
@@ -86,7 +87,6 @@ export function usePlatformEvents() {
   // 2. Continuous platform event streaming with recovery (or calm 20s polling on remote cloud / Vercel)
   useEffect(() => {
     let isDisposed = false;
-    let reconnectDelay = 1000;
 
     const isRemote =
       typeof window !== "undefined" &&
@@ -159,7 +159,7 @@ export function usePlatformEvents() {
 
           setIsConnected(true);
           setError(null);
-          reconnectDelay = 1000; // Reset backoff on successful connect
+          reconnectDelayRef.current = 1000; // Reset backoff on successful connect
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
@@ -182,9 +182,9 @@ export function usePlatformEvents() {
 
           // Schedule reconnection with backoff
           reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 10000);
             connectStream();
-          }, reconnectDelay);
+          }, reconnectDelayRef.current);
         });
     };
 

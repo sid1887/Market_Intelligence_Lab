@@ -52,7 +52,14 @@ export const RiskRewardVectorBar: React.FC<RiskRewardProps> = ({
       </div>
 
       {/* Vector Bar with Pulse Ring Marker */}
-      <div className="relative h-3 w-full rounded-full bg-black/60 p-[1px] border border-white/[0.08] flex items-center overflow-visible">
+      <div
+        role="meter"
+        aria-label={`Risk Reward Profile: Current ₹${currentPrice.toFixed(2)}, Stop Loss ₹${floor.toFixed(2)}, Target ₹${ceiling.toFixed(2)}, Risk Reward Ratio ${rrRatio} to 1`}
+        aria-valuenow={currentPrice}
+        aria-valuemin={floor}
+        aria-valuemax={ceiling}
+        className="relative h-3 w-full rounded-full bg-black/60 p-[1px] border border-white/[0.08] flex items-center overflow-visible"
+      >
         {/* Risk Zone (Downside) */}
         <div
           style={{ width: `${currentPct}%` }}

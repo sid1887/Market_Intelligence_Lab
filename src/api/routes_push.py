@@ -122,6 +122,48 @@ def get_live_catalysts(limit: int = 20):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/catalysts/symbol/{symbol}")
+def get_symbol_catalysts(symbol: str, limit: int = 5, fallback: bool = True):
+    """
+    Fetches the latest institutional causal catalysts for a specific equity symbol.
+    If none exists in the database and fallback is true, checks for active price anomalies.
+    """
+    sym = symbol.strip().upper()
+    try:
+        data = CausalCatalystEngine.get_live_catalysts(limit=limit, symbol=sym)
+        if data:
+            return {
+                "status": "ok",
+                "symbol": sym,
+                "count": len(data),
+                "catalysts": data,
+                "latest": data[0]
+            }
+
+        if fallback:
+            # On-demand lightweight check without spamming web push
+            res = catalyst_engine.investigate_symbol(sym, force=False, dispatch_push=False)
+            if res:
+                return {
+                    "status": "synthesized",
+                    "symbol": sym,
+                    "count": 1,
+                    "catalysts": [res],
+                    "latest": res
+                }
+
+        return {
+            "status": "not_found",
+            "symbol": sym,
+            "count": 0,
+            "catalysts": [],
+            "latest": None
+        }
+    except Exception as e:
+        logger.error(f"Error fetching catalysts for symbol {sym}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/catalysts/investigate")
 def investigate_catalyst(payload: CatalystInvestigateRequest):
     """
