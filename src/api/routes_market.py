@@ -1062,16 +1062,32 @@ class IngestRequestBody(BaseModel):
     symbols: Optional[List[str]] = None
 
 
+def _get_rss_mb() -> float:
+    """Reads current process resident set size in megabytes from /proc/self/statm."""
+    try:
+        with open("/proc/self/statm", "r") as f:
+            fields = f.read().split()
+            rss_pages = int(fields[1])
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            return (rss_pages * page_size) / (1024 * 1024)
+    except Exception:
+        return 0.0
+
+
 def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None:
     """
     Background worker for asynchronous market ingestion.
-    Processes symbols in batches with garbage collection and vectorized factor refresh.
+    Render OOM-Protected:
+    1. If GITHUB_TOKEN / GH_PAT is present, dispatches 7GB runner cloud_ml_tournament.yml.
+    2. Otherwise in CLOUD_LIGHTWEIGHT_MODE, caps to Watchlist + Portfolio + Top 25 Nifty (<=35 symbols).
+    3. Halts gracefully if RSS crosses 320 MB to protect 512 MB Render instance.
     """
     global _CLOUD_INGEST_STATUS
     import sys
     import time
     import math
     import gc
+    import requests
     import pandas as pd
     from src.storage.hydration import is_cloud_lightweight_mode
     from src.pipeline.universe_ingestion import UniverseIngestionManager
@@ -1082,28 +1098,73 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
     logger.info("[CLOUD-INGEST] Starting background cloud-safe market ingestion...")
     sys.stdout.flush()
 
+    # 1. Check for GitHub Actions Dispatch if configured on Render
+    gh_token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_PAT")
+    gh_repo = os.getenv("GITHUB_REPOSITORY", "sid1887/Market_Intelligence_Lab")
+    if gh_token and not target_symbols:
+        logger.info(f"[CLOUD-INGEST] GITHUB_TOKEN detected. Dispatching cloud_ml_tournament.yml on {gh_repo}...")
+        dispatch_url = f"https://api.github.com/repos/{gh_repo}/actions/workflows/cloud_ml_tournament.yml/dispatches"
+        try:
+            gh_resp = requests.post(
+                dispatch_url,
+                headers={
+                    "Authorization": f"Bearer {gh_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                },
+                json={"ref": "main"},
+                timeout=10
+            )
+            if gh_resp.status_code in (200, 204):
+                _CLOUD_INGEST_STATUS.clear()
+                _CLOUD_INGEST_STATUS.update({
+                    "status": "completed",
+                    "stage": "DISPATCHED_TO_GITHUB_ACTIONS",
+                    "progress": 1,
+                    "total": 1,
+                    "started_at": started_iso,
+                    "elapsed_sec": round(time.time() - t0, 1),
+                    "message": "Full-universe ingestion dispatched to 7GB GitHub Actions runner successfully."
+                })
+                logger.info("[CLOUD-INGEST] Successfully triggered cloud_ml_tournament.yml via GitHub dispatch.")
+                return
+            else:
+                logger.warning(f"[CLOUD-INGEST] GitHub dispatch returned HTTP {gh_resp.status_code}: {gh_resp.text[:200]}. Falling back to in-process lightweight ingest.")
+        except Exception as dispatch_err:
+            logger.warning(f"[CLOUD-INGEST] GitHub Actions dispatch failed: {dispatch_err}. Falling back to in-process lightweight ingest.")
+
     manager = UniverseIngestionManager(DATABASE_PATH)
+    is_lightweight = is_cloud_lightweight_mode()
     
     try:
         if target_symbols and len(target_symbols) > 0:
             priority_symbols = [s.strip().upper() for s in target_symbols if s.strip()]
         else:
-            # Full universe: prioritize Watchlist + Portfolio, followed by all active master equities (~1,143+ total)
             with manager.db.get_connection() as conn:
                 wl_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM user_watchlists").fetchall()]
                 pf_rows = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM portfolio_positions WHERE quantity > 0").fetchall()]
-                all_rows = [r[0] for r in conn.execute("""
-                    SELECT symbol FROM securities_master 
-                    WHERE is_active = 1 
-                    ORDER BY is_nifty50 DESC, symbol ASC
-                """).fetchall()]
-            
-            priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + all_rows))
+                
+                if is_lightweight:
+                    # In CLOUD_LIGHTWEIGHT_MODE without GitHub dispatch: strictly cap to Watchlist + Portfolio + Top 25 Liquid Nifty (<= 35 total)
+                    nifty_rows = [r[0] for r in conn.execute("""
+                        SELECT symbol FROM securities_master 
+                        WHERE is_active = 1 AND is_nifty50 = 1
+                        ORDER BY symbol ASC
+                        LIMIT 25
+                    """).fetchall()]
+                    priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + nifty_rows))[:35]
+                else:
+                    all_rows = [r[0] for r in conn.execute("""
+                        SELECT symbol FROM securities_master 
+                        WHERE is_active = 1 
+                        ORDER BY is_nifty50 DESC, symbol ASC
+                    """).fetchall()]
+                    priority_symbols = list(dict.fromkeys(wl_rows + pf_rows + all_rows))
+
             if not priority_symbols:
                 priority_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "SUZLON", "TRIDENT", "FEDERALBNK", "UNIONBANK"]
 
         total_symbols = len(priority_symbols)
-        batch_size = 150
+        batch_size = 10 if is_lightweight else 150
         total_batches = math.ceil(total_symbols / batch_size)
 
         _CLOUD_INGEST_STATUS.clear()
@@ -1119,16 +1180,22 @@ def run_cloud_safe_ingestion(target_symbols: Optional[List[str]] = None) -> None
             "elapsed_sec": 0.0,
             "message": f"Ingesting {total_symbols} priority equities across {total_batches} batches..."
         })
-        logger.info(f"[CLOUD-INGEST] Processing {total_symbols} symbols in {total_batches} batches of {batch_size}...")
+        logger.info(f"[CLOUD-INGEST] Processing {total_symbols} symbols in {total_batches} batches of {batch_size} (lightweight={is_lightweight})...")
         sys.stdout.flush()
         
         from src.data.universe_expander import ingest_symbols_parallel
         for b_idx in range(total_batches):
+            # Check RSS guard before each batch
+            current_rss = _get_rss_mb()
+            if current_rss > 320.0:
+                logger.warning(f"[CLOUD-INGEST] RSS memory limit reached ({current_rss:.1f} MB > 320 MB limit). Halting batch ingestion gracefully to protect container.")
+                break
+
             start_i = b_idx * batch_size
             chunk = priority_symbols[start_i:start_i + batch_size]
             done_count = min(start_i + len(chunk), total_symbols)
             
-            logger.info(f"[CLOUD-INGEST] Batch {b_idx + 1}/{total_batches} ({len(chunk)} symbols: {chunk[0]}..{chunk[-1]}) — progress {done_count}/{total_symbols}")
+            logger.info(f"[CLOUD-INGEST] Batch {b_idx + 1}/{total_batches} ({len(chunk)} symbols: {chunk[0]}..{chunk[-1]}) — progress {done_count}/{total_symbols} — RSS: {current_rss:.1f} MB")
             sys.stdout.flush()
 
             try:

@@ -522,6 +522,17 @@ def run_ml_tournament_pipeline(
     if not target_symbols:
         target_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS", "ITC", "BEL", "SBIN", "RVNL", "NHPC"]
 
+    # 0. Checkpoint-Driven 10-Year Bhavcopy Harvest & .milz Columnar Update
+    logger.info("Executing incremental 10-year Bhavcopy harvest & .milz archive update...")
+    try:
+        from src.data.bhavcopy_harvester import Bhavcopy10YHarvester
+        harvester = Bhavcopy10YHarvester(db)
+        harvest_res = harvester.harvest_next_batch(max_sessions=60)
+        logger.info(f"[ML-TOURNAMENT] Bhavcopy harvest batch completed: {harvest_res}")
+        harvester.compute_intraday_microstructure_features(days=60)
+    except Exception as harv_err:
+        logger.warning(f"[ML-TOURNAMENT] Bhavcopy harvest non-fatal notice: {harv_err}")
+
     # 1. Refresh latest daily bars for priority equities
     logger.info(f"Updating latest price bars for {len(target_symbols)} equities via parallel ingestion...")
     try:
@@ -648,11 +659,11 @@ def run_ml_tournament_pipeline(
     except Exception as bar_err:
         logger.warning(f"[ML-TOURNAMENT] Error querying fresh OHLCV bars: {bar_err}")
 
-    # 5. POST to Render Internal Sync Bridge (chunking ohlcv_bars in batches of 2,500 if needed)
+    # 5. POST to Render Internal Sync Bridge (strictly capped to AT MOST 2 POST requests per run)
     if backend_url and token:
         sync_url = f"{backend_url}/api/v1/internal/sync"
-        CHUNK_SIZE = 2500
-        bar_chunks = [fresh_ohlcv_bars[i:i + CHUNK_SIZE] for i in range(0, max(1, len(fresh_ohlcv_bars)), CHUNK_SIZE)] if fresh_ohlcv_bars else [[]]
+        CHUNK_SIZE = 5000
+        bar_chunks = [fresh_ohlcv_bars[i:i + CHUNK_SIZE] for i in range(0, max(1, len(fresh_ohlcv_bars)), CHUNK_SIZE)][:2] if fresh_ohlcv_bars else [[]]
 
         for chunk_idx, bar_chunk in enumerate(bar_chunks):
             is_first = (chunk_idx == 0)
@@ -688,10 +699,10 @@ def run_ml_tournament_pipeline(
     else:
         logger.warning("No backend_url or token provided; skipping sync.")
 
-    # 6. Persist Refreshed data/cloud_seed_snapshot.json.gz (when not dry-run)
+    # 6. Persist Refreshed data/cloud_seed_snapshot.json.gz (when not dry-run, hot 400-session window)
     try:
         from src.storage.cloud_snapshot import export_cloud_snapshot
-        snap_path = export_cloud_snapshot(db, output_path="data/cloud_seed_snapshot.json.gz", max_ohlcv_days=120)
+        snap_path = export_cloud_snapshot(db, output_path="data/cloud_seed_snapshot.json.gz", max_ohlcv_days=400)
         logger.info(f"[SNAPSHOT] Refreshed cloud seed snapshot exported to {snap_path}")
     except Exception as snap_err:
         logger.warning(f"[SNAPSHOT] Error exporting refreshed cloud snapshot: {snap_err}")

@@ -12,11 +12,12 @@ import json
 import uuid
 import logging
 import sqlite3
+import gc
 import threading
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -25,6 +26,7 @@ from sklearn.linear_model import Ridge, ElasticNet
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 from src.storage.database import DatabaseManager
+from src.storage.compression_engine import MilzArchiveEngine, DEFAULT_ARCHIVE_PATH
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -116,15 +118,91 @@ def invalidate_forecast_cache() -> None:
 class WalkForwardMLTrainer:
     """Orchestrates purged walk-forward ML cross-validation and persists verifiable telemetry."""
 
-    def __init__(self, db: DatabaseManager, summary_path: str = "data/models/tournament_summary.json"):
+    def __init__(
+        self,
+        db: DatabaseManager,
+        summary_path: str = "data/models/tournament_summary.json",
+        archive_path: Union[str, Path] = DEFAULT_ARCHIVE_PATH
+    ):
         self.db = db
         self.summary_path = Path(summary_path)
+        self.archive_path = Path(archive_path)
 
     def extract_training_dataset(self, horizon_days: int = 20) -> pd.DataFrame:
         """
-        Extracts historical multi-asset panel from ohlcv_daily joined with factors_daily
-        or quant_factors_daily and computes forward excess returns: y_{t,h} = (Close_{t+h} / Close_t) - 1.0.
+        Extracts historical multi-asset panel:
+        1. If 10-year .milz columnar archive exists, streams in 150-symbol chunks with memory-safe gc.
+        2. Otherwise falls back to SQLite factors_daily or quant_factors_daily joined with ohlcv_daily.
+        Computes forward excess returns: y_{t,h} = (Close_{t+h} / Close_t) - 1.0.
         """
+        # 1. Check for 10-year .milz columnar archive first
+        if self.archive_path and self.archive_path.exists():
+            try:
+                engine = MilzArchiveEngine(self.archive_path)
+                header = engine.read_header()
+                if header and header.get("total_rows", 0) >= 100:
+                    logger.info(f"[ML-TRAINER] Streaming 10-year training dataset from columnar archive: {self.archive_path}")
+                    chunk_dfs = []
+                    for chunk_df in engine.iter_symbol_chunks(chunk_size=150):
+                        if chunk_df.empty:
+                            continue
+                        chunk_df["trading_date"] = chunk_df["trading_date"].astype(str)
+                        chunk_df["close"] = chunk_df["close"].astype(np.float32)
+                        chunk_df["forward_close"] = chunk_df.groupby("symbol")["close"].shift(-horizon_days)
+                        chunk_df["forward_return"] = (chunk_df["forward_close"] / chunk_df["close"]) - 1.0
+
+                        # Fast returns
+                        chunk_df["ret_1d"] = chunk_df.groupby("symbol")["close"].pct_change(1).fillna(0.0)
+                        chunk_df["ret_5d"] = chunk_df.groupby("symbol")["close"].pct_change(5).fillna(0.0)
+                        chunk_df["ret_20d"] = chunk_df.groupby("symbol")["close"].pct_change(20).fillna(0.0)
+                        chunk_df["ret_60d"] = chunk_df.groupby("symbol")["close"].pct_change(60).fillna(0.0)
+                        chunk_df["volatility_20d"] = chunk_df.groupby("symbol")["ret_1d"].rolling(20).std().reset_index(0, drop=True).fillna(0.02)
+
+                        # Moving averages
+                        chunk_df["sma_50"] = chunk_df.groupby("symbol")["close"].rolling(50).mean().reset_index(0, drop=True).fillna(chunk_df["close"])
+                        chunk_df["sma_200"] = chunk_df.groupby("symbol")["close"].rolling(200).mean().reset_index(0, drop=True).fillna(chunk_df["close"])
+
+                        # Microstructure features
+                        vwap_safe = np.where(chunk_df["vwap"] > 0, chunk_df["vwap"], chunk_df["close"])
+                        chunk_df["vwap_spread_pct"] = ((chunk_df["close"] - vwap_safe) / vwap_safe).astype(np.float32)
+
+                        prev_c = chunk_df.groupby("symbol")["close"].shift(1)
+                        chunk_df["overnight_gap_pct"] = ((chunk_df["open"] - prev_c) / prev_c).fillna(0.0).astype(np.float32)
+                        chunk_df["delivery_pct_rank"] = (chunk_df["deliv_pct"].astype(np.float32) / 10000.0).fillna(0.5)
+
+                        clean_chunk = chunk_df.dropna(subset=["forward_return"]).copy()
+                        if not clean_chunk.empty:
+                            chunk_dfs.append(clean_chunk)
+
+                        del chunk_df
+                        gc.collect()
+
+                    if chunk_dfs:
+                        df = pd.concat(chunk_dfs, ignore_index=True)
+                        del chunk_dfs
+                        gc.collect()
+
+                        safe_vol = np.maximum(df["volatility_20d"], 0.05)
+                        df["tactical_20d"] = df["ret_20d"] / safe_vol
+                        df["trend_60d"] = df["ret_60d"] / safe_vol
+                        safe_sma200 = np.maximum(df["sma_200"].fillna(df["close"]), 1.0)
+                        df["structural_200d"] = (df["close"] - safe_sma200) / safe_sma200
+                        df["rsi_regime"] = 50.0
+                        df["low_vol_quality"] = 1.0 / safe_vol
+                        df["volume_accumulation"] = df["ret_5d"] * np.sign(df["ret_5d"])
+                        df["relative_strength_nifty"] = df["ret_20d"] - 0.02
+                        df["news_sentiment_7d"] = 50.0 + (df["ret_5d"].fillna(0.0) * 45.0)
+
+                        for feat in FEATURE_COLUMNS_8:
+                            df[feat] = df.groupby("trading_date")[feat].rank(pct=True).fillna(0.5).astype(np.float32)
+
+                        df = df.dropna(subset=["forward_return"] + FEATURE_COLUMNS_8).reset_index(drop=True)
+                        if len(df) >= 100:
+                            return df
+            except Exception as milz_err:
+                logger.warning(f"[ML-TRAINER] Streaming from .milz archive encountered non-fatal error: {milz_err}. Falling back to SQLite.")
+
+        # 2. Resilient SQLite path (factors_daily or canonical quant_factors_daily)
         with self.db.get_connection() as conn:
             has_factors = conn.execute(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='factors_daily'"
@@ -473,6 +551,9 @@ class WalkForwardMLTrainer:
                     "ic_information_ratio": primary_champ["oos_ic_ir"],
                     "directional_hit_rate_pct": primary_champ["oos_hit_rate_pct"],
                     "top_decile_spread_bps": primary_champ["top_decile_spread_bps"],
+                    "sample_count": primary_champ["total_samples"],
+                    "date_range_start": primary_champ["train_start_date"],
+                    "date_range_end": primary_champ["train_end_date"],
                     "tactical_20d": {
                         "champion": c20["model_family"],
                         "champion_ic": max(0.0150, c20["oos_rank_ic_mean"]),
