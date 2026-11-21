@@ -139,10 +139,16 @@ class QuantMCPBridge:
         """
         sym = symbol.strip().upper()
         with self.db.get_connection() as conn:
+            # Query recent 850 bars (~3 years with safety margin for deduplication) to conserve RAM
             df = pd.read_sql_query("""
                 SELECT trading_date, open, high, low, close, volume
-                FROM ohlcv_daily
-                WHERE symbol = ? AND (series = 'EQ' OR series IS NULL OR series = '')
+                FROM (
+                    SELECT trading_date, open, high, low, close, volume, retrieval_timestamp
+                    FROM ohlcv_daily
+                    WHERE symbol = ? AND (series = 'EQ' OR series IS NULL OR series = '')
+                    ORDER BY trading_date DESC, retrieval_timestamp DESC
+                    LIMIT 850
+                )
                 ORDER BY trading_date ASC, retrieval_timestamp ASC
             """, conn, params=(sym,))
 

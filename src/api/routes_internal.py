@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import pandas as pd
-from fastapi import APIRouter, Header, HTTPException, Depends
+from collections import defaultdict
+from fastapi import APIRouter, Header, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
 from src.storage.database import DatabaseManager
@@ -39,15 +40,33 @@ logger = logging.getLogger("MIL.InternalSync")
 router = APIRouter(prefix="/internal", tags=["Internal Sync Bridge"])
 
 
+_internal_attempt_counts: Dict[str, List[float]] = defaultdict(list)
+INTERNAL_RATE_LIMIT_WINDOW: float = 60.0   # seconds
+INTERNAL_RATE_LIMIT_MAX: int = 30         # attempts per window
+
+
 def verify_internal_token(
+    request: Request,
     x_internal_token: Optional[str] = Header(None, alias="X-Internal-Token"),
     x_internal_sync_secret: Optional[str] = Header(None, alias="X-Internal-Sync-Secret"),
 ) -> bool:
     """
-    Constant-time token validation for internal bridge endpoints.
+    Constant-time token validation for internal bridge endpoints with IP rate-limiting.
     Reads MIL_INTERNAL_SYNC_SECRET or INTERNAL_SYNC_TOKEN from environment.
     Accepts X-Internal-Token or X-Internal-Sync-Secret headers.
     """
+    client_ip = request.client.host if (request and request.client) else "unknown"
+    now = time.time()
+    attempts = _internal_attempt_counts[client_ip]
+    _internal_attempt_counts[client_ip] = [t for t in attempts if now - t < INTERNAL_RATE_LIMIT_WINDOW]
+    if len(_internal_attempt_counts[client_ip]) >= INTERNAL_RATE_LIMIT_MAX:
+        logger.warning(f"[INTERNAL-SYNC] Rate limited client {client_ip}: too many auth attempts.")
+        raise HTTPException(
+            status_code=429,
+            detail="Too many authentication attempts on internal sync endpoints."
+        )
+    _internal_attempt_counts[client_ip].append(now)
+
     expected_token = (os.getenv("MIL_INTERNAL_SYNC_SECRET") or os.getenv("INTERNAL_SYNC_TOKEN", "")).strip()
     if not expected_token:
         logger.warning("[INTERNAL-SYNC] Rejected: Neither MIL_INTERNAL_SYNC_SECRET nor INTERNAL_SYNC_TOKEN is configured on this server.")

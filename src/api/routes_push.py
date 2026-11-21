@@ -58,9 +58,20 @@ def get_vapid_key():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+MAX_PUSH_SUBSCRIPTIONS = 100
+
+
 @router.post("/push/subscribe")
 def register_push_subscription(payload: PushSubscriptionRequest, request: Request):
     """Registers or updates a browser/mobile Web Push subscription endpoint."""
+    all_subs = get_all_subscriptions()
+    existing_endpoints = {s["endpoint"] for s in all_subs}
+    if payload.endpoint not in existing_endpoints and len(all_subs) >= MAX_PUSH_SUBSCRIPTIONS:
+        raise HTTPException(
+            status_code=429,
+            detail="Maximum push subscriptions limit reached on server."
+        )
+
     ua = payload.user_agent or request.headers.get("user-agent", "Unknown")
     success = save_subscription(
         endpoint=payload.endpoint,

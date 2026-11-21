@@ -252,7 +252,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(GZipMiddleware, minimum_size=10000)
 
 # Mount modular market routes (status, tearsheet, history)
 app.include_router(market_router)

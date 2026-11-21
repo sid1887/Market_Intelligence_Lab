@@ -29,10 +29,12 @@ class PerformanceMetricsCalculator:
         cls,
         equity_curve: List[Dict[str, Any]],
         rebalance_records: Optional[List[Dict[str, Any]]] = None,
-        rf: float = DEFAULT_RF
+        rf: float = DEFAULT_RF,
+        periods_per_year: int = 252,
     ) -> Dict[str, Any]:
         """
         Calculates all institutional performance metrics for the portfolio and benchmark.
+        Supports customizable periods_per_year (252 for daily, 52 for weekly, 12 for monthly).
         """
         if not equity_curve or len(equity_curve) < 2:
             return cls._empty_metrics()
@@ -64,21 +66,22 @@ class PerformanceMetricsCalculator:
         b_cagr = ((b_final / b_initial) ** (1.0 / years) - 1.0) if (years > 0 and b_initial > 0) else 0.0
 
         # 3. Annualized Volatility
-        p_vol = float(p_returns.std() * math.sqrt(252)) if len(p_returns) > 1 else 0.0
-        b_vol = float(b_returns.std() * math.sqrt(252)) if len(b_returns) > 1 else 0.0
+        ann_factor = math.sqrt(periods_per_year)
+        p_vol = float(p_returns.std() * ann_factor) if len(p_returns) > 1 else 0.0
+        b_vol = float(b_returns.std() * ann_factor) if len(b_returns) > 1 else 0.0
 
         # 4. Sharpe Ratio
         p_sharpe = ((cagr - rf) / p_vol) if p_vol > 0 else 0.0
         b_sharpe = ((b_cagr - rf) / b_vol) if b_vol > 0 else 0.0
 
         # 5. Sortino Ratio
-        daily_rf = rf / 252.0
+        daily_rf = rf / float(periods_per_year)
         p_downside = p_returns[p_returns < daily_rf] - daily_rf
-        p_downside_dev = float(math.sqrt((p_downside ** 2).mean() * 252)) if len(p_downside) > 0 else 0.0
+        p_downside_dev = float(math.sqrt((p_downside ** 2).mean() * periods_per_year)) if len(p_downside) > 0 else 0.0
         p_sortino = ((cagr - rf) / p_downside_dev) if p_downside_dev > 0 else 0.0
 
         b_downside = b_returns[b_returns < daily_rf] - daily_rf
-        b_downside_dev = float(math.sqrt((b_downside ** 2).mean() * 252)) if len(b_downside) > 0 else 0.0
+        b_downside_dev = float(math.sqrt((b_downside ** 2).mean() * periods_per_year)) if len(b_downside) > 0 else 0.0
         b_sortino = ((b_cagr - rf) / b_downside_dev) if b_downside_dev > 0 else 0.0
 
         # 6. Drawdown & Duration
@@ -111,7 +114,7 @@ class PerformanceMetricsCalculator:
             b_var = b_returns.var()
             beta = float(covariance / b_var) if b_var > 0 else 1.0
             daily_alpha = float(p_returns.mean() - beta * b_returns.mean())
-            alpha_ann = float(daily_alpha * 252)
+            alpha_ann = float(daily_alpha * periods_per_year)
 
         # 8. Win Rate & Rebalance Friction
         win_rate_pct = 50.0
