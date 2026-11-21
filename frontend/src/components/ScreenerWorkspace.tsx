@@ -37,6 +37,8 @@ export interface OptionalColumn {
 export const SCREENER_COLUMNS: OptionalColumn[] = [
   { id: "roe", label: "ROE", field: "roe_pct", width: "w-20" },
   { id: "ret20", label: "20D Ret", field: "ret_20d", width: "w-24" },
+  { id: "deliv", label: "Deliv %", field: "delivery_pct", width: "w-20" },
+  { id: "turnover", label: "Turn (Cr)", field: "turnover_cr", width: "w-24" },
   { id: "opm", label: "OPM", field: "opm_pct", width: "w-20" },
   { id: "de", label: "D/E", field: "debt_to_equity", width: "w-20" },
   { id: "score60", label: "60D Score", field: "score_60d", width: "w-24" },
@@ -46,6 +48,8 @@ export const SCREENER_COLUMNS: OptionalColumn[] = [
 export const DEFAULT_COLUMNS: Record<string, boolean> = {
   roe: true,
   ret20: true,
+  deliv: true,
+  turnover: true,
   opm: false,
   de: false,
   score60: false,
@@ -64,7 +68,9 @@ export const SECTOR_FILTERS: string[] = [
   "Metals",
   "Chemicals",
   "Real Estate",
+  "Construction Materials",
   "Telecom",
+  "Media",
 ];
 
 function matchSector(item: ScreenerCandidate, filter: string): boolean {
@@ -125,8 +131,12 @@ function matchSector(item: ScreenerCandidate, filter: string): boolean {
     return sec.includes("chem") || sec.includes("fertiliz");
   if (filter === "Real Estate")
     return sec.includes("realt") || sec.includes("estate") || sec.includes("infra") || sec.includes("construct");
+  if (filter === "Construction Materials")
+    return sec.includes("construction") || sec.includes("material") || sec.includes("cement") || sec.includes("ceramic");
   if (filter === "Telecom")
     return sec.includes("telecom") || sec.includes("communi");
+  if (filter === "Media")
+    return sec.includes("media") || sec.includes("entertain") || sec.includes("broadcast") || sec.includes("publish");
   return sec.includes(fLower);
 }
 
@@ -265,6 +275,18 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
             {isPositiveRet ? "+" : ""}
             {(ret20 * 100).toFixed(1)}%
           </span>
+        </div>
+      )}
+
+      {columns.deliv && (
+        <div className="hidden lg:block w-20 text-right tabular-nums text-cyan-300 shrink-0">
+          {cand.delivery_pct !== null && cand.delivery_pct !== undefined ? `${cand.delivery_pct.toFixed(1)}%` : "—"}
+        </div>
+      )}
+
+      {columns.turnover && (
+        <div className="hidden lg:block w-24 text-right tabular-nums text-slate-300 shrink-0">
+          {cand.turnover_cr !== null && cand.turnover_cr !== undefined ? `₹${cand.turnover_cr.toFixed(1)} Cr` : "—"}
         </div>
       )}
 
@@ -1157,6 +1179,50 @@ function ScreenerWorkspaceComponent({
                 </div>
               )}
 
+              {columns.deliv && (
+                <div
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by Delivery Percentage"
+                  aria-sort={sortField === "delivery_pct" ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("delivery_pct");
+                    }
+                  }}
+                  className="hidden lg:flex w-20 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
+                  onClick={() => handleSort("delivery_pct")}
+                >
+                  <span>Deliv %</span>
+                  {sortField === "delivery_pct" && (
+                    sortAsc ? <ArrowUp className="w-2.5 h-2.5 text-cyan-400" /> : <ArrowDown className="w-2.5 h-2.5 text-cyan-400" />
+                  )}
+                </div>
+              )}
+
+              {columns.turnover && (
+                <div
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label="Sort by Turnover in Crores"
+                  aria-sort={sortField === "turnover_cr" ? (sortAsc ? "ascending" : "descending") : "none"}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSort("turnover_cr");
+                    }
+                  }}
+                  className="hidden lg:flex w-24 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
+                  onClick={() => handleSort("turnover_cr")}
+                >
+                  <span>Turn (Cr)</span>
+                  {sortField === "turnover_cr" && (
+                    sortAsc ? <ArrowUp className="w-2.5 h-2.5 text-cyan-400" /> : <ArrowDown className="w-2.5 h-2.5 text-cyan-400" />
+                  )}
+                </div>
+              )}
+
               {columns.opm && (
                 <div
                   role="columnheader"
@@ -1273,6 +1339,16 @@ function ScreenerWorkspaceComponent({
                       )}
                       {columns.ret20 && (
                         <div className="w-24 flex justify-end pr-2">
+                          <div className="w-12 h-3.5 bg-white/[0.06] rounded" />
+                        </div>
+                      )}
+                      {columns.deliv && (
+                        <div className="hidden lg:flex w-20 justify-end">
+                          <div className="w-10 h-3.5 bg-white/[0.06] rounded" />
+                        </div>
+                      )}
+                      {columns.turnover && (
+                        <div className="hidden lg:flex w-24 justify-end">
                           <div className="w-12 h-3.5 bg-white/[0.06] rounded" />
                         </div>
                       )}

@@ -522,7 +522,7 @@ def run_ml_tournament_pipeline(
     if not target_symbols:
         target_symbols = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "TATAMOTORS", "ITC", "BEL", "SBIN", "RVNL", "NHPC"]
 
-    # 0. Checkpoint-Driven 10-Year Bhavcopy Harvest & .milz Columnar Update
+    # 0. Checkpoint-Driven 10-Year Bhavcopy Harvest & Full-Spectrum Enrichment
     logger.info("Executing incremental 10-year Bhavcopy harvest & .milz archive update...")
     try:
         from src.data.bhavcopy_harvester import Bhavcopy10YHarvester
@@ -532,6 +532,23 @@ def run_ml_tournament_pipeline(
         harvester.compute_intraday_microstructure_features(days=60)
     except Exception as harv_err:
         logger.warning(f"[ML-TOURNAMENT] Bhavcopy harvest non-fatal notice: {harv_err}")
+
+    try:
+        from src.data.full_spectrum_harvester import FullSpectrumHarvester
+        fs_harvester = FullSpectrumHarvester(db)
+        fs_res = fs_harvester.run_full_harvest(
+            backfill_tickers=True,
+            resolve_sectors=True,
+            ingest_files=True,
+            fetch_indices=False,
+            enrich_fundamentals=True,
+            pack_milz=False,
+            export_snap=False,
+            max_ticker_batch=20
+        )
+        logger.info(f"[ML-TOURNAMENT] Full-spectrum harvest incremental batch: {fs_res}")
+    except Exception as fs_err:
+        logger.warning(f"[ML-TOURNAMENT] Full-spectrum harvest non-fatal notice: {fs_err}")
 
     # 1. Refresh latest daily bars for priority equities
     logger.info(f"Updating latest price bars for {len(target_symbols)} equities via parallel ingestion...")
@@ -720,9 +737,9 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=["news", "news_radar", "ml", "all"],
+        choices=["news", "news_radar", "ml", "backfill", "full_harvest", "all"],
         default="all",
-        help="Pipeline mode to execute: 'news'/'news_radar', 'ml', or 'all' (default: all)"
+        help="Pipeline mode to execute: 'news'/'news_radar', 'ml', 'backfill', 'full_harvest', or 'all' (default: all)"
     )
     parser.add_argument(
         "--dry-run",
@@ -766,6 +783,11 @@ def main():
     results: Dict[str, Any] = {}
 
     # 2. Execute selected pipeline
+    if args.mode in ("backfill", "full_harvest"):
+        from src.data.full_spectrum_harvester import FullSpectrumHarvester
+        harvester = FullSpectrumHarvester(DatabaseManager(args.db_path))
+        results["full_harvest"] = harvester.run_full_harvest()
+
     if args.mode in ("news", "news_radar", "all"):
         results["news"] = run_parallel_news_pipeline(
             state=state,

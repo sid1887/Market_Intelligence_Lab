@@ -87,6 +87,7 @@ from src.tasks.daemon import platform_daemon, run_autonomous_platform_daemon
 logger = logging.getLogger(__name__)
 
 # Thread-safe In-Memory Screener Materialized Snapshot View (Milestone B6 / P0)
+SCREENER_CACHE_MAX_ITEMS: int = 1500
 _screener_cache_lock = threading.Lock()
 _screener_snapshot_cache: Optional[Dict[str, Any]] = None
 _screener_cached_bytes: Optional[bytes] = None
@@ -462,7 +463,16 @@ def get_screener(
                 "price_above_sma200": bool(row.get("price_above_sma200", False)),
                 "is_watchlist": bool(row.get("is_watchlist", 0)),
                 "rsi_14": safe_float(row.get("rsi_14"), 2),
-                "volatility_20d": safe_float(row.get("volatility_20d"), 4)
+                "volatility_20d": safe_float(row.get("volatility_20d"), 4),
+                "delivery_pct": safe_float(row.get("delivery_pct"), 2),
+                "turnover_cr": safe_float(row.get("turnover_cr"), 2),
+                "distance_52w_high": safe_float(row.get("distance_52w_high"), 4),
+                "distance_52w_low": safe_float(row.get("distance_52w_low"), 4),
+                "pct_from_52w_high": (
+                    round(safe_float(row.get("distance_52w_high"), 4) * 100.0, 2)
+                    if safe_float(row.get("distance_52w_high"), 4) is not None
+                    else None
+                )
             })
 
         # Populate cache on default queries

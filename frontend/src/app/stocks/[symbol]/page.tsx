@@ -83,6 +83,9 @@ interface TearsheetData {
     low: number;
     close: number;
     volume: number;
+    delivery_qty?: number | null;
+    delivery_pct?: number | null;
+    turnover_cr?: number | null;
   };
   technicals: {
     ret_1d: number;
@@ -98,6 +101,11 @@ interface TearsheetData {
     beta_60d_nifty: number | null;
     volume_ratio_20d: number | null;
     volume_zscore_50d: number | null;
+    delivery_pct?: number | null;
+    turnover_cr?: number | null;
+    distance_52w_high?: number | null;
+    distance_52w_low?: number | null;
+    pct_from_52w_high?: number | null;
   };
   fundamentals: {
     roe_pct: number | null;
@@ -1152,6 +1160,57 @@ export default function StockTearsheetPage() {
                 data.technicals.dist_sma200_pct === null ? undefined : isAboveSma200
               }
             />
+          </div>
+
+          {/* Market Microstructure & Institutional Accumulation Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs font-mono">
+            <div className="bg-[#050810]/80 p-3 rounded-xl border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.08)]">
+              <span className="text-cyan-400 block text-[11px] font-semibold tracking-wide uppercase">Delivery %</span>
+              <span className="text-cyan-200 font-bold font-mono text-base mt-0.5 block tabular-nums">
+                {data.technicals.delivery_pct !== null && data.technicals.delivery_pct !== undefined
+                  ? `${data.technicals.delivery_pct.toFixed(1)}%`
+                  : "—"}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-0.5">
+                {(data.technicals.delivery_pct ?? 0) >= 50
+                  ? "Institutional Accumulation"
+                  : "Exchange Settled"}
+              </span>
+            </div>
+
+            <div className="bg-[#050810]/80 p-3 rounded-xl border border-white/[0.08]">
+              <span className="text-slate-400 block text-[11px] font-semibold tracking-wide uppercase">Turnover (₹ Cr)</span>
+              <span className="text-slate-100 font-bold font-mono text-base mt-0.5 block tabular-nums">
+                {data.technicals.turnover_cr !== null && data.technicals.turnover_cr !== undefined
+                  ? `₹${data.technicals.turnover_cr.toFixed(2)} Cr`
+                  : "—"}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-0.5">Daily Traded Liquidity</span>
+            </div>
+
+            <div className="bg-[#050810]/80 p-3 rounded-xl border border-white/[0.08]">
+              <span className="text-slate-400 block text-[11px] font-semibold tracking-wide uppercase">20D Volume Ratio</span>
+              <span className="text-slate-100 font-bold font-mono text-base mt-0.5 block tabular-nums">
+                {data.technicals.volume_ratio_20d !== null && data.technicals.volume_ratio_20d !== undefined
+                  ? `${data.technicals.volume_ratio_20d.toFixed(2)}x`
+                  : "1.00x"}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-0.5">
+                {(data.technicals.volume_ratio_20d ?? 1) >= 2.0 ? "Volume Breakout Alert" : "Normal Baseline Flow"}
+              </span>
+            </div>
+
+            <div className="bg-[#050810]/80 p-3 rounded-xl border border-white/[0.08]">
+              <span className="text-slate-400 block text-[11px] font-semibold tracking-wide uppercase">From 52W High</span>
+              <span className={`font-bold font-mono text-base mt-0.5 block tabular-nums ${
+                (data.technicals.pct_from_52w_high ?? 0) >= -5 ? "text-emerald-400" : "text-amber-400"
+              }`}>
+                {data.technicals.pct_from_52w_high !== null && data.technicals.pct_from_52w_high !== undefined
+                  ? `${data.technicals.pct_from_52w_high >= 0 ? "+" : ""}${data.technicals.pct_from_52w_high.toFixed(1)}%`
+                  : "—"}
+              </span>
+              <span className="text-[10px] text-slate-500 block mt-0.5">52W Drawdown / Premium</span>
+            </div>
           </div>
 
           {/* Supplementary Metrics Ribbon */}

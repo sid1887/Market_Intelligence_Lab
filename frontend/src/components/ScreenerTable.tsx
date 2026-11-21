@@ -19,6 +19,9 @@ export interface ScreenerCandidate {
   opm_pct: number | null;
   excess_ret_20d: number | null;
   composite_score: number | null;
+  delivery_pct?: number | null;
+  turnover_cr?: number | null;
+  distance_52w_high?: number | null;
   price_above_sma200: boolean;
   is_watchlist: boolean;
 }

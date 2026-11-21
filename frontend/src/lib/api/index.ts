@@ -372,6 +372,11 @@ export interface ScreenerCandidate {
   is_rebalance_target?: boolean | number;
   score_20d?: number | null;
   score_60d?: number | null;
+  delivery_pct?: number | null;
+  turnover_cr?: number | null;
+  distance_52w_high?: number | null;
+  distance_52w_low?: number | null;
+  pct_from_52w_high?: number | null;
   data_completeness_score?: number | null;
   score_status?: string | null;
   price_above_sma200: boolean | number;

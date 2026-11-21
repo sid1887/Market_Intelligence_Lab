@@ -442,6 +442,57 @@ function StockInspectorComponent({
               />
             </div>
 
+            {/* Market Microstructure Strip: Delivery %, Turnover, 20D Return, 52W Position */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
+              <div className="bg-[#080c14] border border-cyan-500/20 rounded-xl p-2.5 shadow-[0_0_12px_rgba(6,182,212,0.06)]">
+                <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold block">Deliv %</span>
+                <span className="text-cyan-200 font-bold font-mono text-sm mt-0.5 block tabular-nums">
+                  {activeCandidate?.delivery_pct !== null && activeCandidate?.delivery_pct !== undefined
+                    ? `${activeCandidate.delivery_pct.toFixed(1)}%`
+                    : "—"}
+                </span>
+                <span className="text-[9px] text-slate-500 block truncate">
+                  {(activeCandidate?.delivery_pct ?? 0) >= 50 ? "Accumulation" : "Settled"}
+                </span>
+              </div>
+
+              <div className="bg-[#080c14] border border-white/[0.08] rounded-xl p-2.5">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block">Turnover</span>
+                <span className="text-slate-100 font-bold font-mono text-sm mt-0.5 block tabular-nums">
+                  {activeCandidate?.turnover_cr !== null && activeCandidate?.turnover_cr !== undefined
+                    ? `₹${activeCandidate.turnover_cr.toFixed(1)} Cr`
+                    : "—"}
+                </span>
+                <span className="text-[9px] text-slate-500 block truncate">Traded Val</span>
+              </div>
+
+              <div className="bg-[#080c14] border border-white/[0.08] rounded-xl p-2.5">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block">20D Momentum</span>
+                <span className="text-slate-100 font-bold font-mono text-sm mt-0.5 block tabular-nums">
+                  {activeCandidate?.ret_20d !== null && activeCandidate?.ret_20d !== undefined
+                    ? `${((activeCandidate?.ret_20d ?? 0) >= 0 ? "+" : "") + ((activeCandidate?.ret_20d ?? 0) * 100).toFixed(1)}%`
+                    : "—"}
+                </span>
+                <span className="text-[9px] text-slate-500 block truncate">Price Velocity</span>
+              </div>
+
+              <div className="bg-[#080c14] border border-white/[0.08] rounded-xl p-2.5">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block">52W Position</span>
+                <span className={`font-bold font-mono text-sm mt-0.5 block tabular-nums ${
+                  (activeCandidate?.pct_from_52w_high ?? (activeCandidate?.distance_52w_high ? activeCandidate.distance_52w_high * 100 : 0)) >= -5
+                    ? "text-emerald-400"
+                    : "text-amber-400"
+                }`}>
+                  {activeCandidate?.pct_from_52w_high !== null && activeCandidate?.pct_from_52w_high !== undefined
+                    ? `${activeCandidate.pct_from_52w_high >= 0 ? "+" : ""}${activeCandidate.pct_from_52w_high.toFixed(1)}%`
+                    : activeCandidate?.distance_52w_high !== null && activeCandidate?.distance_52w_high !== undefined
+                    ? `${(activeCandidate.distance_52w_high * 100).toFixed(1)}%`
+                    : "—"}
+                </span>
+                <span className="text-[9px] text-slate-500 block truncate">From 52W High</span>
+              </div>
+            </div>
+
             {/* Row 2: Symmetric 2-Column Bento Grid: Consensus (Left) + Conviction & Risk/Reward (Right) */}
             <div className="grid grid-cols-1 @[520px]:grid-cols-2 min-[640px]:grid-cols-2 gap-4 items-stretch">
               {/* Left Column: Multi-Horizon Factor Consensus */}
