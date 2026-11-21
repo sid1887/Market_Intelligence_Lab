@@ -89,13 +89,12 @@ def init_catalyst_tables():
 class CausalCatalystEngine:
     """Intraday anomaly detection and 4-pillar causal market intelligence engine."""
 
-    # In-memory cooldown cache: {symbol: last_investigated_timestamp}
-    _cooldowns: Dict[str, datetime] = {}
     COOLDOWN_HOURS = 4
 
     def __init__(self, auto_push: bool = True):
         init_catalyst_tables()
         self.auto_push = auto_push
+        self._cooldowns: Dict[str, datetime] = {}
 
     def get_watchlist_and_priority_symbols(self) -> List[str]:
         """Gathers symbols from active portfolio positions, watchlists, and prominent equities."""

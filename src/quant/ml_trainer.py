@@ -123,30 +123,54 @@ class WalkForwardMLTrainer:
     def extract_training_dataset(self, horizon_days: int = 20) -> pd.DataFrame:
         """
         Extracts historical multi-asset panel from ohlcv_daily joined with factors_daily
-        and computes forward excess returns: y_{t,h} = (Close_{t+h} / Close_t) - 1.0.
+        or quant_factors_daily and computes forward excess returns: y_{t,h} = (Close_{t+h} / Close_t) - 1.0.
         """
         with self.db.get_connection() as conn:
-            has_factors = conn.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='factors_daily'").fetchone()[0] > 0
-            if not has_factors:
-                return pd.DataFrame()
+            has_factors = conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='factors_daily'"
+            ).fetchone()[0] > 0
+            factors_daily_rows = 0
+            if has_factors:
+                factors_daily_rows = conn.execute("SELECT count(*) FROM factors_daily").fetchone()[0]
 
-            # Query historical panel
-            sql = """
-            SELECT 
-                f.symbol,
-                f.trading_date,
-                f.close,
-                f.sma_50,
-                f.sma_200,
-                COALESCE(f.ret_20d, 0.0) as ret_20d,
-                COALESCE(f.ret_5d, 0.0) as ret_5d,
-                COALESCE(f.momentum_1y, f.ret_20d * 3.0, 0.0) as ret_60d,
-                COALESCE(f.volatility_20d, 0.20) as volatility_20d,
-                COALESCE(f.rsi_14, 50.0) as rsi_14
-            FROM factors_daily f
-            WHERE f.close IS NOT NULL AND f.close > 0
-            ORDER BY f.symbol, f.trading_date ASC
-            """
+            if factors_daily_rows >= 100:
+                sql = """
+                SELECT 
+                    f.symbol,
+                    f.trading_date,
+                    f.close,
+                    f.sma_50,
+                    f.sma_200,
+                    COALESCE(f.ret_20d, 0.0) as ret_20d,
+                    COALESCE(f.ret_5d, 0.0) as ret_5d,
+                    COALESCE(f.momentum_1y, f.ret_20d * 3.0, 0.0) as ret_60d,
+                    COALESCE(f.volatility_20d, 0.20) as volatility_20d,
+                    COALESCE(f.rsi_14, 50.0) as rsi_14
+                FROM factors_daily f
+                WHERE f.close IS NOT NULL AND f.close > 0
+                ORDER BY f.symbol, f.trading_date ASC
+                """
+            else:
+                # Resilient fallback to canonical quant_factors_daily joined with ohlcv_daily
+                sql = """
+                SELECT 
+                    q.symbol,
+                    q.trading_date,
+                    o.close,
+                    q.sma_50,
+                    q.sma_200,
+                    COALESCE(q.ret_20d, 0.0) as ret_20d,
+                    COALESCE(q.ret_5d, 0.0) as ret_5d,
+                    COALESCE(q.ret_20d * 3.0, 0.0) as ret_60d,
+                    COALESCE(q.vol_20d_annualized / 15.87, q.volatility_annualized / 15.87, 0.20) as volatility_20d,
+                    50.0 as rsi_14
+                FROM quant_factors_daily q
+                JOIN ohlcv_daily o ON q.symbol = o.symbol AND q.trading_date = o.trading_date
+                WHERE (o.series = 'EQ' OR o.series IS NULL OR o.series = '')
+                  AND o.close IS NOT NULL AND o.close > 0
+                  AND COALESCE(o.is_eligible_for_training, 1) = 1
+                ORDER BY q.symbol, q.trading_date ASC
+                """
             df = pd.read_sql_query(sql, conn)
 
         if df.empty or len(df) < 100:

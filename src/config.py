@@ -5,7 +5,10 @@ Enforces offline-first safeguards and fail-closed network policies.
 """
 import json
 import os
+import logging
 from typing import Any, Dict
+
+logger = logging.getLogger("MIL.Config")
 
 _DEFAULT_SETTINGS_PATH = os.path.abspath(
     os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "settings.json")
@@ -17,8 +20,8 @@ def get_settings(path: str = _DEFAULT_SETTINGS_PATH) -> Dict[str, Any]:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error reading configuration at {path}: {e}. Failing closed to offline mode.")
     return {
         "offline_mode": True,
         "network_access_enabled": False,

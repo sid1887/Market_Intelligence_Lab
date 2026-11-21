@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Manages SQLite database connections, additive schema migrations, and transactional persistence."""
 
-    def __init__(self, db_path: str = "data/market_lab.db"):
+    _initialized_paths: set = set()
+
+    def __init__(self, db_path: str = "data/market_lab.db", skip_init: bool = False):
         self.db_path = db_path
         self._mem_conn: Optional[sqlite3.Connection] = None
         if self.db_path == ":memory:":
@@ -24,8 +26,11 @@ class DatabaseManager:
             self._mem_conn.execute("PRAGMA synchronous = NORMAL;")
             self.init_schema()
         else:
-            os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
-            self.init_schema()
+            abs_p = os.path.abspath(self.db_path)
+            os.makedirs(os.path.dirname(abs_p), exist_ok=True)
+            if not skip_init and abs_p not in DatabaseManager._initialized_paths:
+                self.init_schema()
+                DatabaseManager._initialized_paths.add(abs_p)
 
     def get_connection(self) -> sqlite3.Connection:
         if self._mem_conn is not None:
@@ -323,6 +328,14 @@ class DatabaseManager:
                     conn.commit()
                 except Exception as norm_e:
                     logger.debug(f"ohlcv_daily series normalization warning: {norm_e}")
+
+            # 11e. Performance Covering Indexes on Hot Paths
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_sym_date_retrieval ON ohlcv_daily(symbol, trading_date DESC, retrieval_timestamp DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_date_turnover ON ohlcv_daily(trading_date DESC, turnover DESC) WHERE series = 'EQ';")
+                conn.commit()
+            except Exception as idx_e:
+                logger.debug(f"Covering index creation note: {idx_e}")
 
             # 12. Run Numbered Migrations & Truth Quarantine (P1-01, ADR-0011)
             try:

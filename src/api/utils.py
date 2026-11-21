@@ -18,15 +18,34 @@ DATABASE_PATH = os.path.abspath(
     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "market_lab.db")
 )
 
+_DB_MANAGER_SINGLETON: Optional[Any] = None
+
+
+def get_database_manager(db_path: str = DATABASE_PATH):
+    """
+    Returns a process-wide DatabaseManager singleton, avoiding redundant schema checks.
+    """
+    global _DB_MANAGER_SINGLETON
+    from src.storage.database import DatabaseManager
+    if _DB_MANAGER_SINGLETON is None or _DB_MANAGER_SINGLETON.db_path != db_path:
+        _DB_MANAGER_SINGLETON = DatabaseManager(db_path)
+    return _DB_MANAGER_SINGLETON
+
 
 def get_db_connection():
     """
     Dependency that provides a safe read-only SQLite connection configured for concurrent WAL reads.
+    Applies WAL performance PRAGMAs (busy_timeout, cache_size, mmap, query_only).
     Does not block concurrent writes or reader transactions.
     """
-    db_uri = f"file:{DATABASE_PATH}?mode=ro"
-    conn = sqlite3.connect(db_uri, uri=True, timeout=15.0, check_same_thread=False)
+    abs_path = os.path.abspath(DATABASE_PATH)
+    conn = sqlite3.connect(f"file:{abs_path}?mode=ro", uri=True, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 30000;")
+    conn.execute("PRAGMA cache_size = -32000;")
+    conn.execute("PRAGMA mmap_size = 134217728;")
+    conn.execute("PRAGMA temp_store = MEMORY;")
+    conn.execute("PRAGMA query_only = ON;")
     try:
         yield conn
     finally:

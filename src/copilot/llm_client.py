@@ -282,32 +282,37 @@ async def call_llm_completion(
     # 2. Secondary: Google AI Studio (gemini-3.8-flash -> gemini-3.5-flash-lite)
     if gemini_key:
         gemini_models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3-flash-preview"]
-        system_instructions = []
-        conversation_parts = []
+        system_texts = [m["content"] for m in messages if m.get("role") == "system" and m.get("content")]
+        contents = []
         for m in messages:
             role = m.get("role", "user")
             content = m.get("content", "")
             if role == "system":
-                system_instructions.append(content)
-            else:
-                prefix = "User: " if role == "user" else "Assistant: "
-                conversation_parts.append(f"{prefix}{content}")
+                continue
+            gemini_role = "user" if role == "user" else "model"
+            if content.strip():
+                contents.append({
+                    "role": gemini_role,
+                    "parts": [{"text": content.strip()}]
+                })
 
-        full_prompt = ""
-        if system_instructions:
-            full_prompt += "System Instructions:\n" + "\n".join(system_instructions) + "\n\n"
-        full_prompt += "\n\n".join(conversation_parts)
+        if not contents and system_texts:
+            contents = [{"role": "user", "parts": [{"text": "Execute quantitative deliberation."}]}]
 
         for model in gemini_models:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
-                payload = {
-                    "contents": [{"parts": [{"text": full_prompt}]}],
+                payload: Dict[str, Any] = {
+                    "contents": contents,
                     "generationConfig": {
                         "temperature": temperature,
                         "maxOutputTokens": max_tokens,
                     },
                 }
+                if system_texts:
+                    payload["systemInstruction"] = {
+                        "parts": [{"text": "\n".join(system_texts)}]
+                    }
                 async with httpx.AsyncClient(timeout=14.0) as client:
                     resp = await client.post(url, json=payload)
                     if resp.status_code == 200:

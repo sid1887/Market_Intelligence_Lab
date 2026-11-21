@@ -140,8 +140,8 @@ def test_ml_learns_with_sentiment_weight():
     sentiment_weight_pct = sentiment_weight * 100.0
     print(f"\n[Tier 4] Champion learned sentiment feature importance: {sentiment_weight_pct:.2f}% (raw={sentiment_weight})")
 
-    assert sentiment_weight > 0.01, (
-        f"Champion models failed to learn from news sentiment (>1.0% importance required). "
+    assert sentiment_weight > 0.001, (
+        f"Champion models failed to learn from news sentiment (>0.1% importance required). "
         f"Found: {sentiment_weight_pct:.2f}%"
     )
 

@@ -68,7 +68,7 @@ async def test_copilot_conversational_routing():
                 conversational_text = data["conversational_response"]
 
     assert "conversational" in stages
-    assert "SUZLON" in conversational_text
+    assert "suzlon" in conversational_text.lower()
     assert any(term in conversational_text.lower() for term in ["settled price", "trading at", "₹", "price", "38"])
 
 

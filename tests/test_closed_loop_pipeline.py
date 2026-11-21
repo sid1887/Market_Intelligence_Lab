@@ -65,6 +65,15 @@ def test_internal_sync_downstream_orchestration(monkeypatch):
 
     payload = {
         "tournament_summary": {
+            "overall_summary": {
+                "last_trained_at": today_str,
+                "champion_model": "LGBMRegressor_20D_Champion",
+                "feature_importance_pct": {
+                    "news_sentiment_7d": 0.05,
+                    "tactical_20d": 0.15,
+                    "trend_60d": 0.20
+                }
+            },
             "champion_model": "LGBMRegressor_20D_Champion",
             "evaluated_at": today_str
         },

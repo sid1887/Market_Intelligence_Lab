@@ -276,6 +276,14 @@ class AutonomousPlatformDaemon:
             )
             logger.info(f"Hourly Supervisor Health Check: State={self.supervisor.get_state().get('current_state')} | Completeness={health_pct}%")
 
+            # Automatic PASSIVE WAL checkpoint to keep SQLite WAL log size bounded
+            try:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, self.db.wal_checkpoint, "PASSIVE")
+                logger.info("Automatic PASSIVE WAL checkpoint completed.")
+            except Exception as wal_err:
+                logger.warning(f"Hourly WAL checkpoint warning: {wal_err}")
+
         except Exception as e:
             logger.error(f"Error during supervisor health check: {e}")
 

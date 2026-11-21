@@ -72,7 +72,7 @@ def sync_yfinance_history_for_symbol(sym: str) -> Optional[List[Dict[str, Any]]]
                 c_open, c_high, c_low, c_close,
                 c_close, c_close, c_vol,
                 float(c_vol * c_close), 0, 'YFINANCE_DYNAMIC_BACKFILL',
-                now_iso, 0, 'final_settled', 'EXCHANGE_OFFICIAL', 0, 1, 1, 1
+                now_iso, 0, 'final_settled', 'THIRD_PARTY_PROXY', 0, 1, 1, 1
             ))
             candles.append({
                 "time": t_date,
@@ -81,7 +81,7 @@ def sync_yfinance_history_for_symbol(sym: str) -> Optional[List[Dict[str, Any]]]
                 "low": round(c_low, 2),
                 "close": round(c_close, 2),
                 "volume": c_vol,
-                "provenance_class": "EXCHANGE_OFFICIAL",
+                "provenance_class": "THIRD_PARTY_PROXY",
                 "is_synthetic": False
             })
 
@@ -98,12 +98,32 @@ def sync_yfinance_history_for_symbol(sym: str) -> Optional[List[Dict[str, Any]]]
         try:
             with DatabaseManager(DATABASE_PATH).get_connection() as write_conn:
                 write_conn.executemany("""
-                    INSERT OR REPLACE INTO ohlcv_daily (
+                    INSERT INTO ohlcv_daily (
                         symbol, trading_date, series, open, high, low, close, ltp, prev_close,
                         volume, turnover, delivery_qty, source, retrieval_timestamp, trades_count,
                         data_status, provenance_class, is_synthetic, is_eligible_for_live_analytics,
                         is_eligible_for_backtest, is_eligible_for_training
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
+                        open = excluded.open,
+                        high = excluded.high,
+                        low = excluded.low,
+                        close = excluded.close,
+                        ltp = excluded.ltp,
+                        prev_close = excluded.prev_close,
+                        volume = excluded.volume,
+                        turnover = excluded.turnover,
+                        source = CASE WHEN ohlcv_daily.provenance_class = 'EXCHANGE_OFFICIAL' THEN ohlcv_daily.source ELSE excluded.source END,
+                        retrieval_timestamp = excluded.retrieval_timestamp,
+                        data_status = excluded.data_status,
+                        provenance_class = CASE WHEN ohlcv_daily.provenance_class = 'EXCHANGE_OFFICIAL' THEN ohlcv_daily.provenance_class ELSE excluded.provenance_class END,
+                        delivery_qty = COALESCE(ohlcv_daily.delivery_qty, excluded.delivery_qty),
+                        trades_count = COALESCE(ohlcv_daily.trades_count, excluded.trades_count),
+                        is_synthetic = ohlcv_daily.is_synthetic,
+                        is_eligible_for_live_analytics = ohlcv_daily.is_eligible_for_live_analytics,
+                        is_eligible_for_backtest = ohlcv_daily.is_eligible_for_backtest,
+                        is_eligible_for_training = ohlcv_daily.is_eligible_for_training
+                    WHERE ohlcv_daily.data_status != 'final_settled' OR ohlcv_daily.source = 'YFINANCE_DYNAMIC_BACKFILL';
                 """, insert_rows)
 
                 write_conn.execute("""

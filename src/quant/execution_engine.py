@@ -23,7 +23,10 @@ STT_RATE = 0.0010                # 0.10% Securities Transaction Tax on both BUY 
 EXCHANGE_TURNOVER_AND_SLIP = 0.0005  # 0.05% Exchange + SEBI turnover fees + slippage penalty
 BUY_FRICTION_RATE = STT_RATE + EXCHANGE_TURNOVER_AND_SLIP    # 0.0015 (15 bps)
 SELL_FRICTION_RATE = STT_RATE + EXCHANGE_TURNOVER_AND_SLIP   # 0.0015 (15 bps)
-FLAT_SELL_DP_CHARGE = 15.00       # Flat ₹15.00 Depository Participant charge per SELL leg
+FLAT_SELL_DP_CHARGE = 15.34       # Flat ₹15.34 Depository Participant charge per SELL leg (CDSL ₹13 + 18% GST)
+
+
+_accounts_initialized_paths: set = set()
 
 
 class PaperTradingEngine:
@@ -39,7 +42,10 @@ class PaperTradingEngine:
 
     def __init__(self, db: DatabaseManager):
         self.db = db
-        self.ensure_default_accounts()
+        db_path_key = getattr(db, "db_path", "default")
+        if db_path_key not in _accounts_initialized_paths:
+            self.ensure_default_accounts()
+            _accounts_initialized_paths.add(db_path_key)
 
     def ensure_default_accounts(self) -> None:
         """Provisions default accounts (paper_alpha_2, paper_manual_1, paper_alpha_1) if absent."""

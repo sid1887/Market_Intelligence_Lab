@@ -113,52 +113,35 @@ class FactorScreener:
         nominal_total = w_roe + w_de + w_excess + w_opm
 
         # Percentile rank components across the universe strictly over non-nulls
-        score_roe = self._percentile_rank_series(df["roe_pct"], ascending=True)
-        score_de = self._percentile_rank_series(df["debt_to_equity"], ascending=False)
-        score_excess = self._percentile_rank_series(df["excess_ret_20d"], ascending=True)
-        score_opm = self._percentile_rank_series(df["opm_pct"], ascending=True)
+        score_roe = self._percentile_rank_series(df["roe_pct"], ascending=True).values
+        score_de = self._percentile_rank_series(df["debt_to_equity"], ascending=False).values
+        score_excess = self._percentile_rank_series(df["excess_ret_20d"], ascending=True).values
+        score_opm = self._percentile_rank_series(df["opm_pct"], ascending=True).values
 
-        composites = []
-        completeness_list = []
-        status_list = []
+        m_roe = ~np.isnan(score_roe)
+        m_de = ~np.isnan(score_de)
+        m_excess = ~np.isnan(score_excess)
+        m_opm = ~np.isnan(score_opm)
 
-        for idx in df.index:
-            valid_w = 0.0
-            weighted_sum = 0.0
+        valid_w = (m_roe * w_roe) + (m_de * w_de) + (m_excess * w_excess) + (m_opm * w_opm)
+        weighted_sum = (
+            np.nan_to_num(score_roe) * w_roe +
+            np.nan_to_num(score_de) * w_de +
+            np.nan_to_num(score_excess) * w_excess +
+            np.nan_to_num(score_opm) * w_opm
+        )
 
-            if pd.notna(score_roe.loc[idx]):
-                valid_w += w_roe
-                weighted_sum += w_roe * score_roe.loc[idx]
+        comp_pct = np.round((valid_w / nominal_total) * 100.0, 1)
+        valid_mask = (comp_pct >= 60.0) & (valid_w > 0)
+        renorm_score = np.where(valid_mask, np.round(weighted_sum / np.maximum(valid_w, 1e-9), 2), np.nan)
+        statuses = np.where(comp_pct == 100.0, "FULL_SCORE", np.where(valid_mask, "PARTIAL_SCORE", "INSUFFICIENT_DATA"))
 
-            if pd.notna(score_de.loc[idx]):
-                valid_w += w_de
-                weighted_sum += w_de * score_de.loc[idx]
-
-            if pd.notna(score_excess.loc[idx]):
-                valid_w += w_excess
-                weighted_sum += w_excess * score_excess.loc[idx]
-
-            if pd.notna(score_opm.loc[idx]):
-                valid_w += w_opm
-                weighted_sum += w_opm * score_opm.loc[idx]
-
-            comp_pct = round((valid_w / nominal_total) * 100.0, 1)
-            completeness_list.append(comp_pct)
-
-            if comp_pct >= 60.0 and valid_w > 0:
-                renorm_score = round(weighted_sum / valid_w, 2)
-                composites.append(renorm_score)
-                status_list.append("FULL_SCORE" if comp_pct == 100.0 else "PARTIAL_SCORE")
-            else:
-                composites.append(np.nan)
-                status_list.append("INSUFFICIENT_DATA")
-
-        comp_series = pd.Series(composites, index=df.index)
+        comp_series = pd.Series(renorm_score, index=df.index)
         if return_metadata:
             return (
                 comp_series,
-                pd.Series(completeness_list, index=df.index),
-                pd.Series(status_list, index=df.index)
+                pd.Series(comp_pct, index=df.index),
+                pd.Series(statuses, index=df.index)
             )
         return comp_series
 

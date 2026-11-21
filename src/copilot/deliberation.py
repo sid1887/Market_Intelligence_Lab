@@ -71,6 +71,29 @@ class MultiAgentDeliberationEngine:
             self.bridge = bridge or QuantMCPBridge()
             self.db = getattr(self.bridge, "db", None) or DatabaseManager()
 
+    def _get_active_alias_map(self) -> Dict[str, str]:
+        """Returns the base ALIAS_MAP merged with dynamic aliases from securities_master."""
+        if hasattr(self, "_cached_alias_map") and self._cached_alias_map:
+            return self._cached_alias_map
+
+        merged = dict(ALIAS_MAP)
+        try:
+            if hasattr(self, "db") and self.db is not None:
+                with self.db.get_connection() as conn:
+                    rows = conn.execute("SELECT symbol, company_name FROM securities_master WHERE is_active = 1 LIMIT 500").fetchall()
+                    for r in rows:
+                        sym = str(r["symbol"]).strip().upper()
+                        merged[sym] = sym
+                        cname = (r["company_name"] or "").strip().upper()
+                        # Add clean company name without Ltd / Limited suffixes
+                        clean_cname = re.sub(r"\b(LTD|LIMITED|PVT|CORP|CORPORATION|INC)\b", "", cname).strip()
+                        if clean_cname and 3 <= len(clean_cname) <= 25 and clean_cname not in merged:
+                            merged[clean_cname] = sym
+        except Exception:
+            pass
+        self._cached_alias_map = merged
+        return merged
+
     # ─────────────────────────────────────────────────────────────────────────────
     # 1. SYMBOL EXTRACTION & INTENT CLASSIFICATION
     # ─────────────────────────────────────────────────────────────────────────────
@@ -79,9 +102,10 @@ class MultiAgentDeliberationEngine:
         """Extracts up to 3 stock symbols mentioned in prompt, resolving aliases."""
         syms: List[str] = []
         p_upper = " " + (prompt or "").upper() + " "
+        active_aliases = self._get_active_alias_map()
 
         # 1. Check known multi-word / single-word aliases first
-        for alias, canonical in sorted(ALIAS_MAP.items(), key=lambda x: -len(x[0])):
+        for alias, canonical in sorted(active_aliases.items(), key=lambda x: -len(x[0])):
             pattern = r"\b" + re.escape(alias) + r"\b"
             if re.search(pattern, p_upper):
                 if canonical not in syms:
@@ -102,15 +126,15 @@ class MultiAgentDeliberationEngine:
                 token = match.strip()
                 if token in stopwords:
                     continue
-                if token in ALIAS_MAP.values() and token not in syms:
-                    syms.append(token)
+                if (token in active_aliases.values() or token in active_aliases) and token not in syms:
+                    syms.append(active_aliases.get(token, token))
                 if len(syms) >= 3:
                     break
 
         # 3. Include default symbol if specified and not already present
         if default_symbol and default_symbol not in ("NIFTY 50", "UNIVERSE", ""):
             clean_def = default_symbol.strip().upper()
-            clean_def = ALIAS_MAP.get(clean_def, clean_def)
+            clean_def = active_aliases.get(clean_def, clean_def)
             if clean_def not in syms:
                 syms.insert(0, clean_def)
 
@@ -355,7 +379,8 @@ class MultiAgentDeliberationEngine:
         """
         symbols = self._extract_symbols(prompt, default_symbol=symbol)
         intent = self._classify_intent(prompt, symbols)
-        grounded = self._build_grounded_context(symbols)
+        loop = asyncio.get_running_loop()
+        grounded = await loop.run_in_executor(None, self._build_grounded_context, symbols)
 
         # Check if live LLM is configured (Groq / Gemini)
         if is_live_llm_configured():
@@ -407,7 +432,8 @@ class MultiAgentDeliberationEngine:
         })
         await asyncio.sleep(0.1)
 
-        grounded = self._build_grounded_context(symbols, context_override)
+        loop = asyncio.get_running_loop()
+        grounded = await loop.run_in_executor(None, self._build_grounded_context, symbols, context_override)
 
         # ─────────────────────────────────────────────────────────────────────────
         # ROUTE A: DEBATE_THESIS (The 3-Agent Committee)

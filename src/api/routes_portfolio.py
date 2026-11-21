@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel, Field
 
 from src.storage.database import DatabaseManager
-from src.api.utils import DATABASE_PATH, sanitize_for_json
+from src.api.utils import DATABASE_PATH, sanitize_for_json, get_database_manager
 from src.quant.execution_engine import PaperTradingEngine
 
 logger = logging.getLogger("MIL.PortfolioAPI")
@@ -54,7 +54,7 @@ class RebalanceExecuteRequest(BaseModel):
 def get_portfolio_summary(account_id: str = Query("paper_alpha_1", description="Account identifier")):
     """Returns top-level mark-to-market NAV, cash balance, invested value, and P&L metrics."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
         summary = engine.get_account_summary(account_id=account_id)
         # Provide canonical quant keys and frontend aliases
@@ -73,7 +73,7 @@ def get_portfolio_summary(account_id: str = Query("paper_alpha_1", description="
 def get_portfolio_positions(account_id: str = Query("paper_alpha_1", description="Account identifier")):
     """Returns open positions joined with latest MTM market prices, cost basis, and unrealized P&L."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
         positions = engine.get_positions(account_id=account_id)
         return sanitize_for_json(positions)
@@ -91,7 +91,7 @@ def get_portfolio_orders(
 ):
     """Returns chronological trade blotter with fill prices and statutory friction paid."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
         orders = engine.get_orders(account_id=account_id, limit=limit)
         return sanitize_for_json(orders)
@@ -104,7 +104,7 @@ def get_portfolio_orders(
 def execute_rebalance(req: ExecuteProposalRequest = Body(...)):
     """Executes a rebalance proposal against the virtual account applying SELL-before-BUY sequencing and friction."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
 
         proposal_id = req.proposal_id
@@ -145,7 +145,7 @@ def preview_manual_order(
 ):
     """Pre-trade intelligence card, whole-share math, solvency check, and FrontPage system verdict."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
         result = engine.preview_manual_order(
             account_id=account_id,
@@ -166,7 +166,7 @@ def preview_manual_order(
 def execute_manual_trade(req: ManualOrderRequest = Body(...)):
     """Executes discretionary trade on paper_manual_1, persisting thesis note and FrontPage analysis."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
         result = engine.execute_manual_order(
             account_id=req.account_id,
@@ -188,7 +188,7 @@ def execute_manual_trade(req: ManualOrderRequest = Body(...)):
 def reset_account_capital(req: ResetCapitalRequest = Body(...)):
     """Resets account capital seed to user-defined amount (e.g. ₹1,600), clearing past positions."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
         result = engine.set_or_reset_capital(
             account_id=req.account_id,
@@ -207,7 +207,7 @@ def reset_account_capital(req: ResetCapitalRequest = Body(...)):
 def adjust_account_cash(req: AdjustCashRequest = Body(...)):
     """Deposits or withdraws cash from account without wiping active positions."""
     try:
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         engine = PaperTradingEngine(db)
         result = engine.adjust_cash(
             account_id=req.account_id,
@@ -226,7 +226,7 @@ def execute_rebalance_flow(req: RebalanceExecuteRequest = Body(...)):
     """One-click generation and execution of capital-aware rebalance for paper_alpha_2 (or any account)."""
     try:
         from src.quant.rebalance_engine import RebalanceEngine
-        db = DatabaseManager(DATABASE_PATH)
+        db = get_database_manager(DATABASE_PATH)
         rebal_engine = RebalanceEngine(db)
         exec_engine = PaperTradingEngine(db)
 

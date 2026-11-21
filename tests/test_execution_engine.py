@@ -130,10 +130,10 @@ def test_sell_before_buy_sequencing_and_friction_accounting(test_db):
     assert sell_order["symbol"] == "STOCK_A"
     assert sell_order["quantity"] == 50
     assert sell_order["fill_price"] == 1000.0
-    expected_sell_friction = (50000.0 * 0.0015) + 15.00  # 75.0 + 15.0 = 90.00
-    assert sell_order["friction_paid"] == expected_sell_friction
-    expected_net_proceeds = 50000.0 - 90.00  # 49,910.00
-    assert sell_order["net_proceeds"] == expected_net_proceeds
+    expected_sell_friction = (50000.0 * 0.0015) + FLAT_SELL_DP_CHARGE
+    assert sell_order["friction_paid"] == pytest.approx(expected_sell_friction, rel=1e-4)
+    expected_net_proceeds = 50000.0 - expected_sell_friction
+    assert sell_order["net_proceeds"] == pytest.approx(expected_net_proceeds, rel=1e-4)
 
     # BUY Verification:
     # Funded by ₹500 initial cash + ₹49,910 net sell = ₹50,410 available cash

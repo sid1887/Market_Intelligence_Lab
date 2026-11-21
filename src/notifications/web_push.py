@@ -78,13 +78,18 @@ def is_alert_dispatched(alert_key: str) -> bool:
 def record_dispatched_alert(alert_key: str):
     """Records an alert key in push_dispatch_ledger to prevent duplicate push notifications."""
     init_push_tables()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
     try:
         with _get_db() as conn:
             conn.execute("""
                 INSERT OR IGNORE INTO push_dispatch_ledger (alert_key, dispatched_at)
                 VALUES (?, ?)
             """, (alert_key, now_iso))
+            # Auto-prune entries older than 7 days to keep ledger bounded
+            from datetime import timedelta
+            cutoff = (now - timedelta(days=7)).isoformat()
+            conn.execute("DELETE FROM push_dispatch_ledger WHERE dispatched_at < ?", (cutoff,))
             conn.commit()
     except Exception as e:
         logger.error(f"Error recording alert in push_dispatch_ledger: {e}")

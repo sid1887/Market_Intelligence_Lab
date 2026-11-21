@@ -157,6 +157,18 @@ async def embedded_intraday_catalyst_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup Environment Invariant Checks
+    startup_notices = []
+    if not (os.getenv("MIL_INTERNAL_SYNC_SECRET") or os.getenv("INTERNAL_SYNC_TOKEN")):
+        startup_notices.append("MIL_INTERNAL_SYNC_SECRET not set: /api/v1/internal/* sync will reject external workers.")
+    if not os.getenv("VAPID_PRIVATE_KEY") and not os.path.exists("data/vapid.json"):
+        startup_notices.append("VAPID_PRIVATE_KEY not configured: Push notifications will generate an ephemeral session key.")
+    if not (os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")):
+        startup_notices.append("No live LLM key (GROQ_API_KEY / GEMINI_API_KEY): Copilot will use local deterministic quant synthesis.")
+
+    for notice in startup_notices:
+        logger.info(f"[STARTUP-NOTICE] {notice}")
+
     # 1. Automatic database hydration (fresh cloud container deploy)
     try:
         hydrate_initial_cloud_database(DATABASE_PATH)
@@ -226,12 +238,17 @@ for o in extra_origins:
     if o not in allowed_origins:
         allowed_origins.append(o)
 
+cors_origin_regex = os.getenv(
+    "MIL_CORS_ORIGIN_REGEX",
+    r"^https://market-intelligence-lab[-\w]*\.vercel\.app$|^https://mil-quant-backend[-\w]*\.onrender\.com$"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https://.*\.(vercel\.app|ngrok-free\.app|onrender\.com)",
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
@@ -332,13 +349,13 @@ def get_screener(
                     if offset == 0 and limit == 1000:
                         if accepts_gzip and _screener_cached_1000_gzip is not None:
                             return Response(content=_screener_cached_1000_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
-                        if _screener_cached_1000_bytes is not None:
-                            return Response(content=_screener_cached_1000_bytes, media_type="application/json")
+                        if _screener_cached_1000_gzip is not None:
+                            return Response(content=gzip.decompress(_screener_cached_1000_gzip), media_type="application/json")
                     if offset == 0 and limit >= len(cached_items):
                         if accepts_gzip and _screener_cached_gzip is not None:
                             return Response(content=_screener_cached_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
-                        if _screener_cached_bytes is not None:
-                            return Response(content=_screener_cached_bytes, media_type="application/json")
+                        if _screener_cached_gzip is not None:
+                            return Response(content=gzip.decompress(_screener_cached_gzip), media_type="application/json")
 
                     sliced_items = cached_items[offset: offset + limit]
                     payload = {
@@ -485,9 +502,9 @@ def get_screener(
                     "total_candidates": len(results),
                     "items": results
                 }
-                _screener_cached_bytes = raw_bytes
+                _screener_cached_bytes = None
                 _screener_cached_gzip = raw_gzip
-                _screener_cached_1000_bytes = raw_1000_bytes
+                _screener_cached_1000_bytes = None
                 _screener_cached_1000_gzip = raw_1000_gzip
                 _screener_cache_date = latest_date
                 _screener_cache_time = now_time
@@ -495,11 +512,11 @@ def get_screener(
             if offset == 0 and limit == 1000:
                 if accepts_gzip:
                     return Response(content=raw_1000_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
-                return Response(content=raw_1000_bytes, media_type="application/json")
+                return Response(content=gzip.decompress(raw_1000_gzip), media_type="application/json")
             if offset == 0 and limit >= len(results):
                 if accepts_gzip:
                     return Response(content=raw_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
-                return Response(content=raw_bytes, media_type="application/json")
+                return Response(content=gzip.decompress(raw_gzip), media_type="application/json")
 
             sliced_results = results[offset: offset + limit]
             sliced_payload = {

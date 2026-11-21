@@ -74,6 +74,7 @@ class EconometricForecaster:
 
         mu = float(np.mean(returns))
         eps = returns - mu
+        eps_sq = eps ** 2
         var_sample = float(np.var(returns, ddof=1))
         if var_sample <= 1e-12:
             var_sample = 1e-6
@@ -90,14 +91,15 @@ class EconometricForecaster:
 
             sigma2 = np.empty(n)
             sigma2[0] = var_sample
+            curr = var_sample
             for t in range(1, n):
-                s2 = omega + alpha * (eps[t - 1] ** 2) + beta * sigma2[t - 1]
-                if s2 <= 1e-12:
+                curr = omega + alpha * eps_sq[t - 1] + beta * curr
+                if curr <= 1e-12:
                     return 1e10
-                sigma2[t] = s2
+                sigma2[t] = curr
 
             # Negative log likelihood (Gaussian)
-            return 0.5 * np.sum(np.log(sigma2) + (eps ** 2) / sigma2)
+            return 0.5 * float(np.sum(np.log(sigma2) + eps_sq / sigma2))
 
         try:
             init_guess = [0.94, 0.08]

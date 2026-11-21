@@ -569,9 +569,19 @@ def sync_internal_state_endpoint(
                         now_iso,
                     ))
                 conn.executemany("""
-                    INSERT OR REPLACE INTO ohlcv_daily (
+                    INSERT INTO ohlcv_daily (
                         symbol, trading_date, series, open, high, low, close, prev_close, volume, source, retrieval_timestamp
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
+                        open = COALESCE(excluded.open, ohlcv_daily.open),
+                        high = COALESCE(excluded.high, ohlcv_daily.high),
+                        low = COALESCE(excluded.low, ohlcv_daily.low),
+                        close = excluded.close,
+                        prev_close = COALESCE(excluded.prev_close, ohlcv_daily.prev_close),
+                        volume = COALESCE(excluded.volume, ohlcv_daily.volume),
+                        source = CASE WHEN ohlcv_daily.provenance_class = 'EXCHANGE_OFFICIAL' THEN ohlcv_daily.source ELSE excluded.source END,
+                        retrieval_timestamp = excluded.retrieval_timestamp
+                    WHERE ohlcv_daily.data_status != 'final_settled' OR ohlcv_daily.source = 'INTERNAL_SYNC';
                 """, bar_tuples)
                 conn.commit()
                 counts["ohlcv_bars"] = len(bar_tuples)
