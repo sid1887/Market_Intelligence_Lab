@@ -211,71 +211,87 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
 
     try:
         t0 = datetime.now()
-        with gzip.open(snapshot_path, "rb") as f:
-            snap = json.loads(f.read().decode("utf-8"))
-
         with db.get_connection() as conn:
             conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA synchronous = OFF;")
             ensure_core_tables_exist(conn)
+            db.init_schema()
 
-            table_order = [
-                "securities_master",
-                "ohlcv_daily",
-                "quant_factors_daily",
-                "factors_daily",
-                "user_watchlists",
-                "market_catalysts",
-                "index_daily",
-                "fundamental_factors_daily",
-                "financial_statements_annual",
-                "financial_statements_quarterly",
-                "corporate_disclosures",
-                "model_registry",
-                "supervisor_state",
-                "ml_training_runs",
-                "llm_usage_telemetry",
-                "copilot_distillation_corpus",
-                "external_api_telemetry",
-            ]
+            table_cols_cache: Dict[str, set] = {}
 
-            for tbl in table_order:
-                rows = snap.pop(tbl, [])
-                if rows:
-                    cols = list(rows[0].keys())
-                    # Ensure table and all columns exist in destination DB
-                    cur = conn.execute(f"PRAGMA table_info({tbl})")
+            def insert_batch(table: str, batch_rows: list):
+                if not batch_rows:
+                    return
+                if table not in table_cols_cache:
+                    cur = conn.execute(f"PRAGMA table_info({table})")
                     dest_cols = {r["name"] for r in cur.fetchall()}
-                    if not dest_cols:
-                        db.init_schema()
-                        cur = conn.execute(f"PRAGMA table_info({tbl})")
-                        dest_cols = {r["name"] for r in cur.fetchall()}
-
-                    for c in cols:
+                    for c in batch_rows[0].keys():
                         if c not in dest_cols:
                             try:
-                                conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {c};")
+                                conn.execute(f"ALTER TABLE {table} ADD COLUMN {c};")
                                 dest_cols.add(c)
-                            except Exception as alter_err:
-                                logger.debug(f"Could not alter {tbl} add column {c}: {alter_err}")
+                            except Exception:
+                                pass
+                    table_cols_cache[table] = dest_cols
 
-                    valid_cols = [c for c in cols if c in dest_cols]
-                    if not valid_cols:
-                        continue
+                dest_cols = table_cols_cache[table]
+                valid_cols = [c for c in batch_rows[0].keys() if c in dest_cols]
+                if not valid_cols:
+                    return
+                col_names_str = ",".join(valid_cols)
+                placeholders = ",".join("?" for _ in valid_cols)
+                sql = f"INSERT OR REPLACE INTO {table} ({col_names_str}) VALUES ({placeholders})"
+                conn.executemany(sql, [[r.get(c) for c in valid_cols] for r in batch_rows])
+                conn.commit()
 
-                    placeholders = ",".join("?" for _ in valid_cols)
-                    sql = f"INSERT OR REPLACE INTO {tbl} ({','.join(valid_cols)}) VALUES ({placeholders})"
-                    chunk_size = 10000
-                    if len(rows) > chunk_size:
-                        for i in range(0, len(rows), chunk_size):
-                            chunk = rows[i : i + chunk_size]
-                            conn.executemany(sql, [[r.get(c) for c in valid_cols] for r in chunk])
-                            conn.commit()
-                    else:
-                        conn.executemany(sql, [[r.get(c) for c in valid_cols] for r in rows])
-                        conn.commit()
-                    logger.info(f"Hydrated {len(rows)} records into {tbl}")
-                    del rows
-                    gc.collect()
+            # Check if file has line-formatted table arrays
+            is_streamable = False
+            with gzip.open(snapshot_path, "rt", encoding="utf-8") as f:
+                for _ in range(5):
+                    l = f.readline()
+                    if not l:
+                        break
+                    if l.strip().startswith('"') and l.strip().endswith('": ['):
+                        is_streamable = True
+                        break
+
+            if is_streamable:
+                current_table = None
+                batch = []
+                chunk_size = 2000
+                with gzip.open(snapshot_path, "rt", encoding="utf-8") as f:
+                    for line in f:
+                        line_s = line.strip()
+                        if not line_s or line_s in ("{", "}"):
+                            continue
+                        if line_s.startswith('"') and line_s.endswith('": ['):
+                            current_table = line_s.split('"')[1]
+                            batch = []
+                            continue
+                        if line_s in ("]", "],"):
+                            if batch and current_table:
+                                insert_batch(current_table, batch)
+                                batch = []
+                            current_table = None
+                            continue
+                        if current_table and line_s.startswith("{"):
+                            if line_s.endswith(","):
+                                line_s = line_s[:-1]
+                            row_dict = json.loads(line_s)
+                            batch.append(row_dict)
+                            if len(batch) >= chunk_size:
+                                insert_batch(current_table, batch)
+                                batch = []
+            else:
+                with gzip.open(snapshot_path, "rb") as f:
+                    snap = json.loads(f.read().decode("utf-8"))
+                for tbl, rows in snap.items():
+                    if rows and isinstance(rows, list):
+                        insert_batch(tbl, rows)
+                del snap
+                gc.collect()
+
+            conn.execute("PRAGMA synchronous = NORMAL;")
 
             # Repair any missing ret_20d in quant_factors_daily
             repair_null_ret_20d(conn)
@@ -296,27 +312,34 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
 
             conn.commit()
 
-        # Dynamically generate runtime telemetry artifacts on the server filesystem
-        # so cloud containers (Render) have them ready without needing local git files.
-        tourney_summary = snap.pop("tournament_summary", None)
-        if tourney_summary:
-            tourney_path = os.path.join(ROOT_DIR, "data", "models", "tournament_summary.json")
-            if not os.path.exists(tourney_path):
-                os.makedirs(os.path.dirname(tourney_path), exist_ok=True)
-                with open(tourney_path, "w", encoding="utf-8") as f:
-                    json.dump(tourney_summary, f, indent=2)
-                logger.info("Generated data/models/tournament_summary.json on server from snapshot.")
+        if not is_streamable and "snap" in locals():
+            tourney_summary = snap.pop("tournament_summary", None)
+            if tourney_summary:
+                tourney_path = os.path.join(ROOT_DIR, "data", "models", "tournament_summary.json")
+                if not os.path.exists(tourney_path):
+                    os.makedirs(os.path.dirname(tourney_path), exist_ok=True)
+                    with open(tourney_path, "w", encoding="utf-8") as f:
+                        json.dump(tourney_summary, f, indent=2)
+                    logger.info("Generated data/models/tournament_summary.json on server from snapshot.")
 
-        macro_telemetry = snap.pop("macro_telemetry", None)
-        if macro_telemetry:
-            macro_path = os.path.join(ROOT_DIR, "data", "macro_telemetry.json")
-            if not os.path.exists(macro_path):
-                os.makedirs(os.path.dirname(macro_path), exist_ok=True)
-                with open(macro_path, "w", encoding="utf-8") as f:
-                    json.dump(macro_telemetry, f, indent=2)
-                logger.info("Generated data/macro_telemetry.json on server from snapshot.")
+            macro_telemetry = snap.pop("macro_telemetry", None)
+            if macro_telemetry:
+                macro_path = os.path.join(ROOT_DIR, "data", "macro_telemetry.json")
+                if not os.path.exists(macro_path):
+                    os.makedirs(os.path.dirname(macro_path), exist_ok=True)
+                    with open(macro_path, "w", encoding="utf-8") as f:
+                        json.dump(macro_telemetry, f, indent=2)
+                    logger.info("Generated data/macro_telemetry.json on server from snapshot.")
 
-        del snap
+            del snap
+
+        try:
+            import ctypes
+            libc = ctypes.CDLL("libc.so.6")
+            if hasattr(libc, "malloc_trim"):
+                libc.malloc_trim(0)
+        except Exception:
+            pass
         gc.collect()
 
         elapsed = (datetime.now() - t0).total_seconds()

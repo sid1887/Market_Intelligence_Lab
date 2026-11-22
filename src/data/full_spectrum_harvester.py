@@ -729,8 +729,8 @@ class FullSpectrumHarvester:
     # 7. EXPORT REFRESHED CLOUD SEED SNAPSHOT
     # ─────────────────────────────────────────────────────────────────────────
 
-    def export_snapshot(self, output_path: str = "data/cloud_seed_snapshot.json.gz", max_ohlcv_days: int = 400) -> str:
-        """Exports 400-session hot database state into data/cloud_seed_snapshot.json.gz."""
+    def export_snapshot(self, output_path: str = "data/cloud_seed_snapshot.json.gz", max_ohlcv_days: int = 45) -> str:
+        """Exports calibrated hot database state into data/cloud_seed_snapshot.json.gz."""
         logger.info(f"[CLOUD SNAPSHOT] Exporting {max_ohlcv_days}-session hot snapshot to {output_path}...")
         snap_path = export_cloud_snapshot(self.db, output_path=output_path, max_ohlcv_days=max_ohlcv_days)
         return snap_path

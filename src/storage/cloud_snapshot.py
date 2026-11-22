@@ -53,7 +53,8 @@ def export_cloud_snapshot(
     target_tables = tables or EXPORTABLE_TABLES
 
     t0 = time.time()
-    min_date: Optional[str] = None
+    min_ohlcv_date: Optional[str] = None
+    min_factor_date: Optional[str] = None
 
     with db.get_connection() as conn:
         if max_ohlcv_days > 0:
@@ -63,8 +64,16 @@ def export_cloud_snapshot(
             )
             cutoff_dates = [r[0] for r in date_cur.fetchall()]
             if cutoff_dates:
-                min_date = cutoff_dates[-1]
-                logger.info(f"[CLOUD SNAPSHOT] Using {max_ohlcv_days}-session cutoff date: {min_date}")
+                min_ohlcv_date = cutoff_dates[-1]
+                logger.info(f"[CLOUD SNAPSHOT] Using {max_ohlcv_days}-session cutoff date: {min_ohlcv_date}")
+
+            factor_cur = conn.execute(
+                "SELECT DISTINCT trading_date FROM quant_factors_daily ORDER BY trading_date DESC LIMIT 10"
+            )
+            f_dates = [r[0] for r in factor_cur.fetchall()]
+            if f_dates:
+                min_factor_date = f_dates[-1]
+                logger.info(f"[CLOUD SNAPSHOT] Using 10-session factor cutoff date: {min_factor_date}")
 
         tmp_target = target + f".tmp_{os.getpid()}"
         with gzip.open(tmp_target, "wt", encoding="utf-8") as gz:
@@ -79,21 +88,22 @@ def export_cloud_snapshot(
                     if not cur.fetchone():
                         continue
 
-                    # Select optimal query per table
-                    if tbl in ("ohlcv_daily", "quant_factors_daily", "factors_daily", "index_daily", "fundamental_factors_daily") and min_date:
+                    # Select optimal query per table for compact cloud deployment (< 10 MB compressed)
+                    if tbl in ("ohlcv_daily", "index_daily") and min_ohlcv_date:
                         query = f"SELECT * FROM {tbl} WHERE trading_date >= ? ORDER BY trading_date ASC"
-                        params = (min_date,)
+                        params = (min_ohlcv_date,)
+                    elif tbl in ("quant_factors_daily", "factors_daily") and min_factor_date:
+                        query = f"SELECT * FROM {tbl} WHERE trading_date >= ? ORDER BY trading_date ASC"
+                        params = (min_factor_date,)
                     elif tbl == "corporate_disclosures":
-                        if min_date:
-                            query = (
-                                "SELECT * FROM corporate_disclosures "
-                                "WHERE effective_session_date >= ? OR (effective_session_date IS NULL AND broadcast_timestamp >= ?) "
-                                "ORDER BY broadcast_timestamp DESC LIMIT 25000"
-                            )
-                            params = (min_date, min_date)
-                        else:
-                            query = "SELECT * FROM corporate_disclosures ORDER BY broadcast_timestamp DESC LIMIT 25000"
-                            params = ()
+                        query = "SELECT * FROM corporate_disclosures ORDER BY broadcast_timestamp DESC LIMIT 1000"
+                        params = ()
+                    elif tbl == "market_catalysts":
+                        query = "SELECT * FROM market_catalysts ORDER BY triggered_at DESC LIMIT 500"
+                        params = ()
+                    elif tbl == "ml_training_runs":
+                        query = "SELECT * FROM ml_training_runs ORDER BY trained_at DESC LIMIT 100"
+                        params = ()
                     elif tbl == "copilot_distillation_corpus":
                         query = "SELECT * FROM copilot_distillation_corpus ORDER BY id DESC LIMIT 2000"
                         params = ()
