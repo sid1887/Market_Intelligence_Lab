@@ -716,9 +716,12 @@ class FullSpectrumHarvester:
 
         meta = self.archive_engine.write_archive(df, file_path=self.archive_path)
         elapsed = time.time() - t0
+        total_rows = meta.get("total_rows", len(df))
+        symbols_count = meta.get("symbols_count", len(df["symbol"].unique()))
+        file_size_mb = meta.get("file_size_bytes", self.archive_path.stat().st_size if self.archive_path.exists() else 0) / (1024 * 1024)
         logger.info(
-            f"[MILZ COMPRESSION] Successfully packed {meta['total_rows']:,} rows across {meta['total_symbols']} symbols "
-            f"into {self.archive_path} ({meta['archive_size_bytes'] / (1024*1024):.2f} MB in {elapsed:.2f}s)."
+            f"[MILZ COMPRESSION] Successfully packed {total_rows:,} rows across {symbols_count} symbols "
+            f"into {self.archive_path} ({file_size_mb:.2f} MB in {elapsed:.2f}s)."
         )
         return meta
 
@@ -801,7 +804,16 @@ def main():
 
     harvester = FullSpectrumHarvester()
 
-    if args.batch_all or not any([args.unseeded-args.unseeded_only if hasattr(args, 'unseeded') else False, args.sectors_only, args.fundamentals_only, args.indices_only, args.pack_milz, args.export_snapshot, args.unseeded_only]):
+    specific_flags = [
+        args.unseeded_only,
+        args.sectors_only,
+        args.fundamentals_only,
+        args.indices_only,
+        args.pack_milz,
+        args.export_snapshot,
+    ]
+
+    if args.batch_all or not any(specific_flags):
         harvester.run_full_harvest(max_ticker_batch=args.max_tickers)
     else:
         if args.unseeded_only:

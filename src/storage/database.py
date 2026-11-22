@@ -218,6 +218,12 @@ class DatabaseManager:
                     WHERE volatility_annualized IS NULL AND vol_20d_annualized IS NOT NULL;
                 """)
 
+            # 8b. Safe additive column alterations on fundamental_factors_daily
+            cursor = conn.execute("PRAGMA table_info(fundamental_factors_daily);")
+            ffd_cols = {row["name"] for row in cursor.fetchall()}
+            if ffd_cols and "is_sector_imputed" not in ffd_cols:
+                conn.execute("ALTER TABLE fundamental_factors_daily ADD COLUMN is_sector_imputed INTEGER DEFAULT 0;")
+
             # 9. Ensure user_watchlists table exists (Milestone B4.3)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS user_watchlists (

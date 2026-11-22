@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS fundamental_factors_daily (
     metric_applicability_flag TEXT NOT NULL DEFAULT 'STANDARD', -- 'STANDARD', 'FINANCIAL_SECTOR_ADJUSTED'
     latest_statement_id TEXT DEFAULT NULL,   -- Link to the most recent statement used
     calculated_at TEXT NOT NULL,
+    is_sector_imputed INTEGER DEFAULT 0,
     
     PRIMARY KEY (symbol, trading_date),
     FOREIGN KEY (symbol) REFERENCES securities_master(symbol)

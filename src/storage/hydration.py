@@ -242,16 +242,36 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                 rows = snap.pop(tbl, [])
                 if rows:
                     cols = list(rows[0].keys())
-                    placeholders = ",".join("?" for _ in cols)
-                    sql = f"INSERT OR REPLACE INTO {tbl} ({','.join(cols)}) VALUES ({placeholders})"
+                    # Ensure table and all columns exist in destination DB
+                    cur = conn.execute(f"PRAGMA table_info({tbl})")
+                    dest_cols = {r["name"] for r in cur.fetchall()}
+                    if not dest_cols:
+                        db.init_schema()
+                        cur = conn.execute(f"PRAGMA table_info({tbl})")
+                        dest_cols = {r["name"] for r in cur.fetchall()}
+
+                    for c in cols:
+                        if c not in dest_cols:
+                            try:
+                                conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {c};")
+                                dest_cols.add(c)
+                            except Exception as alter_err:
+                                logger.debug(f"Could not alter {tbl} add column {c}: {alter_err}")
+
+                    valid_cols = [c for c in cols if c in dest_cols]
+                    if not valid_cols:
+                        continue
+
+                    placeholders = ",".join("?" for _ in valid_cols)
+                    sql = f"INSERT OR REPLACE INTO {tbl} ({','.join(valid_cols)}) VALUES ({placeholders})"
                     chunk_size = 10000
                     if len(rows) > chunk_size:
                         for i in range(0, len(rows), chunk_size):
                             chunk = rows[i : i + chunk_size]
-                            conn.executemany(sql, [[r.get(c) for c in cols] for r in chunk])
+                            conn.executemany(sql, [[r.get(c) for c in valid_cols] for r in chunk])
                             conn.commit()
                     else:
-                        conn.executemany(sql, [[r.get(c) for c in cols] for r in rows])
+                        conn.executemany(sql, [[r.get(c) for c in valid_cols] for r in rows])
                         conn.commit()
                     logger.info(f"Hydrated {len(rows)} records into {tbl}")
                     del rows
