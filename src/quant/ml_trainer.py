@@ -149,7 +149,9 @@ class WalkForwardMLTrainer:
                         chunk_df["trading_date"] = chunk_df["trading_date"].astype(str)
                         chunk_df["close"] = chunk_df["close"].astype(np.float32)
                         chunk_df["forward_close"] = chunk_df.groupby("symbol")["close"].shift(-horizon_days)
-                        chunk_df["forward_return"] = (chunk_df["forward_close"] / chunk_df["close"]) - 1.0
+                        raw_fwd = (chunk_df["forward_close"] / chunk_df["close"]) - 1.0
+                        bench_fwd = raw_fwd.groupby(chunk_df["trading_date"]).transform("median")
+                        chunk_df["forward_return"] = (raw_fwd - bench_fwd) - 0.0015  # ADR-0008: Excess return net of 15 bps friction
 
                         # Fast returns
                         chunk_df["ret_1d"] = chunk_df.groupby("symbol")["close"].pct_change(1).fillna(0.0)
@@ -256,9 +258,11 @@ class WalkForwardMLTrainer:
         if df.empty or len(df) < 100:
             return pd.DataFrame()
 
-        # Compute forward return target per symbol
+        # Compute forward return target per symbol (ADR-0008: Excess return net of 15 bps friction)
         df["forward_close"] = df.groupby("symbol")["close"].shift(-horizon_days)
-        df["forward_return"] = (df["forward_close"] / df["close"]) - 1.0
+        raw_fwd = (df["forward_close"] / df["close"]) - 1.0
+        bench_fwd = raw_fwd.groupby(df["trading_date"]).transform("median")
+        df["forward_return"] = (raw_fwd - bench_fwd) - 0.0015
 
         # Construct 8 standardized features
         safe_vol = np.maximum(df["volatility_20d"], 0.05)

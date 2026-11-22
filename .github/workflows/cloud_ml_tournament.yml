@@ -48,5 +48,5 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/archive/bhavcopy_10y.milz data/cloud_seed_snapshot.json.gz data/models/tournament_summary.json || true
+          git add data/archive/bhavcopy_10y.milz data/cloud_seed_snapshot.json.gz data/models/tournament_summary.json data/models/precomputed_forecasts.json data/models/*.joblib data/models/*.pkl models/registry/*.pkl models/registry/*.joblib 2>/dev/null || true
           git diff --staged --quiet || (git commit -m "chore(data): autonomous EOD market & ML snapshot sync [skip ci]" && git push)

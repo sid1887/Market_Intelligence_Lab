@@ -10,11 +10,18 @@ export function getApiBase(): string {
 
 export const API_BASE = getApiBase();
 
+export function getPortfolioProxyBase(): string {
+  // If running in browser, proxy mutating calls through Next.js route handler to keep MIL_API_KEY server-side
+  if (typeof window !== "undefined") {
+    return "/api/portfolio";
+  }
+  return `${API_BASE}/portfolio`;
+}
+
 export const DEFAULT_HEADERS: Record<string, string> = {
   "Accept": "application/json",
   "Content-Type": "application/json",
   "ngrok-skip-browser-warning": "true",
-  ...(process.env.NEXT_PUBLIC_MIL_API_KEY ? { "X-API-Key": process.env.NEXT_PUBLIC_MIL_API_KEY } : {}),
 };
 
 export interface ApiErrorPayload {
@@ -954,7 +961,7 @@ export async function executePortfolioProposal(
   proposalId?: string,
   accountId = "paper_alpha_2"
 ): Promise<PortfolioExecuteResponse> {
-  const url = `${API_BASE}/portfolio/execute`;
+  const url = `${getPortfolioProxyBase()}/execute`;
   const res = await fetch(url, {
     method: "POST",
     headers: DEFAULT_HEADERS,
@@ -998,7 +1005,7 @@ export async function executeManualTrade(params: {
   quantity?: number;
   thesisNote?: string;
 }): Promise<ManualTradeResponse> {
-  const url = `${API_BASE}/portfolio/manual/execute`;
+  const url = `${getPortfolioProxyBase()}/manual/execute`;
   const res = await fetch(url, {
     method: "POST",
     headers: DEFAULT_HEADERS,
@@ -1025,7 +1032,7 @@ export async function resetAccountCapital(params: {
   initialCapital: number;
   feeTier?: "RETAIL_MICRO" | "INSTITUTIONAL";
 }): Promise<PortfolioSummary> {
-  const url = `${API_BASE}/portfolio/capital/reset`;
+  const url = `${getPortfolioProxyBase()}/capital/reset`;
   const res = await fetch(url, {
     method: "POST",
     headers: DEFAULT_HEADERS,
@@ -1048,7 +1055,7 @@ export async function adjustAccountCash(params: {
   accountId: string;
   deltaCash: number;
 }): Promise<PortfolioSummary> {
-  const url = `${API_BASE}/portfolio/capital/adjust`;
+  const url = `${getPortfolioProxyBase()}/capital/adjust`;
   const res = await fetch(url, {
     method: "POST",
     headers: DEFAULT_HEADERS,
@@ -1071,7 +1078,7 @@ export async function executeRebalanceFlow(params: {
   sessionDate?: string;
   proposalId?: string;
 }): Promise<PortfolioExecuteResponse> {
-  const url = `${API_BASE}/portfolio/rebalance/execute`;
+  const url = `${getPortfolioProxyBase()}/rebalance/execute`;
   const res = await fetch(url, {
     method: "POST",
     headers: DEFAULT_HEADERS,

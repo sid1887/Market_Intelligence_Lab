@@ -128,7 +128,7 @@ export default function UnifiedIntelligenceHub({
 
   // Fetch intelligence data
   const loadIntelligence = useCallback(
-    async (isBackground = false) => {
+    async (isBackground = false, forceRefresh = false) => {
       if (!isBackground) {
         setIsRefreshing(true);
       }
@@ -148,9 +148,12 @@ export default function UnifiedIntelligenceHub({
               `/stocks/${symbol}/tearsheet`
             ).catch(() => ({ recent_disclosures: [] }))
           );
-          // Query news
+          // Query news: pass ?force_refresh=true and bypass client cache only when explicitly requested
+          const newsUrl = forceRefresh
+            ? `/stocks/${symbol}/news?force_refresh=true`
+            : `/stocks/${symbol}/news`;
           promises.push(
-            apiFetch<{ articles?: NewsArticle[] }>(`/stocks/${symbol}/news`).catch(
+            apiFetch<{ articles?: NewsArticle[] }>(newsUrl, !forceRefresh).catch(
               () => ({ articles: [] })
             )
           );
@@ -241,7 +244,7 @@ export default function UnifiedIntelligenceHub({
     try {
       await apiFetch("/catalysts/scan", { method: "POST" });
       setCooldownRemaining(60);
-      await loadIntelligence(false);
+      await loadIntelligence(false, true);
     } catch (err) {
       console.error("Catalyst scan error:", err);
     } finally {
@@ -317,7 +320,7 @@ export default function UnifiedIntelligenceHub({
         {/* Action Controls */}
         <div className="flex items-center space-x-2 shrink-0">
           <button
-            onClick={() => loadIntelligence(false)}
+            onClick={() => loadIntelligence(false, true)}
             disabled={isRefreshing}
             className="p-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/30 text-slate-300 hover:text-cyan-300 transition-all shadow-sm disabled:opacity-50"
             title="Refresh Live Wire"

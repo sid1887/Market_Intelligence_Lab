@@ -342,12 +342,52 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
             pass
         gc.collect()
 
+        verify_model_deployments(db)
+
         elapsed = (datetime.now() - t0).total_seconds()
         logger.info(f"Instant cloud database hydration complete from snapshot in {elapsed:.3f}s.")
         return True
     except Exception as e:
         logger.error(f"Failed to hydrate database from snapshot: {e}", exc_info=True)
         return False
+
+
+def verify_model_deployments(db: DatabaseManager) -> int:
+    """
+    Verifies that all active models in model_horizon_deployments have valid
+    serialized artifact files on disk. If any artifact is missing (e.g. cold start),
+    logs a clear warning and safely de-registers or falls back cleanly.
+    """
+    fixed = 0
+    try:
+        with db.get_connection() as conn:
+            cur = conn.execute("""
+                SELECT 
+                    d.horizon_days, d.active_model_id, m.artifact_path
+                FROM model_horizon_deployments d
+                LEFT JOIN model_registry m ON d.active_model_id = m.model_id
+                WHERE d.active_model_id IS NOT NULL
+            """)
+            rows = cur.fetchall()
+            for r in rows:
+                h = r[0]
+                mid = r[1]
+                path = r[2]
+                if not path or not os.path.exists(path):
+                    logger.warning(
+                        f"[MODEL-HYDRATION] Active champion model '{mid}' for {h}D horizon "
+                        f"points to missing artifact '{path}' on disk. Falling back cleanly."
+                    )
+                    conn.execute(
+                        "UPDATE model_horizon_deployments SET active_model_id = NULL WHERE horizon_days = ?",
+                        (h,)
+                    )
+                    fixed += 1
+            if fixed > 0:
+                conn.commit()
+    except Exception as e:
+        logger.debug(f"Non-fatal notice during model deployment verification: {e}")
+    return fixed
 
 
 def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[str, Any]:
@@ -431,6 +471,9 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
                 stats["catalysts_seeded"] = len(catalysts)
             except Exception as e:
                 logger.warning(f"Initial catalyst scan partial: {e}")
+
+    # Verify active ML model deployments point to valid artifacts on disk
+    verify_model_deployments(db)
 
     # Ensure no null ret_20d values remain in quant_factors_daily
     repair_null_ret_20d(db)

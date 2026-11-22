@@ -26,6 +26,7 @@ jobs:
         with:
           python-version: "3.13"
           cache: "pip"
+          cache-dependency-path: "requirements-worker.txt"
 
       - name: Install Dependencies
         run: |
@@ -35,7 +36,7 @@ jobs:
 
       - name: Run Core Test Suites
         run: |
-          pytest tests/test_portfolio_backtester.py tests/test_milestone_b6_3_api.py tests/test_log_engine.py -v
+          PYTHONPATH=. python -m pytest tests/test_portfolio_backtester.py tests/test_milestone_b6_3_api.py tests/test_log_engine.py -v
 
   frontend-quality:
     name: Next.js 14 Production Build Verification

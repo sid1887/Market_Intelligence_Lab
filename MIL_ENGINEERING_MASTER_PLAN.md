@@ -178,3 +178,8 @@ To maintain sub-512 MB memory footprints on Render while allowing institutional 
 | **Cloud Snapshot Tables** | `src/storage/cloud_snapshot.py` | Exports 23 relational tables including portfolio state | Verified |
 | **GHA Concurrency** | `.github/workflows/*.yml` | Concurrency groups and NSE schedule added | Verified |
 | **CI Quality Gate** | `.github/workflows/ci.yml` | Full backend pytest + Next.js build verification | Verified |
+| **Server-Side Key Proxy** | `frontend/src/app/api/portfolio/...` | `MIL_API_KEY` kept server-only; proxies mutating calls | Verified |
+| **Net-of-Friction ML Labels** | `src/quant/ml_trainer.py` | Benchmark-relative excess return net of 15 bps friction | Verified |
+| **Model Artifact Verification** | `src/storage/hydration.py` | Startup verification of active deployment artifacts on disk | Verified |
+| **News Manual Live Wire** | `UnifiedIntelligenceHub.tsx` | Passes `force_refresh=true` strictly on manual click | Verified |
+| **CI Sys.path & Pip Cache** | `tests/conftest.py` / `ci.yml` | Repo root inserted in `sys.path`; pip caching configured | Verified |

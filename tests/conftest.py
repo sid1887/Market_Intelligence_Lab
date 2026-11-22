@@ -4,6 +4,14 @@ Provides isolated in-memory SQLite database and test client fixtures.
 """
 
 import os
+import sys
+from pathlib import Path
+
+# Ensure repository root is always in sys.path
+ROOT_DIR = str(Path(__file__).resolve().parent.parent)
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 import pytest
 import sqlite3
 import datetime
