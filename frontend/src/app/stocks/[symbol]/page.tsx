@@ -136,18 +136,12 @@ export default function StockTearsheetPage() {
   const rawSymbol = params.symbol as string;
   const symbol = rawSymbol ? rawSymbol.toUpperCase() : "";
 
-  const [data, setData] = useState<TearsheetData | null>(() => {
-    return symbol ? peekCachedData<TearsheetData>(`/stocks/${symbol}/tearsheet`) : null;
-  });
-  const [forecast, setForecast] = useState<ForecastData | null>(() => {
-    return symbol ? peekCachedData<ForecastData>(`/stocks/${symbol}/forecast?horizon_days=20`) : null;
-  });
-  const [memo, setMemo] = useState<InvestmentMemo | null>(() => {
-    return symbol ? peekCachedData<InvestmentMemo>(`/stocks/${symbol}/memo`) : null;
-  });
+  const [data, setData] = useState<TearsheetData | null>(null);
+  const [forecast, setForecast] = useState<ForecastData | null>(null);
+  const [memo, setMemo] = useState<InvestmentMemo | null>(null);
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
 
-  const [loading, setLoading] = useState(!data);
+  const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string>("tearsheet-overview");
@@ -368,6 +362,19 @@ export default function StockTearsheetPage() {
 
   useEffect(() => {
     if (!symbol) return;
+
+    try {
+      const cached = peekCachedData<TearsheetData>(`/stocks/${symbol}/tearsheet`);
+      if (cached) {
+        setData(cached);
+        setLoading(false);
+      }
+      const cachedF = peekCachedData<ForecastData>(`/stocks/${symbol}/forecast?horizon_days=20`);
+      if (cachedF) setForecast(cachedF);
+      const cachedM = peekCachedData<InvestmentMemo>(`/stocks/${symbol}/memo`);
+      if (cachedM) setMemo(cachedM);
+    } catch {}
+
     fetchTearsheet();
 
     const handleRefresh = () => {
@@ -385,6 +392,16 @@ export default function StockTearsheetPage() {
       requestLifecycle.cleanup("stock_detail_active");
     };
   }, [symbol, fetchTearsheet]);
+
+  useEffect(() => {
+    if (data) {
+      milEvents.emit("mil:context-update", {
+        symbol: data.symbol,
+        price: data.latest_ohlcv?.close ?? null,
+        verdict: data.ml_forecast?.signal ?? null,
+      });
+    }
+  }, [data]);
 
   // Loading Screen: Ingestion in Progress
   if (ingestion.isIngesting) {

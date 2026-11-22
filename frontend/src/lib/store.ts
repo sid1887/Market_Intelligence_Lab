@@ -12,6 +12,8 @@ export interface MilEventMap {
   "mil:ingest-progress": { progress_pct: number; stage?: string; message?: string };
   "mil:open-copilot": { symbol?: string; initialPrompt?: string } | undefined;
   "mil:open-command-palette": undefined;
+  "mil:context-update": { symbol?: string; price?: number | null; verdict?: string | null };
+  "mil:open-system-logs": undefined;
 }
 
 export type MilEventName = keyof MilEventMap;

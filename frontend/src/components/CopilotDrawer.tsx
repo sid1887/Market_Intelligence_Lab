@@ -501,6 +501,8 @@ export default function CopilotDrawer({
   const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
 
   const [internalSymbol, setInternalSymbol] = useState<string>(activeSymbol || "RELIANCE");
+  const [internalPrice, setInternalPrice] = useState<number | undefined>(activePrice);
+  const [internalVerdict, setInternalVerdict] = useState<string | undefined>(activeVerdict);
 
   useEffect(() => {
     if (activeSymbol) {
@@ -508,7 +510,30 @@ export default function CopilotDrawer({
     }
   }, [activeSymbol]);
 
+  useEffect(() => {
+    if (activePrice !== undefined) {
+      setInternalPrice(activePrice);
+    }
+  }, [activePrice]);
+
+  useEffect(() => {
+    if (activeVerdict !== undefined) {
+      setInternalVerdict(activeVerdict);
+    }
+  }, [activeVerdict]);
+
+  useEffect(() => {
+    const unsub = milEvents.on("mil:context-update", (payload) => {
+      if (payload?.symbol) setInternalSymbol(payload.symbol.trim().toUpperCase());
+      if (payload?.price !== undefined) setInternalPrice(payload.price ?? undefined);
+      if (payload?.verdict !== undefined) setInternalVerdict(payload.verdict ?? undefined);
+    });
+    return () => unsub();
+  }, []);
+
   const effectiveSymbol = internalSymbol || activeSymbol || "RELIANCE";
+  const effectivePrice = internalPrice !== undefined ? internalPrice : activePrice;
+  const effectiveVerdict = internalVerdict !== undefined ? internalVerdict : activeVerdict;
 
   const [prompt, setPrompt] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
@@ -931,6 +956,80 @@ export default function CopilotDrawer({
       if ((err as Error)?.name === "AbortError") {
         return;
       }
+      
+      // Automatic JSON fallback retry to /copilot/deliberate when network or proxy severs SSE
+      try {
+        setState(prev => ({
+          ...prev,
+          stage: "conversational",
+          statusText: "Stream interrupted by proxy. Resuming via synchronous fallback...",
+          progressPct: 60
+        }));
+
+        const fbRes = await fetch(`${API_BASE}/copilot/deliberate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "ngrok-skip-browser-warning": "true"
+          },
+          body: JSON.stringify({
+            symbol: targetSymbol,
+            prompt: userInstruction,
+            history: chatHistory.slice(-8)
+          }),
+          signal: controller.signal
+        });
+
+        if (fbRes.ok) {
+          const fbData = await fbRes.json();
+          const nowStr = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+          if (fbData.bull_thesis || fbData.bear_thesis || fbData.judge_memo) {
+            setIsDebateActive(true);
+            setState({
+              stage: "complete",
+              statusText: "Deliberation complete.",
+              progressPct: 100,
+              conversationalText: "",
+              bullText: fbData.bull_thesis || "",
+              bearText: fbData.bear_thesis || "",
+              judgeText: fbData.judge_memo || "",
+              decisionResult: fbData.result
+            });
+            if (fbData.result?.ml_forecast && !fbData.result.ml_forecast.error) {
+              setMlForecast(fbData.result.ml_forecast);
+            }
+          } else if (fbData.conversational_response) {
+            setIsDebateActive(false);
+            const reply = fbData.conversational_response.trim();
+            setChatHistory(prev => [
+              ...prev,
+              { role: "user", content: userInstruction, timestamp: nowStr },
+              {
+                role: "assistant",
+                content: reply,
+                timestamp: nowStr,
+                modelUsed: fbData.model_used,
+                tokenUsage: fbData.token_usage
+              }
+            ]);
+            setState({
+              stage: "complete",
+              statusText: "Analysis complete.",
+              progressPct: 100,
+              conversationalText: "",
+              bullText: "",
+              bearText: "",
+              judgeText: "",
+              decisionResult: fbData.result
+            });
+          }
+          return;
+        }
+      } catch (fbErr: unknown) {
+        if ((fbErr as Error)?.name === "AbortError") return;
+      }
+
       setState(prev => ({
         ...prev,
         stage: "error",
@@ -1088,16 +1187,12 @@ export default function CopilotDrawer({
               {/* Context-Aware Active Instrument Banner */}
               <div className="px-3 sm:px-5 py-2 bg-[#050810]/80 border-b border-white/[0.06] flex items-center justify-between font-mono text-xs shrink-0 overflow-hidden">
                 <div className="flex items-center space-x-2 min-w-0">
-                  <span className="text-slate-400 text-[11px] uppercase tracking-wider whitespace-nowrap shrink-0">Context:</span>
-                  {effectiveSymbol ? (
-                    <span className="text-white font-bold tracking-tight px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.1] shadow-sm truncate">
-                      {effectiveSymbol}
-                    </span>
-                  ) : (
-                    <span className="text-slate-400 italic text-[11px] whitespace-nowrap">Market Overview</span>
-                  )}
-                  {activePrice !== undefined ? (
-                    <span className="text-slate-200 font-semibold tabular-nums whitespace-nowrap">₹{activePrice.toFixed(2)}</span>
+                  <span className="text-slate-400 text-[11px] uppercase tracking-wider whitespace-nowrap shrink-0">CONTEXT:</span>
+                  <span className="text-white font-bold tracking-tight px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.1] shadow-sm truncate">
+                    {effectiveSymbol || "NIFTY 50"}
+                  </span>
+                  {effectivePrice !== undefined ? (
+                    <span className="text-cyan-300 font-semibold tabular-nums whitespace-nowrap">₹{effectivePrice.toFixed(2)}</span>
                   ) : effectiveSymbol ? (
                     <span className="text-slate-500 text-[11px] flex items-center space-x-1 whitespace-nowrap">
                       <Loader2 className="w-3 h-3 animate-spin text-cyan-400" />
@@ -1105,13 +1200,13 @@ export default function CopilotDrawer({
                     </span>
                   ) : null}
                 </div>
-                {activeVerdict ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)] max-w-[130px] sm:max-w-none truncate shrink-0">
-                    {activeVerdict.replace(/_/g, " ")}
+                {effectiveVerdict ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)] max-w-[150px] sm:max-w-none truncate shrink-0 uppercase tracking-wide">
+                    {effectiveVerdict.replace(/_/g, " ")}
                   </span>
                 ) : (
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-mono text-slate-400 border border-white/[0.08] whitespace-nowrap shrink-0">
-                    {effectiveSymbol ? "Pending Verdict" : "NIFTY 50"}
+                    READY
                   </span>
                 )}
               </div>

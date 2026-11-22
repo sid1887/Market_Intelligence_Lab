@@ -20,8 +20,12 @@ import sqlite3
 import datetime
 import logging
 import gzip
+import time
+import uuid
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+from src.core.log_engine import log_engine, request_id_ctx, get_current_rss_mb
 
 logging.basicConfig(
     level=logging.INFO,
@@ -158,6 +162,13 @@ async def embedded_intraday_catalyst_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize Unified Observability Subsystem & Silence Healthcheck Spam
+    try:
+        log_engine.initialize_db(DATABASE_PATH)
+        log_engine.setup_logging()
+    except Exception as log_init_err:
+        logger.warning(f"Could not initialize unified log engine: {log_init_err}")
+
     # Startup Environment Invariant Checks
     startup_notices = []
     if not (os.getenv("MIL_INTERNAL_SYNC_SECRET") or os.getenv("INTERNAL_SYNC_TOKEN")):
@@ -264,6 +275,34 @@ app.add_middleware(
     expose_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=10000)
+
+@app.middleware("http")
+async def observability_tracing_middleware(request: Request, call_next):
+    req_id = request.headers.get("x-request-id") or f"req-{uuid.uuid4().hex[:8]}"
+    token = request_id_ctx.set(req_id)
+    start_time = time.perf_counter()
+    rss_before = get_current_rss_mb()
+
+    response = await call_next(request)
+
+    duration_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
+    response.headers["X-Request-ID"] = req_id
+    response.headers["X-Response-Time-Ms"] = str(duration_ms)
+    response.headers["X-Process-RSS-MB"] = str(rss_before)
+
+    path = request.url.path
+    if not (path.endswith("/health") and response.status_code == 200):
+        if duration_ms > 1500 or response.status_code >= 400:
+            logger.warning(
+                f"{request.method} {path} status={response.status_code} latency={duration_ms}ms rss={rss_before}MB req_id={req_id}"
+            )
+        else:
+            logger.debug(
+                f"{request.method} {path} status={response.status_code} latency={duration_ms}ms rss={rss_before}MB req_id={req_id}"
+            )
+
+    request_id_ctx.reset(token)
+    return response
 
 # Mount modular market routes (status, tearsheet, history)
 app.include_router(market_router)
@@ -479,8 +518,8 @@ def get_screener(
                 "distance_52w_high": safe_float(row.get("distance_52w_high"), 4),
                 "distance_52w_low": safe_float(row.get("distance_52w_low"), 4),
                 "pct_from_52w_high": (
-                    round(safe_float(row.get("distance_52w_high"), 4) * 100.0, 2)
-                    if safe_float(row.get("distance_52w_high"), 4) is not None
+                    max(-100.0, min(0.0, round(float(row.get("distance_52w_high")), 2)))
+                    if row.get("distance_52w_high") is not None and not pd.isna(row.get("distance_52w_high"))
                     else None
                 )
             })
@@ -980,6 +1019,25 @@ async def stream_copilot_deliberation(request: CopilotStreamRequest):
     )
 
 
+@app.post("/copilot/deliberate")
+@app.post("/api/v1/copilot/deliberate")
+async def deliberate_copilot_json(request: CopilotStreamRequest):
+    """
+    Direct non-streaming JSON endpoint fallback for Copilot deliberation.
+    Guarantees reliable turn completion when network proxies or edge limits sever SSE streams.
+    """
+    sym = request.symbol.strip().upper()
+    user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
+    res = await copilot_engine.deliberate_json(
+        symbol=sym,
+        user_prompt=user_prompt,
+        context_override=request.context_override,
+        history=request.history
+    )
+    from src.api.utils import sanitize_for_json
+    return sanitize_for_json(res)
+
+
 @app.get("/copilot/usage")
 @app.get("/api/v1/copilot/usage")
 async def get_copilot_usage_telemetry():
@@ -1054,6 +1112,44 @@ async def trigger_copilot_distillation():
         "train_results": train_results,
         "distillation_stats": stats
     }))
+
+
+class ClientLogRequest(BaseModel):
+    level: str = "INFO"
+    message: str
+    meta: Optional[Dict[str, Any]] = None
+
+
+@app.get("/system/logs")
+@app.get("/api/v1/system/logs")
+async def get_system_logs(
+    limit: int = Query(150, ge=1, le=500),
+    level: str = Query("INFO"),
+    source: Optional[str] = Query(None),
+    search: Optional[str] = Query(None)
+):
+    """Retrieves live in-memory and persistent system telemetry logs with process RSS memory stats."""
+    logs = log_engine.get_logs(limit=limit, min_level=level, source=source, search=search)
+    return sanitize_for_json({
+        "rss_mb": get_current_rss_mb(),
+        "total_buffered": len(log_engine.buffer),
+        "count": len(logs),
+        "logs": logs
+    })
+
+
+@app.post("/system/client-logs")
+@app.post("/api/v1/system/client-logs")
+async def receive_client_log(req: ClientLogRequest, request: Request):
+    """Receives frontend warnings, errors, and unhandled rejections for unified log aggregation."""
+    client_ip = request.client.host if request.client else "unknown"
+    log_engine.log_client_event(
+        level=req.level,
+        message=req.message,
+        client_ip=client_ip,
+        meta=req.meta
+    )
+    return {"status": "recorded"}
 
 
 __all__ = [

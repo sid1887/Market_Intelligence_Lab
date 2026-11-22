@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { TrendingUp, TrendingDown, Minus, ShieldCheck, AlertTriangle, AlertCircle, WifiOff } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, ShieldCheck, AlertTriangle, AlertCircle, WifiOff, Terminal } from "lucide-react";
 import { MacroResponse, SupervisorStatus } from "@/lib/api";
+import { milEvents } from "@/lib/store";
 
 interface MacroRibbonProps {
   macroData: MacroResponse | null;
@@ -20,14 +21,17 @@ function MacroRibbonComponent({
   lastIngestTimestamp,
 }: MacroRibbonProps) {
   const [ingestElapsed, setIngestElapsed] = useState<string>("just now");
-  const [now, setNow] = useState<number>(Date.now());
+  const [mounted, setMounted] = useState<boolean>(false);
+  const [now, setNow] = useState<number>(0);
   const prevValuesRef = useRef<Map<string, number | null>>(new Map());
   const [flashingKeys, setFlashingKeys] = useState<Record<string, "tick-up" | "tick-down">>({});
 
-  const isStale = lastTickAt !== null && now - lastTickAt > 30_000;
+  const isStale = lastTickAt !== null && now > 0 && now - lastTickAt > 30_000;
 
   // Keep now updated every 5s for staleness detection (M7)
   useEffect(() => {
+    setMounted(true);
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
   }, []);
@@ -128,7 +132,7 @@ function MacroRibbonComponent({
       <div
         className="h-full flex items-center gap-1.5 px-3 text-slate-300 whitespace-nowrap shrink-0"
         title={
-          effectiveIngestTime
+          mounted && effectiveIngestTime
             ? `Last Dynamic Ingestion: ${new Date(effectiveIngestTime).toLocaleString()} (Continuous feed)`
             : "NSE Dynamic Ingestion Stream"
         }
@@ -227,15 +231,17 @@ function MacroRibbonComponent({
         );
       })}
 
-      {/* Supervisor Health State */}
-      <div
-        className="h-full flex items-center gap-1.5 px-3 text-[10px] font-mono whitespace-nowrap shrink-0 ml-auto"
-        title={`Autonomous Supervisor State: ${supervisorInfo.label} | ${supervisorInfo.modelText}`}
+      {/* Supervisor Health State & Observability Trigger */}
+      <button
+        onClick={() => milEvents.emit("mil:open-system-logs")}
+        className="h-full flex items-center gap-1.5 px-3 text-[10px] font-mono whitespace-nowrap shrink-0 ml-auto hover:bg-white/[0.04] transition-colors cursor-pointer group"
+        title={`Supervisor: ${supervisorInfo.label} | Click or press Alt+L for Live Diagnostics`}
       >
+        <Terminal className="w-3 h-3 text-slate-500 group-hover:text-cyan-400 transition-colors" />
         {supervisorInfo.icon}
         <span className={`font-bold ${supervisorInfo.badgeClass}`}>{supervisorInfo.label}</span>
         <span className="text-slate-500 hidden xl:inline">· {supervisorInfo.modelText}</span>
-      </div>
+      </button>
     </div>
   );
 }

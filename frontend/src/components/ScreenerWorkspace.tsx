@@ -38,7 +38,7 @@ export const SCREENER_COLUMNS: OptionalColumn[] = [
   { id: "roe", label: "ROE", field: "roe_pct", width: "w-20" },
   { id: "ret20", label: "20D Ret", field: "ret_20d", width: "w-24" },
   { id: "deliv", label: "Deliv %", field: "delivery_pct", width: "w-20" },
-  { id: "turnover", label: "Turn (Cr)", field: "turnover_cr", width: "w-24" },
+  { id: "turnover", label: "Turn (Cr)", field: "turnover_cr", width: "w-28" },
   { id: "opm", label: "OPM", field: "opm_pct", width: "w-20" },
   { id: "de", label: "D/E", field: "debt_to_equity", width: "w-20" },
   { id: "score60", label: "60D Score", field: "score_60d", width: "w-24" },
@@ -289,7 +289,7 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
       )}
 
       {columns.turnover && (
-        <div className="hidden lg:block w-24 text-right tabular-nums text-slate-300 shrink-0">
+        <div className="hidden lg:block w-28 pr-2 text-right tabular-nums text-slate-300 shrink-0">
           {cand.turnover_cr !== null && cand.turnover_cr !== undefined ? `₹${cand.turnover_cr.toFixed(1)} Cr` : "—"}
         </div>
       )}
@@ -424,16 +424,15 @@ function ScreenerWorkspaceComponent({
   const [minRoe, setMinRoe] = useState<number | null>(null);
   const [onlyAbove200Sma, setOnlyAbove200Sma] = useState<boolean>(false);
   const [onlyRebalanceTargets, setOnlyRebalanceTargets] = useState<boolean>(false);
-  const [columns, setColumns] = useState<Record<string, boolean>>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("mil:screener-columns");
-        if (stored) return JSON.parse(stored);
-      } catch {}
-    }
-    return DEFAULT_COLUMNS;
-  });
+  const [columns, setColumns] = useState<Record<string, boolean>>(DEFAULT_COLUMNS);
   const [showColumnPicker, setShowColumnPicker] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("mil:screener-columns");
+      if (stored) setColumns(JSON.parse(stored));
+    } catch {}
+  }, []);
 
   const router = useRouter();
   const [hoveredCandidate, setHoveredCandidate] = useState<ScreenerCandidate | null>(null);
@@ -1217,7 +1216,7 @@ function ScreenerWorkspaceComponent({
                       handleSort("turnover_cr");
                     }
                   }}
-                  className="hidden lg:flex w-24 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
+                  className="hidden lg:flex w-28 pr-2 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
                   onClick={() => handleSort("turnover_cr")}
                 >
                   <span>Turn (Cr)</span>
@@ -1283,7 +1282,7 @@ function ScreenerWorkspaceComponent({
                       handleSort("score_60d");
                     }
                   }}
-                  className="hidden lg:flex w-24 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
+                  className="hidden lg:flex w-28 pr-2 text-right shrink-0 cursor-pointer items-center justify-end gap-1 hover:text-slate-200"
                   onClick={() => handleSort("score_60d")}
                 >
                   <span>60D Score</span>

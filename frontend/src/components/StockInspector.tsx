@@ -101,6 +101,16 @@ function StockInspectorComponent({
     setIsBookmarked(Boolean(activeCandidate?.is_watchlist));
   }, [symbol, activeCandidate?.is_watchlist]);
 
+  useEffect(() => {
+    if (activeCandidate?.symbol) {
+      milEvents.emit("mil:context-update", {
+        symbol: activeCandidate.symbol,
+        price: activeCandidate.close ?? null,
+        verdict: memo?.verdict ?? (activeCandidate.composite_score !== null && activeCandidate.composite_score !== undefined && activeCandidate.composite_score >= 70 ? "STRONG_BUY" : "SWING_LONG"),
+      });
+    }
+  }, [activeCandidate?.symbol, activeCandidate?.close, activeCandidate?.composite_score, memo?.verdict]);
+
   const handleToggleWatchlist = async () => {
     if (!symbol) return;
     const nextState = !isBookmarked;
@@ -479,17 +489,21 @@ function StockInspectorComponent({
 
               <div className="bg-[#080c14] border border-white/[0.08] rounded-xl p-2.5">
                 <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block">52W Position</span>
-                <span className={`font-bold font-mono text-sm mt-0.5 block tabular-nums ${
-                  (activeCandidate?.pct_from_52w_high ?? (activeCandidate?.distance_52w_high ? activeCandidate.distance_52w_high * 100 : 0)) >= -5
-                    ? "text-emerald-400"
-                    : "text-amber-400"
-                }`}>
-                  {activeCandidate?.pct_from_52w_high !== null && activeCandidate?.pct_from_52w_high !== undefined
-                    ? `${activeCandidate.pct_from_52w_high >= 0 ? "+" : ""}${activeCandidate.pct_from_52w_high.toFixed(1)}%`
-                    : activeCandidate?.distance_52w_high !== null && activeCandidate?.distance_52w_high !== undefined
-                    ? `${(activeCandidate.distance_52w_high * 100).toFixed(1)}%`
-                    : "—"}
-                </span>
+                {(() => {
+                  const rawVal = activeCandidate?.pct_from_52w_high ?? (
+                    activeCandidate?.distance_52w_high !== null && activeCandidate?.distance_52w_high !== undefined
+                      ? (Math.abs(activeCandidate.distance_52w_high) <= 1.0 ? activeCandidate.distance_52w_high * 100 : activeCandidate.distance_52w_high)
+                      : null
+                  );
+                  const displayPct = rawVal !== null && rawVal !== undefined ? Math.max(-100, Math.min(0, rawVal)) : null;
+                  return (
+                    <span className={`font-bold font-mono text-sm mt-0.5 block tabular-nums ${
+                      (displayPct ?? 0) >= -5 ? "text-emerald-400" : "text-amber-400"
+                    }`}>
+                      {displayPct !== null ? `${displayPct >= 0 ? "+" : ""}${displayPct.toFixed(1)}%` : "—"}
+                    </span>
+                  );
+                })()}
                 <span className="text-[9px] text-slate-500 block truncate">From 52W High</span>
               </div>
             </div>
@@ -500,10 +514,10 @@ function StockInspectorComponent({
               <div className="rounded-2xl border border-white/[0.08] bg-[#080c14] p-4 sm:p-5 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col justify-between space-y-3 relative overflow-hidden">
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent pointer-events-none" />
                 <div>
-                  <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
-                    <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 border-b border-white/[0.06] pb-2.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,1)] shrink-0" />
-                      <span className="text-xs font-mono font-semibold text-white uppercase tracking-wider truncate">
+                      <span className="text-xs font-mono font-semibold text-white uppercase tracking-wider whitespace-nowrap">
                         Multi-Horizon Consensus
                       </span>
                     </div>

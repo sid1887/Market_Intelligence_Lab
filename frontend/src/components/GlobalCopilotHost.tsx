@@ -10,6 +10,8 @@ export default function GlobalCopilotHost() {
   const searchParams = useSearchParams();
 
   const [activeSymbol, setActiveSymbol] = useState<string>("RELIANCE");
+  const [activePrice, setActivePrice] = useState<number | undefined>(undefined);
+  const [activeVerdict, setActiveVerdict] = useState<string | undefined>(undefined);
 
   // Derive initial or changed symbol from URL routes (e.g. /stocks/BSE or ?symbol=BSE)
   useEffect(() => {
@@ -27,19 +29,37 @@ export default function GlobalCopilotHost() {
     }
   }, [pathname, searchParams]);
 
-  // Listen to mil:open-copilot events with explicit symbol payloads
+  // Listen to mil:open-copilot and mil:context-update events
   useEffect(() => {
-    const unsub = milEvents.on("mil:open-copilot", (payload) => {
+    const unsubOpen = milEvents.on("mil:open-copilot", (payload) => {
       if (payload?.symbol) {
         setActiveSymbol(payload.symbol.trim().toUpperCase());
       }
     });
-    return () => unsub();
+
+    const unsubContext = milEvents.on("mil:context-update", (payload) => {
+      if (payload?.symbol) {
+        setActiveSymbol(payload.symbol.trim().toUpperCase());
+      }
+      if (payload?.price !== undefined) {
+        setActivePrice(payload.price ?? undefined);
+      }
+      if (payload?.verdict !== undefined) {
+        setActiveVerdict(payload.verdict ?? undefined);
+      }
+    });
+
+    return () => {
+      unsubOpen();
+      unsubContext();
+    };
   }, []);
 
   return (
     <CopilotDrawer
       activeSymbol={activeSymbol}
+      activePrice={activePrice}
+      activeVerdict={activeVerdict}
       showFloatingTrigger={false}
     />
   );

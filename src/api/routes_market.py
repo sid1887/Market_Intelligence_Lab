@@ -781,7 +781,32 @@ def get_stock_tearsheet(
 
     dist_52w_h = safe_float(factors_row["distance_52w_high"], 4) if factors_row and "distance_52w_high" in factors_row.keys() else None
     dist_52w_l = safe_float(factors_row["distance_52w_low"], 4) if factors_row and "distance_52w_low" in factors_row.keys() else None
-    pct_from_52w_h = round(dist_52w_h * 100.0, 2) if dist_52w_h is not None else None
+    if dist_52w_h is not None:
+        pct_from_52w_h = max(-100.0, min(0.0, round(dist_52w_h, 2)))
+    elif latest_close is not None:
+        try:
+            cur.execute(
+                """
+                WITH recent_252 AS (
+                    SELECT high, low FROM ohlcv_daily
+                    WHERE symbol = ? AND series = 'EQ' AND COALESCE(is_synthetic, 0) = 0
+                    ORDER BY trading_date DESC LIMIT 252
+                )
+                SELECT MAX(high) as high_52w, MIN(low) as low_52w FROM recent_252
+                """,
+                (sym,)
+            )
+            h_row = cur.fetchone()
+            if h_row and h_row["high_52w"] and float(h_row["high_52w"]) > 0:
+                h52 = float(h_row["high_52w"])
+                pct_from_52w_h = max(-100.0, min(0.0, round(((latest_close - h52) / h52) * 100.0, 2)))
+                dist_52w_h = pct_from_52w_h
+            else:
+                pct_from_52w_h = None
+        except Exception:
+            pct_from_52w_h = None
+    else:
+        pct_from_52w_h = None
 
     payload = {
         "symbol": sym,

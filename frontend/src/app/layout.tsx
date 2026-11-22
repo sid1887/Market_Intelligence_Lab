@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import TopographicBackground from "@/components/TopographicBackground";
 import GlobalCopilotHost from "@/components/GlobalCopilotHost";
+import SystemLogsDrawer from "@/components/SystemLogsDrawer";
 import "./globals.css";
 
 const inter = Inter({
@@ -50,12 +51,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
-      <body className="bg-[#040609] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 min-h-screen relative">
+    <html lang="en" suppressHydrationWarning className={`dark ${inter.variable} ${jetbrainsMono.variable}`}>
+      <body suppressHydrationWarning className="bg-[#040609] text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-300 min-h-screen relative">
         <TopographicBackground />
         {children}
         <Suspense fallback={null}>
           <GlobalCopilotHost />
+          <SystemLogsDrawer />
         </Suspense>
       </body>
     </html>

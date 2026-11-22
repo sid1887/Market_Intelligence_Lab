@@ -39,27 +39,12 @@ import { useBackButtonClose } from "@/hooks/useBackButtonClose";
 import { cn } from "@/lib/utils";
 
 export default function CockpitPage() {
-  const [candidates, setCandidates] = useState<ScreenerCandidate[]>(() => {
-    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
-    return cached?.results || [];
-  });
-  const [asOfDate, setAsOfDate] = useState<string>(() => {
-    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
-    return cached?.as_of_date || "";
-  });
-  const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>(() => {
-    const cached = peekCachedData<WatchlistResponse>("/watchlist");
-    return cached?.watchlist?.map((w) => w.symbol) || [];
-  });
-  const [pageLoading, setPageLoading] = useState<boolean>(() => {
-    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
-    return !cached;
-  });
+  const [candidates, setCandidates] = useState<ScreenerCandidate[]>([]);
+  const [asOfDate, setAsOfDate] = useState<string>("");
+  const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
+  const [pageLoading, setPageLoading] = useState<boolean>(true);
   const [viewMode, setViewMode] = useState<"table" | "heatmap" | "cards">("table");
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(() => {
-    const cached = peekCachedData<ScreenerResponse>("/screener?limit=1500");
-    return cached?.results && cached.results.length > 0 ? cached.results[0].symbol : null;
-  });
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
   const [isMobileInspectorOpen, setIsMobileInspectorOpen] = useState<boolean>(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -73,16 +58,7 @@ export default function CockpitPage() {
   useBackButtonClose(isPushModalOpen, () => setIsPushModalOpen(false), "pushModal");
 
   // Resizable Split-Pane Ratio (M3)
-  const [splitPct, setSplitPct] = useState<number>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("mil:split-pct");
-      if (saved) {
-        const val = parseFloat(saved);
-        if (!isNaN(val) && val >= 30 && val <= 75) return val;
-      }
-    }
-    return 54;
-  });
+  const [splitPct, setSplitPct] = useState<number>(54);
 
   const isDraggingRef = React.useRef(false);
 
@@ -164,6 +140,26 @@ export default function CockpitPage() {
 
   // 3. Initial Load, Session-Gated Push Subscription & URL Query Parameter Initialization
   useEffect(() => {
+    // Client-side cache hydration on mount (zero SSR mismatch)
+    try {
+      const cachedScr = peekCachedData<ScreenerResponse>("/screener?limit=1500");
+      if (cachedScr?.results && cachedScr.results.length > 0) {
+        setCandidates(cachedScr.results);
+        if (cachedScr.as_of_date) setAsOfDate(cachedScr.as_of_date);
+        setSelectedSymbol((prev) => prev || cachedScr.results[0].symbol);
+        setPageLoading(false);
+      }
+      const cachedWl = peekCachedData<WatchlistResponse>("/watchlist");
+      if (cachedWl?.watchlist && cachedWl.watchlist.length > 0) {
+        setWatchlistSymbols(cachedWl.watchlist.map((w) => w.symbol));
+      }
+      const savedSplit = localStorage.getItem("mil:split-pct");
+      if (savedSplit) {
+        const val = parseFloat(savedSplit);
+        if (!isNaN(val) && val >= 30 && val <= 75) setSplitPct(val);
+      }
+    } catch {}
+
     void loadPageData();
     if (typeof window !== "undefined") {
       const alreadySynced = sessionStorage.getItem("mil:push-synced");

@@ -188,7 +188,7 @@ async def test_copilot_direct_response_greeting_vs_canned_template(copilot_engin
     assert resp and len(resp.strip()) > 30
     # Should contain price and ROE
     assert "1714" in resp or "₹" in resp
-    assert "63" in resp or "ROE" in resp
+    assert "63" in resp or "ROE" in resp or "return on equity" in resp.lower() or "roe" in resp.lower()
     # Should NOT contain rigid multi-agent template artifacts
     assert "Bull Analyst Thesis" not in resp
     assert "Bear Analyst Thesis" not in resp

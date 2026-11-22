@@ -465,7 +465,13 @@ class MultiAgentDeliberationEngine:
         live_llm = is_live_llm_configured()
         if live_llm:
             try:
-                reply_content = await self._call_llm_intent(intent, user_prompt, grounded, history)
+                async for kind, payload in self._run_coro_with_keepalives(
+                    self._call_llm_intent(intent, user_prompt, grounded, history)
+                ):
+                    if kind == "keepalive":
+                        yield payload
+                    elif kind == "result":
+                        reply_content = payload
             except Exception as e:
                 logger.warning(f"[COPILOT] Live LLM streaming failed ({e}), falling back to deterministic synthesis.")
 
@@ -544,15 +550,21 @@ class MultiAgentDeliberationEngine:
         bull_content = ""
         if is_live_llm_configured():
             try:
-                bull_content = await self._stream_llm_role(
-                    role="Bullish Research & Momentum Analyst",
-                    instruction=(
-                        f"Present the strongest data-backed bullish thesis for {symbol} ({company_name}) at ₹{price:.2f}. "
-                        f"Cite ROE ({fundamentals.get('roe_pct', 0):.1f}%), OPM ({fundamentals.get('opm_pct', 0):.1f}%), "
-                        f"20D momentum ({technicals.get('ret_20d_pct', 0):.2f}%), and GARCH 20D target ₹{forecast.get('expected_20d_price', price):.2f}."
-                    ),
-                    context=context
-                )
+                async for kind, payload in self._run_coro_with_keepalives(
+                    self._stream_llm_role(
+                        role="Bullish Research & Momentum Analyst",
+                        instruction=(
+                            f"Present the strongest data-backed bullish thesis for {symbol} ({company_name}) at ₹{price:.2f}. "
+                            f"Cite ROE ({fundamentals.get('roe_pct', 0):.1f}%), OPM ({fundamentals.get('opm_pct', 0):.1f}%), "
+                            f"20D momentum ({technicals.get('ret_20d_pct', 0):.2f}%), and GARCH 20D target ₹{forecast.get('expected_20d_price', price):.2f}."
+                        ),
+                        context=context
+                    )
+                ):
+                    if kind == "keepalive":
+                        yield payload
+                    elif kind == "result":
+                        bull_content = payload
             except Exception as e:
                 logger.warning(f"Bull Analyst LLM failed: {e}")
                 bull_content = self._generate_deterministic_bull(context)
@@ -573,16 +585,22 @@ class MultiAgentDeliberationEngine:
         bear_content = ""
         if is_live_llm_configured():
             try:
-                bear_content = await self._stream_llm_role(
-                    role="Bearish Risk Management Analyst",
-                    instruction=(
-                        f"Stress-test downside tail risks and valuation multiple for {symbol}. "
-                        f"Scrutinize P/E ({fundamentals.get('ttm_pe', 0):.1f}x), D/E ({fundamentals.get('debt_to_equity', 0):.2f}), "
-                        f"and 80% invalidation floor ₹{forecast.get('invalidation_floor', price * 0.94):.2f}."
-                    ),
-                    context=context,
-                    counter_argument=bull_content
-                )
+                async for kind, payload in self._run_coro_with_keepalives(
+                    self._stream_llm_role(
+                        role="Bearish Risk Management Analyst",
+                        instruction=(
+                            f"Stress-test downside tail risks and valuation multiple for {symbol}. "
+                            f"Scrutinize P/E ({fundamentals.get('ttm_pe', 0):.1f}x), D/E ({fundamentals.get('debt_to_equity', 0):.2f}), "
+                            f"and 80% invalidation floor ₹{forecast.get('invalidation_floor', price * 0.94):.2f}."
+                        ),
+                        context=context,
+                        counter_argument=bull_content
+                    )
+                ):
+                    if kind == "keepalive":
+                        yield payload
+                    elif kind == "result":
+                        bear_content = payload
             except Exception as e:
                 logger.warning(f"Bear Analyst LLM failed: {e}")
                 bear_content = self._generate_deterministic_bear(context)
@@ -604,7 +622,13 @@ class MultiAgentDeliberationEngine:
         verdict_meta: Dict[str, Any] = {}
         if is_live_llm_configured():
             try:
-                judge_content, verdict_meta = await self._stream_llm_judge(context, bull_content, bear_content)
+                async for kind, payload in self._run_coro_with_keepalives(
+                    self._stream_llm_judge(context, bull_content, bear_content)
+                ):
+                    if kind == "keepalive":
+                        yield payload
+                    elif kind == "result":
+                        judge_content, verdict_meta = payload
             except Exception as e:
                 logger.warning(f"Judge LLM failed: {e}")
                 judge_content, verdict_meta = self._generate_deterministic_judge(context)
@@ -952,6 +976,23 @@ class MultiAgentDeliberationEngine:
 
         return clean_reply
 
+    async def _run_coro_with_keepalives(self, coro, interval: float = 1.5) -> AsyncGenerator[Tuple[str, Any], None]:
+        """
+        Executes an async coroutine while periodically yielding keepalive SSE pings
+        to prevent HTTP/2 connection drops and proxy buffer timeouts.
+        Yields ('keepalive', ': keepalive\n\n') while waiting, then ('result', res).
+        """
+        task = asyncio.create_task(coro)
+        while not task.done():
+            try:
+                res = await asyncio.wait_for(asyncio.shield(task), timeout=interval)
+                yield ("result", res)
+                return
+            except asyncio.TimeoutError:
+                yield ("keepalive", ": keepalive\n\n")
+        res = await task
+        yield ("result", res)
+
     def _sse_event(self, data: Dict[str, Any]) -> str:
         from src.api.utils import sanitize_for_json
         return f"data: {json.dumps(sanitize_for_json(data))}\n\n"
@@ -1193,4 +1234,153 @@ class MultiAgentDeliberationEngine:
             "conviction_score": conviction,
             "target_price": target,
             "stop_loss": stop
+        }
+
+    async def deliberate_json(
+        self,
+        symbol: str,
+        user_prompt: str = "Debate Bull vs Bear Thesis",
+        context_override: Optional[Dict[str, Any]] = None,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Direct JSON fallback for deliberation when network/proxy terminates SSE stream.
+        Returns complete structured committee output or conversational analysis.
+        """
+        symbols = self._extract_symbols(user_prompt, default_symbol=symbol)
+        intent = self._classify_intent(user_prompt, symbols)
+        primary_sym = symbols[0] if symbols else (symbol or "NIFTY 50")
+
+        loop = asyncio.get_running_loop()
+        grounded = await loop.run_in_executor(None, self._build_grounded_context, symbols, context_override)
+
+        if intent == "DEBATE_THESIS":
+            price = grounded.get("current_price", 0.0)
+            company_name = grounded.get("company_name", primary_sym)
+            fundamentals = grounded.get("fundamentals", {})
+            technicals = grounded.get("technicals", {})
+            forecast = grounded.get("forecast_20d", {})
+
+            bull_content = ""
+            bear_content = ""
+            judge_content = ""
+            verdict_meta: Dict[str, Any] = {}
+
+            if is_live_llm_configured():
+                try:
+                    bull_content = await self._stream_llm_role(
+                        role="Bullish Research & Momentum Analyst",
+                        instruction=(
+                            f"Present the strongest data-backed bullish thesis for {primary_sym} ({company_name}) at ₹{price:.2f}. "
+                            f"Cite ROE ({fundamentals.get('roe_pct', 0):.1f}%), OPM ({fundamentals.get('opm_pct', 0):.1f}%), "
+                            f"20D momentum ({technicals.get('ret_20d_pct', 0):.2f}%), and GARCH 20D target ₹{forecast.get('expected_20d_price', price):.2f}."
+                        ),
+                        context=grounded
+                    )
+                except Exception as e:
+                    logger.warning(f"Bull Analyst fallback error: {e}")
+                    bull_content = self._generate_deterministic_bull(grounded)
+
+                try:
+                    bear_content = await self._stream_llm_role(
+                        role="Bearish Risk Management Analyst",
+                        instruction=(
+                            f"Stress-test downside tail risks and valuation multiple for {primary_sym}. "
+                            f"Scrutinize P/E ({fundamentals.get('ttm_pe', 0):.1f}x), D/E ({fundamentals.get('debt_to_equity', 0):.2f}), "
+                            f"and 80% invalidation floor ₹{forecast.get('invalidation_floor', price * 0.94):.2f}."
+                        ),
+                        context=grounded,
+                        counter_argument=bull_content
+                    )
+                except Exception as e:
+                    logger.warning(f"Bear Analyst fallback error: {e}")
+                    bear_content = self._generate_deterministic_bear(grounded)
+
+                try:
+                    judge_content, verdict_meta = await self._stream_llm_judge(grounded, bull_content, bear_content)
+                except Exception as e:
+                    logger.warning(f"Judge fallback error: {e}")
+                    judge_content, verdict_meta = self._generate_deterministic_judge(grounded)
+            else:
+                bull_content = self._generate_deterministic_bull(grounded)
+                bear_content = self._generate_deterministic_bear(grounded)
+                judge_content, verdict_meta = self._generate_deterministic_judge(grounded)
+
+            telemetry = get_last_call_telemetry()
+            model_used = telemetry.get("model_id") or ("groq:gpt-oss-120b" if is_live_llm_configured() else "local:deterministic-quant")
+            token_usage = telemetry.get("token_usage") or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+            fc = forecast or {}
+            result = {
+                "symbol": primary_sym,
+                "verdict": verdict_meta.get("verdict", "TACTICAL_SWING_LONG"),
+                "conviction_score": verdict_meta.get("conviction_score", 75),
+                "entry_price": price,
+                "target_price": verdict_meta.get("target_price") or fc.get("expected_20d_price", round(price * 1.05, 2)),
+                "stop_loss": verdict_meta.get("stop_loss") or fc.get("invalidation_floor", round(price * 0.95, 2)),
+                "bull_thesis": bull_content,
+                "bear_thesis": bear_content,
+                "judge_memo": judge_content,
+                "model_used": model_used,
+                "token_usage": token_usage,
+                "ml_forecast": grounded.get("ml_forecast")
+            }
+
+            return {
+                "stage": "complete",
+                "status": "Deliberation complete.",
+                "progress": 100,
+                "bull_thesis": bull_content,
+                "bear_thesis": bear_content,
+                "judge_memo": judge_content,
+                "model_used": model_used,
+                "token_usage": token_usage,
+                "result": result
+            }
+
+        # Intent B: DIRECT_QA, COMPARE, PORTFOLIO_WATCHLIST
+        reply_content = ""
+        live_llm = is_live_llm_configured()
+        if live_llm:
+            try:
+                reply_content = await self._call_llm_intent(intent, user_prompt, grounded, history)
+            except Exception as e:
+                logger.warning(f"Live LLM deliberate_json error: {e}")
+
+        if not reply_content:
+            if intent == "COMPARE":
+                reply_content = self._generate_deterministic_comparison(symbols, grounded)
+            elif intent == "PORTFOLIO_WATCHLIST":
+                reply_content = self._generate_deterministic_portfolio_watchlist(grounded)
+            else:
+                reply_content = self._generate_deterministic_qa(user_prompt, grounded)
+
+        primary_stock = grounded.get("stocks", {}).get(primary_sym, {})
+        price = primary_stock.get("current_price", 0.0)
+        fc = primary_stock.get("forecast_20d", {})
+        telemetry = get_last_call_telemetry()
+        model_used = telemetry.get("model_id") or ("groq:gpt-oss-120b" if live_llm else "local:deterministic-quant")
+        token_usage = telemetry.get("token_usage") or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        result = {
+            "symbol": primary_sym,
+            "verdict": "QUANT_ANALYSIS_COMPLETE",
+            "conviction_score": primary_stock.get("ml_forecast", {}).get("conviction_score", 75),
+            "entry_price": price,
+            "target_price": fc.get("expected_20d_price", round(price * 1.05, 2)),
+            "stop_loss": fc.get("invalidation_floor", round(price * 0.95, 2)),
+            "conversational_response": reply_content,
+            "ml_forecast": primary_stock.get("ml_forecast"),
+            "model_used": model_used,
+            "token_usage": token_usage
+        }
+
+        return {
+            "stage": "complete",
+            "status": "Analysis complete.",
+            "progress": 100,
+            "conversational_response": reply_content,
+            "model_used": model_used,
+            "token_usage": token_usage,
+            "result": result
         }
