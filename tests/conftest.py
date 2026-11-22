@@ -48,6 +48,15 @@ def in_memory_db():
     return db
 
 
+@pytest.fixture(scope="session", autouse=True)
+def ensure_test_database_hydrated():
+    """Guarantees data/market_lab.db exists and is hydrated from snapshot for all test runs."""
+    from src.storage.hydration import hydrate_initial_cloud_database
+    from src.api.utils import DATABASE_PATH
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+    hydrate_initial_cloud_database(DATABASE_PATH)
+
+
 @pytest.fixture
 def test_client():
     """FastAPI TestClient instance for API route integration testing."""

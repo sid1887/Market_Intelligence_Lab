@@ -394,6 +394,17 @@ def get_stock_tearsheet(
     )
     wl_row = cur.fetchone()
 
+    # Fast 404 gate: If symbol is completely unknown to securities_master and user_watchlists, verify resolvable before doing any I/O
+    if not (sec_row or wl_row):
+        resolver = SymbolResolver()
+        try:
+            resolver.resolve_symbol(sym)
+        except ValueError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Symbol '{sym}' not found or not actively traded on NSE cash segment (series 'EQ')."
+            )
+
     # Check OHLCV presence and bar count (reading only necessary columns)
     cur.execute(
         "SELECT trading_date, open, high, low, close, volume, turnover, delivery_qty FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ' ORDER BY trading_date DESC LIMIT 1",
@@ -435,16 +446,19 @@ def get_stock_tearsheet(
 
     # Fallback to factors_daily if quant_factors_daily is missing
     if not factors_row:
-        cur.execute(
-            """
-            SELECT symbol, trading_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200,
-                   volatility_annualized, NULL as beta_60d_nifty, NULL as volume_ratio_20d, NULL as volume_zscore_50d,
-                   NULL as roe_pct, NULL as debt_to_equity, NULL as ttm_pe, NULL as opm_pct
-            FROM factors_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1
-            """,
-            (sym,)
-        )
-        factors_row = cur.fetchone()
+        try:
+            cur.execute(
+                """
+                SELECT symbol, trading_date, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200,
+                       volatility_annualized, NULL as beta_60d_nifty, NULL as volume_ratio_20d, NULL as volume_zscore_50d,
+                       NULL as roe_pct, NULL as debt_to_equity, NULL as ttm_pe, NULL as opm_pct
+                FROM factors_daily WHERE symbol = ? ORDER BY trading_date DESC LIMIT 1
+                """,
+                (sym,)
+            )
+            factors_row = cur.fetchone()
+        except sqlite3.OperationalError:
+            factors_row = None
 
     # Only trigger background ingestion if symbol has absolutely zero OHLCV records
     if not (sec_row or wl_row) or not ohlcv_row or ohlcv_count == 0:
