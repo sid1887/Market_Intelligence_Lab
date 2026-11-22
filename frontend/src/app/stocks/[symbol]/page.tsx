@@ -4,9 +4,10 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import { withRetry } from "@/lib/lazyWithRetry";
 import type { CandleData, ForecastData } from "@/components/StockChart";
 
-const StockChart = dynamic(() => import("@/components/StockChart"), {
+const StockChart = dynamic(withRetry(() => import("@/components/StockChart")), {
   ssr: false,
   loading: () => (
     <div className="h-[440px] w-full flex items-center justify-center bg-[#050811] rounded-xl border border-white/[0.06] text-xs font-mono text-slate-500">

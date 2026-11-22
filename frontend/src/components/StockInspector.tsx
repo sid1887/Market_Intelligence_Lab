@@ -35,8 +35,9 @@ import { RiskRewardVectorBar } from "./RiskRewardVectorBar";
 import { RadialConvictionGauge } from "./RadialConvictionGauge";
 import InvestmentMemoCard from "./InvestmentMemoCard";
 import { cn } from "@/lib/utils";
+import { withRetry } from "@/lib/lazyWithRetry";
 
-const StockChart = dynamic(() => import("./StockChart"), {
+const StockChart = dynamic(withRetry(() => import("./StockChart")), {
   ssr: false,
   loading: () => (
     <div className="h-[300px] w-full flex items-center justify-center bg-[#050811] rounded-xl border border-white/[0.06] text-xs font-mono text-slate-500">
