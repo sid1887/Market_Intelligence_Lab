@@ -192,14 +192,6 @@ class PaperTradingEngine:
         total_pnl = total_nav - net_capital_deployed
         total_pnl_pct = (total_pnl / net_capital_deployed * 100.0) if net_capital_deployed > 0 else 0.0
 
-        # Sync total_nav back to portfolio_accounts if drifted
-        with self.db.get_connection() as conn:
-            conn.execute("""
-                UPDATE portfolio_accounts
-                SET total_nav = ?
-                WHERE account_id = ?
-            """, (round(total_nav, 2), account_id))
-
         return {
             "account_id": account_id,
             "cash_balance": round(cash_balance, 2),

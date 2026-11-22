@@ -122,45 +122,42 @@ class PortfolioBacktester:
                 elif itype == "PRI":
                     pri_prices[d] = val
 
-        # 2. Pre-fetch equal-weighted daily market return for fallback
+        # 2. Pre-fetch equal-weighted daily market return for fallback (true arithmetic mean of stock returns, NOT price levels)
         with self.db.get_connection() as conn:
             cur = conn.execute("""
-                SELECT trading_date, AVG(close) as avg_close
-                FROM ohlcv_daily
+                SELECT trading_date, AVG(ret_1d) as avg_ret
+                FROM quant_factors_daily
                 WHERE trading_date >= ? AND trading_date <= ?
-                  AND series = 'EQ' AND COALESCE(is_synthetic, 0) = 0
+                  AND ret_1d IS NOT NULL
                 GROUP BY trading_date
                 ORDER BY trading_date ASC
             """, (start_d, end_d))
-            univ_prices = {str(r[0]): float(r[1]) for r in cur.fetchall() if r[1] is not None}
+            univ_returns = {str(r[0]): float(r[1]) for r in cur.fetchall() if r[1] is not None}
 
         bench_nav = float(initial_capital)
         bench_curve: Dict[str, float] = {}
 
         prev_tri: Optional[float] = None
         prev_pri: Optional[float] = None
-        prev_univ: Optional[float] = None
 
         for idx, d in enumerate(trading_dates):
             if idx == 0:
                 bench_curve[d] = round(bench_nav, 2)
                 prev_tri = tri_prices.get(d)
                 prev_pri = pri_prices.get(d)
-                prev_univ = univ_prices.get(d)
                 continue
 
             daily_return = 0.0
             curr_tri = tri_prices.get(d)
             curr_pri = pri_prices.get(d)
-            curr_univ = univ_prices.get(d)
 
-            # Strategy: TRI if continuous, else PRI, else Universe
+            # Strategy: TRI if continuous, else PRI, else equal-weighted universe returns (ADR-0004)
             if curr_tri and prev_tri and prev_tri > 0:
                 daily_return = (curr_tri / prev_tri) - 1.0
             elif curr_pri and prev_pri and prev_pri > 0:
                 daily_return = (curr_pri / prev_pri) - 1.0
-            elif curr_univ and prev_univ and prev_univ > 0:
-                daily_return = (curr_univ / prev_univ) - 1.0
+            elif d in univ_returns:
+                daily_return = univ_returns[d]
 
             bench_nav = max(1.0, bench_nav * (1.0 + daily_return))
             bench_curve[d] = round(bench_nav, 2)
@@ -169,8 +166,6 @@ class PortfolioBacktester:
                 prev_tri = curr_tri
             if curr_pri:
                 prev_pri = curr_pri
-            if curr_univ:
-                prev_univ = curr_univ
 
         return bench_curve
 
@@ -270,10 +265,15 @@ class PortfolioBacktester:
 
             scores.append((sym, final_s))
 
-            scores.append((sym, final_s))
+        # Deduplicate symbols if any appeared multiple times in factor tables
+        deduped: Dict[str, float] = {}
+        for s, score in scores:
+            if s not in deduped or score > deduped[s]:
+                deduped[s] = score
 
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores
+        final_scores = list(deduped.items())
+        final_scores.sort(key=lambda x: x[1], reverse=True)
+        return final_scores
 
     def run_backtest(
         self,
@@ -324,19 +324,25 @@ class PortfolioBacktester:
         except Exception as e:
             logger.warning(f"Could not load ML horizon models: {e}. Using factor rank fallback.")
 
-        # 2. Pre-cache daily closing prices: (symbol, date) -> close
+        # 2. Pre-cache daily closing and open prices: (symbol, date) -> price (ADR-0009: Signal at Close t, Fill at Open t+1)
         with self.db.get_connection() as conn:
             cur = conn.execute("""
-                SELECT symbol, trading_date, close
+                SELECT symbol, trading_date, open, close
                 FROM ohlcv_daily
                 WHERE trading_date >= ? AND trading_date <= ?
                   AND series = 'EQ' AND COALESCE(is_synthetic, 0) = 0
             """, (trading_dates[0], trading_dates[-1]))
             price_map: Dict[Tuple[str, str], float] = {}
+            open_price_map: Dict[Tuple[str, str], float] = {}
             for r in cur.fetchall():
-                c = float(r[2]) if r[2] is not None else 0.0
+                sym = str(r[0])
+                d_val = str(r[1])
+                o = float(r[2]) if r[2] is not None else 0.0
+                c = float(r[3]) if r[3] is not None else 0.0
                 if c > 0:
-                    price_map[(str(r[0]), str(r[1]))] = c
+                    price_map[(sym, d_val)] = c
+                if o > 0:
+                    open_price_map[(sym, d_val)] = o
 
         # 2b. Pre-cache universe market breadth: trading_date -> breadth float [0.0, 1.0]
         breadth_map: Dict[str, float] = {}
@@ -441,14 +447,15 @@ class PortfolioBacktester:
                     for sym in target_symbols:
                         target_weights[sym] = w_each
 
-                # 5c. Calculate Target Quantities & Plan Trades
+                # 5c. Calculate Target Quantities & Plan Trades (ADR-0009: Execution at Session t+1 Open)
                 all_symbols = sorted(set(list(holdings.keys()) + target_symbols))
                 sells_queue: List[Dict[str, Any]] = []
                 buys_queue: List[Dict[str, Any]] = []
                 turnover_volume = 0.0
+                next_date_str = trading_dates[step_idx + 1] if step_idx + 1 < len(trading_dates) else date_str
 
                 for sym in all_symbols:
-                    p = price_map.get((sym, date_str)) or last_known_close.get(sym, 0.0)
+                    p = open_price_map.get((sym, next_date_str)) or price_map.get((sym, next_date_str)) or price_map.get((sym, date_str)) or last_known_close.get(sym, 0.0)
                     if p <= 0:
                         continue
 
@@ -537,6 +544,7 @@ class PortfolioBacktester:
 
                 rebalance_log.append({
                     "date": date_str,
+                    "execution_date": next_date_str,
                     "nav": round(nav_after, 2),
                     "nav_before": round(nav_before, 2),
                     "nav_after": round(nav_after, 2),

@@ -8,6 +8,10 @@ on:
     - cron: "30 12 * * 0"
   workflow_dispatch:
 
+concurrency:
+  group: mil-ml-tournament
+  cancel-in-progress: true
+
 jobs:
   run-ml-tournament:
     name: 7GB Cloud Runner Walk-Forward ML Tournament

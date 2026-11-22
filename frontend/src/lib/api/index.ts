@@ -14,6 +14,7 @@ export const DEFAULT_HEADERS: Record<string, string> = {
   "Accept": "application/json",
   "Content-Type": "application/json",
   "ngrok-skip-browser-warning": "true",
+  ...(process.env.NEXT_PUBLIC_MIL_API_KEY ? { "X-API-Key": process.env.NEXT_PUBLIC_MIL_API_KEY } : {}),
 };
 
 export interface ApiErrorPayload {

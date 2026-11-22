@@ -1040,7 +1040,7 @@ def get_stock_forecast(
 def get_stock_news(
     symbol: str,
     limit: int = Query(5, ge=1, le=20, description="Max news articles to return"),
-    force_refresh: bool = Query(True, description="Bypass cache and fetch live RSS"),
+    force_refresh: bool = Query(False, description="Bypass cache and fetch live RSS"),
     conn: sqlite3.Connection = Depends(get_db_connection)
 ):
     """

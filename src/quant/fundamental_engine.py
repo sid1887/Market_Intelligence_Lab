@@ -176,7 +176,7 @@ class FundamentalFallbackEngine:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 4, ?)
                 """, imputed_factors)
 
-            # Also update quant_factors_daily directly for quick join
+            # Also update quant_factors_daily directly for quick join strictly on the latest active trading date (P0 PIT guard)
             for sym, sec in missing_symbols:
                 fallback = sector_medians.get(sec, DEFAULT_SECTOR_FALLBACKS.get(sec, DEFAULT_SECTOR_FALLBACKS["DEFAULT"]))
                 conn.execute("""
@@ -185,8 +185,8 @@ class FundamentalFallbackEngine:
                         debt_to_equity = COALESCE(debt_to_equity, ?),
                         opm_pct = COALESCE(opm_pct, ?),
                         ttm_pe = COALESCE(ttm_pe, ?)
-                    WHERE symbol = ?
-                """, (fallback["roe_pct"], fallback["debt_to_equity"], fallback["opm_pct"], fallback["pe_ratio"], sym))
+                    WHERE symbol = ? AND trading_date = (SELECT MAX(trading_date) FROM quant_factors_daily WHERE symbol = ?)
+                """, (fallback["roe_pct"], fallback["debt_to_equity"], fallback["opm_pct"], fallback["pe_ratio"], sym, sym))
 
         logger.info(f"Successfully imputed fundamentals for {len(missing_symbols)} equities.")
         return {

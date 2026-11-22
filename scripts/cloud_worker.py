@@ -260,7 +260,7 @@ def bootstrap_worker_db(
                                     ttm_pe = COALESCE(?, ttm_pe),
                                     eps_growth_yoy = COALESCE(?, eps_growth_yoy),
                                     updated_at = ?
-                                WHERE symbol = ?
+                                WHERE symbol = ? AND trading_date = (SELECT MAX(trading_date) FROM quant_factors_daily WHERE symbol = ?)
                             """, (
                                 f.get("roe_pct"),
                                 f.get("opm_pct"),
@@ -268,6 +268,7 @@ def bootstrap_worker_db(
                                 f.get("ttm_pe"),
                                 f.get("eps_growth_yoy"),
                                 now_iso,
+                                f["symbol"],
                                 f["symbol"]
                             ))
 

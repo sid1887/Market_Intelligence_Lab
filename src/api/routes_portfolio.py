@@ -5,9 +5,11 @@ Workstream 8.1: Real-time portfolio summaries, position matrices, execution blot
 and rebalance execution triggers.
 """
 
+import os
+import hmac
 import logging
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Header, Request, Depends
 from pydantic import BaseModel, Field
 
 from src.storage.database import DatabaseManager
@@ -17,6 +19,51 @@ from src.quant.execution_engine import PaperTradingEngine
 logger = logging.getLogger("MIL.PortfolioAPI")
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio"])
+
+
+def verify_portfolio_mutation_auth(
+    request: Request,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_internal_token: Optional[str] = Header(None, alias="X-Internal-Token"),
+) -> bool:
+    """
+    Guards mutating portfolio operations against unauthorized public modification (P0 security).
+    Accepts:
+    1. X-API-Key header matching MIL_API_KEY
+    2. Authorization: Bearer <key> matching MIL_API_KEY
+    3. X-Internal-Token matching MIL_INTERNAL_SYNC_SECRET or INTERNAL_SYNC_TOKEN
+    4. Local development loopback (127.0.0.1/localhost) when running in non-production mode without configured key.
+    """
+    configured_key = (os.getenv("MIL_API_KEY") or os.getenv("MIL_INTERNAL_SYNC_SECRET") or os.getenv("INTERNAL_SYNC_TOKEN", "")).strip()
+    is_cloud_prod = bool(os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production")
+
+    client_ip = request.client.host if (request and request.client) else "unknown"
+
+    # Local loopback bypass only when running locally without explicit security configuration
+    if not is_cloud_prod and not configured_key and client_ip in ("127.0.0.1", "localhost", "::1"):
+        return True
+
+    # In production, or whenever an API key is configured, strict auth is required
+    if not configured_key:
+        logger.error("[PORTFOLIO-SECURITY] Mutating request rejected: No MIL_API_KEY or MIL_INTERNAL_SYNC_SECRET configured on server.")
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Server portfolio mutation security token is not configured."
+        )
+
+    provided = (x_api_key or x_internal_token or "").strip()
+    if not provided and authorization and authorization.startswith("Bearer "):
+        provided = authorization[7:].strip()
+
+    if not provided or not hmac.compare_digest(provided, configured_key):
+        logger.warning(f"[PORTFOLIO-SECURITY] Rejected unauthorized portfolio mutation attempt from {client_ip}.")
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Invalid or missing API key for portfolio mutation."
+        )
+
+    return True
 
 
 class ExecuteProposalRequest(BaseModel):
@@ -100,7 +147,7 @@ def get_portfolio_orders(
         raise HTTPException(status_code=500, detail=f"Failed to fetch portfolio orders: {str(e)}")
 
 
-@router.post("/execute")
+@router.post("/execute", dependencies=[Depends(verify_portfolio_mutation_auth)])
 def execute_rebalance(req: ExecuteProposalRequest = Body(...)):
     """Executes a rebalance proposal against the virtual account applying SELL-before-BUY sequencing and friction."""
     try:
@@ -162,7 +209,7 @@ def preview_manual_order(
         raise HTTPException(status_code=500, detail=f"Preview failed: {str(e)}")
 
 
-@router.post("/manual/execute")
+@router.post("/manual/execute", dependencies=[Depends(verify_portfolio_mutation_auth)])
 def execute_manual_trade(req: ManualOrderRequest = Body(...)):
     """Executes discretionary trade on paper_manual_1, persisting thesis note and FrontPage analysis."""
     try:
@@ -184,7 +231,7 @@ def execute_manual_trade(req: ManualOrderRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"Manual execution failed: {str(e)}")
 
 
-@router.post("/capital/reset")
+@router.post("/capital/reset", dependencies=[Depends(verify_portfolio_mutation_auth)])
 def reset_account_capital(req: ResetCapitalRequest = Body(...)):
     """Resets account capital seed to user-defined amount (e.g. ₹1,600), clearing past positions."""
     try:
@@ -203,7 +250,7 @@ def reset_account_capital(req: ResetCapitalRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"Capital reset failed: {str(e)}")
 
 
-@router.post("/capital/adjust")
+@router.post("/capital/adjust", dependencies=[Depends(verify_portfolio_mutation_auth)])
 def adjust_account_cash(req: AdjustCashRequest = Body(...)):
     """Deposits or withdraws cash from account without wiping active positions."""
     try:
@@ -221,7 +268,7 @@ def adjust_account_cash(req: AdjustCashRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"Cash adjustment failed: {str(e)}")
 
 
-@router.post("/rebalance/execute")
+@router.post("/rebalance/execute", dependencies=[Depends(verify_portfolio_mutation_auth)])
 def execute_rebalance_flow(req: RebalanceExecuteRequest = Body(...)):
     """One-click generation and execution of capital-aware rebalance for paper_alpha_2 (or any account)."""
     try:

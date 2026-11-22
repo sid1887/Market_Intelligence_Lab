@@ -187,10 +187,12 @@ class WalkForwardMLTrainer:
                         df["trend_60d"] = df["ret_60d"] / safe_vol
                         safe_sma200 = np.maximum(df["sma_200"].fillna(df["close"]), 1.0)
                         df["structural_200d"] = (df["close"] - safe_sma200) / safe_sma200
-                        df["rsi_regime"] = 50.0
+                        rsi_series = df["rsi_14"] if "rsi_14" in df.columns else pd.Series(50.0, index=df.index)
+                        df["rsi_regime"] = 100.0 - np.abs(rsi_series.fillna(50.0) - 62.0) * 2.0
                         df["low_vol_quality"] = 1.0 / safe_vol
                         df["volume_accumulation"] = df["ret_5d"] * np.sign(df["ret_5d"])
-                        df["relative_strength_nifty"] = df["ret_20d"] - 0.02
+                        med_20d = df.groupby("trading_date")["ret_20d"].transform("median")
+                        df["relative_strength_nifty"] = df["ret_20d"] - med_20d
                         df["news_sentiment_7d"] = 50.0 + (df["ret_5d"].fillna(0.0) * 45.0)
 
                         for feat in FEATURE_COLUMNS_8:
@@ -267,7 +269,8 @@ class WalkForwardMLTrainer:
         df["rsi_regime"] = 100.0 - np.abs(df["rsi_14"] - 62.0) * 2.0
         df["low_vol_quality"] = 1.0 / safe_vol
         df["volume_accumulation"] = df["ret_5d"] * np.sign(df["ret_5d"])
-        df["relative_strength_nifty"] = df["ret_20d"] - 0.02
+        med_20d = df.groupby("trading_date")["ret_20d"].transform("median")
+        df["relative_strength_nifty"] = df["ret_20d"] - med_20d
 
         # Construct active news_sentiment_7d feature with cross-sectional variance
         try:
@@ -424,12 +427,12 @@ class WalkForwardMLTrainer:
                             if not np.isnan(spread_bps):
                                 fold_spreads_bps.append(spread_bps)
 
-                oos_ic_mean = float(np.mean(fold_ics)) if fold_ics else 0.025
-                oos_rank_ic_mean = float(np.mean(fold_rank_ics)) if fold_rank_ics else 0.038
-                oos_rank_ic_std = float(np.std(fold_rank_ics)) if (fold_rank_ics and np.std(fold_rank_ics) > 0) else 0.05
-                oos_ic_ir = round(oos_rank_ic_mean / oos_rank_ic_std, 2)
-                oos_hit_rate_pct = round(float(np.mean(fold_hit_rates) * 100.0), 2) if fold_hit_rates else 54.5
-                top_decile_spread_bps = round(float(np.mean(fold_spreads_bps)), 1) if fold_spreads_bps else 42.0
+                oos_ic_mean = float(np.mean(fold_ics)) if fold_ics else None
+                oos_rank_ic_mean = float(np.mean(fold_rank_ics)) if fold_rank_ics else None
+                oos_rank_ic_std = float(np.std(fold_rank_ics)) if (fold_rank_ics and np.std(fold_rank_ics) > 0) else None
+                oos_ic_ir = round(oos_rank_ic_mean / oos_rank_ic_std, 2) if (oos_rank_ic_mean is not None and oos_rank_ic_std is not None and oos_rank_ic_std > 0) else None
+                oos_hit_rate_pct = round(float(np.mean(fold_hit_rates) * 100.0), 2) if fold_hit_rates else None
+                top_decile_spread_bps = round(float(np.mean(fold_spreads_bps)), 1) if fold_spreads_bps else None
 
                 # Normalize accumulated feature weights
                 total_w = feature_importances_accum.sum()
@@ -450,8 +453,8 @@ class WalkForwardMLTrainer:
                     "train_end_date": unique_dates[-1],
                     "total_samples": total_samples if total_samples > 0 else len(df),
                     "unique_symbols": int(df["symbol"].nunique()),
-                    "oos_ic_mean": round(oos_ic_mean, 4),
-                    "oos_rank_ic_mean": round(oos_rank_ic_mean, 4),
+                    "oos_ic_mean": round(oos_ic_mean, 4) if oos_ic_mean is not None else None,
+                    "oos_rank_ic_mean": round(oos_rank_ic_mean, 4) if oos_rank_ic_mean is not None else None,
                     "oos_ic_ir": oos_ic_ir,
                     "oos_hit_rate_pct": oos_hit_rate_pct,
                     "top_decile_spread_bps": top_decile_spread_bps,
@@ -503,10 +506,10 @@ class WalkForwardMLTrainer:
                         logger.warning(f"Could not persist run {run_id} to ml_training_runs: {ex}")
                         break
 
-        # Designate Champion Models per Horizon (Highest oos_rank_ic_mean)
+        # Designate Champion Models per Horizon (Highest oos_rank_ic_mean >= 0.015)
         champions = {}
         for h in horizons:
-            h_runs = [r for r in all_results if r["horizon_days"] == h]
+            h_runs = [r for r in all_results if r["horizon_days"] == h and r.get("oos_rank_ic_mean") is not None and r["oos_rank_ic_mean"] >= 0.015]
             if h_runs:
                 best_run = max(h_runs, key=lambda x: x["oos_rank_ic_mean"])
                 champions[h] = best_run
@@ -722,6 +725,18 @@ class WalkForwardMLTrainer:
         sentiment = float(news_row["sentiment_score"]) if news_row else 0.0
 
         # Construct standardized features
+        nifty_20d = 0.0
+        try:
+            with self.db.get_connection() as conn:
+                r_nifty = conn.execute("""
+                    SELECT ret_20d FROM quant_factors_daily WHERE symbol = 'NIFTY 50' AND trading_date <= ?
+                    ORDER BY trading_date DESC LIMIT 1
+                """, (latest_date,)).fetchone()
+                if r_nifty and r_nifty[0] is not None:
+                    nifty_20d = float(r_nifty[0])
+        except Exception:
+            pass
+
         f_raw = {
             "tactical_20d": ret_20d / vol,
             "trend_60d": ret_60d / vol,
@@ -729,7 +744,7 @@ class WalkForwardMLTrainer:
             "rsi_regime": (100.0 - abs(rsi_14 - 62.0) * 2.0) / 100.0,
             "low_vol_quality": min(1.0 / vol, 10.0) / 5.0,
             "volume_accumulation": ret_5d * np.sign(ret_5d),
-            "relative_strength_nifty": ret_20d - 0.02,
+            "relative_strength_nifty": ret_20d - nifty_20d,
             "news_sentiment_7d": sentiment
         }
 
@@ -747,10 +762,10 @@ class WalkForwardMLTrainer:
             forecasts[f"{h}D"] = {
                 "horizon_days": h,
                 "model": c["model_family"],
-                "rank_ic": round(float(c["oos_rank_ic_mean"]), 4),
+                "rank_ic": round(float(c["oos_rank_ic_mean"]), 4) if c.get("oos_rank_ic_mean") is not None else 0.0,
                 "expected_excess_bps": excess_bps,
                 "expected_return_pct": expected_ret_pct,
-                "top_decile_spread_bps": round(float(c["top_decile_spread_bps"]), 1)
+                "top_decile_spread_bps": round(float(c["top_decile_spread_bps"]), 1) if c.get("top_decile_spread_bps") is not None else 0.0
             }
 
         pred_20d_bps = forecasts.get("20D", {}).get("expected_excess_bps", 0.0)

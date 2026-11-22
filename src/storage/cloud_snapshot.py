@@ -29,7 +29,13 @@ EXPORTABLE_TABLES = [
     "financial_statements_annual",
     "financial_statements_quarterly",
     "corporate_disclosures",
+    "corporate_actions",
+    "portfolio_accounts",
+    "portfolio_positions",
+    "portfolio_orders",
+    "backtest_runs",
     "model_registry",
+    "model_horizon_deployments",
     "supervisor_state",
     "ml_training_runs",
     "llm_usage_telemetry",
@@ -110,6 +116,12 @@ def export_cloud_snapshot(
                     elif tbl == "llm_usage_telemetry":
                         query = "SELECT * FROM llm_usage_telemetry ORDER BY usage_date DESC LIMIT 100"
                         params = ()
+                    elif tbl == "portfolio_orders":
+                        query = "SELECT * FROM portfolio_orders ORDER BY executed_at DESC LIMIT 1000"
+                        params = ()
+                    elif tbl == "backtest_runs":
+                        query = "SELECT * FROM backtest_runs ORDER BY created_at DESC LIMIT 50"
+                        params = ()
                     elif tbl == "external_api_telemetry":
                         query = "SELECT * FROM external_api_telemetry ORDER BY usage_date DESC LIMIT 200"
                         params = ()
@@ -117,14 +129,14 @@ def export_cloud_snapshot(
                         query = f"SELECT * FROM {tbl}"
                         params = ()
 
+                    row_cur = conn.execute(query, params)
+                    col_names = [col[0] for col in row_cur.description] if row_cur.description else []
+
                     if not first_table:
                         gz.write(",\n")
                     first_table = False
 
                     gz.write(f'  "{tbl}": [\n')
-
-                    row_cur = conn.execute(query, params)
-                    col_names = [col[0] for col in row_cur.description] if row_cur.description else []
                     
                     count = 0
                     first_row = True
