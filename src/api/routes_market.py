@@ -315,6 +315,51 @@ def get_stock_status(
     })
 
 
+def _sanitize_price_continuity(candles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Ensures chronological candles do not exhibit sudden artificial split/fixture cliffs (>35%)
+    between historical merged archives and recent hot SQLite bars. If an unadjusted cliff is detected,
+    back-adjusts earlier candles to match the post-action price level.
+    """
+    if len(candles) < 2:
+        return candles
+
+    std_ratios = [0.5, 0.2, 0.1, 0.333333, 0.25, 0.166667, 2.0, 5.0, 10.0, 3.0, 4.0, 6.0]
+
+    for i in range(len(candles) - 1, 0, -1):
+        curr = candles[i]
+        prev = candles[i - 1]
+        c_close = curr.get("close") or 0.0
+        p_close = prev.get("close") or 0.0
+        c_open = curr.get("open") or c_close
+
+        if p_close <= 0 or c_close <= 0:
+            continue
+
+        jump = abs(c_close / p_close - 1.0)
+        if jump > 0.35:
+            raw_ratio = c_open / p_close if c_open > 0 else c_close / p_close
+            ratio = raw_ratio
+            for sr in std_ratios:
+                if abs(raw_ratio - sr) / sr < 0.05:
+                    ratio = sr
+                    break
+
+            for j in range(i):
+                if candles[j].get("open") is not None:
+                    candles[j]["open"] = round(candles[j]["open"] * ratio, 2)
+                if candles[j].get("high") is not None:
+                    candles[j]["high"] = round(candles[j]["high"] * ratio, 2)
+                if candles[j].get("low") is not None:
+                    candles[j]["low"] = round(candles[j]["low"] * ratio, 2)
+                if candles[j].get("close") is not None:
+                    candles[j]["close"] = round(candles[j]["close"] * ratio, 2)
+                if candles[j].get("volume") is not None and candles[j]["volume"] > 0:
+                    candles[j]["volume"] = int(round(candles[j]["volume"] / ratio))
+
+    return candles
+
+
 @router.get("/stocks/{symbol}/tearsheet")
 @router.get("/api/v1/stocks/{symbol}/tearsheet")
 def get_stock_tearsheet(
@@ -524,25 +569,29 @@ def get_stock_tearsheet(
             archive_engine = MilzArchiveEngine(milz_archive_path)
             milz_df = archive_engine.load_symbol_history(sym)
             if not milz_df.empty:
-                sqlite_times = {item["time"] for item in history}
-                milz_candles = []
+                merged_map: Dict[str, Dict[str, Any]] = {}
                 for _, mrow in milz_df.iterrows():
-                    t_str = str(mrow["trading_date"])
-                    if t_str not in sqlite_times:
-                        milz_candles.append({
-                            "time": t_str,
-                            "open": safe_float(mrow["open"], 2),
-                            "high": safe_float(mrow["high"], 2),
-                            "low": safe_float(mrow["low"], 2),
-                            "close": safe_float(mrow["close"], 2),
-                            "volume": safe_int(mrow["volume"]) or 0,
-                            "provenance_class": "EXCHANGE_OFFICIAL",
-                            "is_synthetic": False
-                        })
-                if milz_candles:
-                    history = sorted(milz_candles + history, key=lambda x: x["time"])
+                    t_str = str(mrow["trading_date"])[:10]
+                    merged_map[t_str] = {
+                        "time": t_str,
+                        "open": safe_float(mrow["open"], 2),
+                        "high": safe_float(mrow["high"], 2),
+                        "low": safe_float(mrow["low"], 2),
+                        "close": safe_float(mrow["close"], 2),
+                        "volume": safe_int(mrow["volume"]) or 0,
+                        "provenance_class": "EXCHANGE_OFFICIAL",
+                        "is_synthetic": False
+                    }
+                # SQLite candles overwrite / supplement milz
+                for item in history:
+                    t_str = str(item["time"])[:10]
+                    merged_map[t_str] = item
+
+                history = [merged_map[k] for k in sorted(merged_map.keys())]
         except Exception as e:
             logger.debug(f"Milz archive candle merge non-fatal: {e}")
+
+    history = _sanitize_price_continuity(history)
 
     # ── Robust Coalescing for Fundamental Ratios (ROE, D/E, TTM P/E, OPM) ──
     roe_pct = safe_float(factors_row["roe_pct"], 2) if factors_row and factors_row["roe_pct"] is not None else None
@@ -712,6 +761,24 @@ def get_stock_tearsheet(
     turnover_cr = round(ohlcv_turnover / 10000000.0, 2) if ohlcv_turnover else round(latest_close * ohlcv_vol / 10000000.0, 2)
     delivery_pct = round(ohlcv_deliv_qty / ohlcv_vol * 100.0, 2) if (ohlcv_deliv_qty and ohlcv_vol > 0) else None
 
+    # Fall back to latest valid delivery session if current bar has no delivery info
+    if delivery_pct is None:
+        try:
+            cur.execute(
+                """
+                SELECT delivery_qty, volume FROM ohlcv_daily
+                WHERE symbol = ? AND delivery_qty > 0 AND volume > 0
+                ORDER BY trading_date DESC LIMIT 1
+                """,
+                (sym,)
+            )
+            ld_row = cur.fetchone()
+            if ld_row:
+                delivery_pct = round(float(ld_row["delivery_qty"]) / float(ld_row["volume"]) * 100.0, 2)
+                ohlcv_deliv_qty = safe_int(ld_row["delivery_qty"])
+        except Exception:
+            pass
+
     dist_52w_h = safe_float(factors_row["distance_52w_high"], 4) if factors_row and "distance_52w_high" in factors_row.keys() else None
     dist_52w_l = safe_float(factors_row["distance_52w_low"], 4) if factors_row and "distance_52w_low" in factors_row.keys() else None
     pct_from_52w_h = round(dist_52w_h * 100.0, 2) if dist_52w_h is not None else None
@@ -786,6 +853,12 @@ def get_stock_history(
     """
     sym = symbol.upper().strip()
     cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ? AND series = 'EQ' AND COALESCE(is_synthetic, 0) = 0", (sym,))
+    ohlcv_total_count = cur.fetchone()[0]
+
+    if ohlcv_total_count < 60:
+        sync_yfinance_history_for_symbol(sym)
+
     cur.execute(
         """
         SELECT trading_date as time, open, high, low, close, volume,
@@ -805,31 +878,6 @@ def get_stock_history(
         (sym, max(1, limit))
     )
     rows = cur.fetchall()
-
-    if len(rows) < 60:
-        candles = sync_yfinance_history_for_symbol(sym)
-        if candles:
-            return sanitize_for_json(candles[:max(1, limit)])
-
-        cur.execute(
-            """
-            SELECT trading_date as time, open, high, low, close, volume,
-                   COALESCE(provenance_class, 'EXCHANGE_OFFICIAL') as provenance_class,
-                   COALESCE(is_synthetic, 0) as is_synthetic
-            FROM (
-                SELECT trading_date, open, high, low, close, volume, provenance_class, is_synthetic
-                FROM ohlcv_daily 
-                WHERE symbol = ? AND series = 'EQ'
-                  AND COALESCE(is_synthetic, 0) = 0
-                  AND COALESCE(is_eligible_for_live_analytics, 1) = 1
-                ORDER BY trading_date DESC 
-                LIMIT ?
-            )
-            ORDER BY trading_date ASC
-            """,
-            (sym, max(1, limit))
-        )
-        rows = cur.fetchall()
 
     if not rows:
         raise HTTPException(status_code=404, detail=f"No price history found for symbol '{sym}'.")
@@ -856,27 +904,31 @@ def get_stock_history(
             archive_engine = MilzArchiveEngine(milz_archive_path)
             milz_df = archive_engine.load_symbol_history(sym)
             if not milz_df.empty:
-                sqlite_times = {item["time"] for item in history}
-                milz_candles = []
+                merged_map: Dict[str, Dict[str, Any]] = {}
                 for _, mrow in milz_df.iterrows():
-                    t_str = str(mrow["trading_date"])
-                    if t_str not in sqlite_times:
-                        milz_candles.append({
-                            "time": t_str,
-                            "open": safe_float(mrow["open"], 2),
-                            "high": safe_float(mrow["high"], 2),
-                            "low": safe_float(mrow["low"], 2),
-                            "close": safe_float(mrow["close"], 2),
-                            "volume": safe_int(mrow["volume"]) or 0,
-                            "provenance_class": "EXCHANGE_OFFICIAL",
-                            "is_synthetic": False
-                        })
-                if milz_candles:
-                    history = sorted(milz_candles + history, key=lambda x: x["time"])
-                    if limit and len(history) > limit:
-                        history = history[-limit:]
+                    t_str = str(mrow["trading_date"])[:10]
+                    merged_map[t_str] = {
+                        "time": t_str,
+                        "open": safe_float(mrow["open"], 2),
+                        "high": safe_float(mrow["high"], 2),
+                        "low": safe_float(mrow["low"], 2),
+                        "close": safe_float(mrow["close"], 2),
+                        "volume": safe_int(mrow["volume"]) or 0,
+                        "provenance_class": "EXCHANGE_OFFICIAL",
+                        "is_synthetic": False
+                    }
+                # SQLite candles overwrite / supplement milz
+                for item in history:
+                    t_str = str(item["time"])[:10]
+                    merged_map[t_str] = item
+
+                history = [merged_map[k] for k in sorted(merged_map.keys())]
         except Exception as e:
             logger.debug(f"Milz archive candle merge in history non-fatal: {e}")
+
+    history = _sanitize_price_continuity(history)
+    if limit and len(history) > limit:
+        history = history[-limit:]
 
     return sanitize_for_json(history)
 

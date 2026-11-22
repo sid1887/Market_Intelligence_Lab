@@ -339,6 +339,7 @@ class DatabaseManager:
             try:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_sym_date_retrieval ON ohlcv_daily(symbol, trading_date DESC, retrieval_timestamp DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_date_turnover ON ohlcv_daily(trading_date DESC, turnover DESC) WHERE series = 'EQ';")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_delivery ON ohlcv_daily(symbol, trading_date DESC) WHERE delivery_qty > 0 AND volume > 0;")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_news_sym_pub ON equity_news_feed(symbol, published_at DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_market_catalysts_sym_date ON market_catalysts(symbol, triggered_at DESC);")
                 conn.commit()

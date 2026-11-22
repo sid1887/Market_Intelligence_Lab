@@ -164,6 +164,20 @@ class EconometricForecaster:
         trading_dates = [r["trading_date"] for r in rows]
         closes = np.array([float(r["close"]) for r in rows], dtype=float)
 
+        # Sanitize split/cliff discontinuities backwards to current price level
+        std_ratios = [0.5, 0.2, 0.1, 0.333333, 0.25, 0.166667, 2.0, 5.0, 10.0, 3.0, 4.0, 6.0]
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i - 1] > 0 and closes[i] > 0:
+                jump = abs(closes[i] / closes[i - 1] - 1.0)
+                if jump > 0.35:
+                    raw_ratio = closes[i] / closes[i - 1]
+                    ratio = raw_ratio
+                    for sr in std_ratios:
+                        if abs(raw_ratio - sr) / sr < 0.05:
+                            ratio = sr
+                            break
+                    closes[:i] *= ratio
+
         as_of_date = trading_dates[-1]
         current_close = float(closes[-1])
 

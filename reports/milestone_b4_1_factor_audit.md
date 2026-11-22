@@ -1,6 +1,6 @@
 # Market Intelligence Lab — Milestone B4.1 Factor Persistence Audit
 
-**Execution Timestamp:** `2026-11-03 17:31:46 UTC`  
+**Execution Timestamp:** `2026-11-22 12:06:29 UTC`  
 **Target Table:** `quant_factors_daily`  
 **Database Location:** `data/market_lab.db`  
 
@@ -12,11 +12,11 @@ Milestone B4.1 has successfully populated the unified `quant_factors_daily` tabl
 
 | Metric | Result | Compliance Status |
 | :--- | :--- | :--- |
-| **Active Universe Stocks Processed** | `50` stocks | PASS |
-| **Total Factor Records Populated** | `25,101` records | PASS |
-| **Distinct Symbols in Factor Store** | `50` symbols | PASS |
-| **Historical Trading Date Range** | `2023-04-10` to `2026-10-28` | PASS |
-| **Pipeline Execution Duration** | `3.60` seconds | PASS |
+| **Active Universe Stocks Processed** | `1153` stocks | PASS |
+| **Total Factor Records Populated** | `2,795,732` records | PASS |
+| **Distinct Symbols in Factor Store** | `1150` symbols | PASS |
+| **Historical Trading Date Range** | `2011-01-03` to `2026-11-20` | PASS |
+| **Pipeline Execution Duration** | `5512.19` seconds | PASS |
 | **SQLite Integrity Check** | `ok` | PASS |
 | **Foreign Key Violations** | `0` errors | PASS |
 
@@ -51,6 +51,7 @@ The table schema strictly adheres to the directive requirements. All 14 mandated
 | 20 | `debt_to_equity` | `REAL` | `Yes` | `NULL` | OPTIONAL / WARMUP |
 | 21 | `opm_pct` | `REAL` | `Yes` | `NULL` | OPTIONAL / WARMUP |
 | 22 | `updated_at` | `TEXT` | `Yes` | `NULL` | OPTIONAL / WARMUP |
+| 23 | `is_orphaned` | `INTEGER` | `No` | `0` | MANDATORY FACTOR |
 
 ---
 
@@ -67,25 +68,26 @@ Proves strict compliance with warm-up NULL handling. 6 trading sessions are insu
   "trading_date": "2024-10-28",
   "ret_1d": 0.0018,
   "ret_5d": 0.0068,
-  "ret_20d": null,
-  "vol_20d_annualized": null,
-  "sma_20": null,
-  "sma_50": null,
-  "sma_200": null,
-  "beta_60d_nifty": null,
-  "volume_ratio_20d": null,
-  "volume_zscore_50d": null,
-  "volume_log_zscore_50d": null,
+  "ret_20d": -0.0217,
+  "vol_20d_annualized": 0.2513,
+  "sma_20": 1906.78,
+  "sma_50": 1908.94,
+  "sma_200": 1670.05,
+  "beta_60d_nifty": 0.7957,
+  "volume_ratio_20d": 1.159,
+  "volume_zscore_50d": 0.3885,
+  "volume_log_zscore_50d": 0.6162,
   "is_volume_spike_ratio": 0,
   "is_volume_spike_zscore": 0,
-  "distance_52w_high": -1.7616,
-  "distance_52w_low": 1.488,
-  "volatility_annualized": null,
+  "distance_52w_high": -6.3321,
+  "distance_52w_low": 38.0054,
+  "volatility_annualized": 0.2513,
   "ttm_pe": null,
   "roe_pct": null,
   "debt_to_equity": 0.0,
   "opm_pct": null,
-  "updated_at": "2026-11-03T17:31:44.717124+00:00"
+  "updated_at": "2026-11-22T11:49:04.049567+00:00",
+  "is_orphaned": 0
 }
 ```
 
@@ -97,26 +99,27 @@ All technical warm-up windows (including 200-day SMA and 60-day rolling beta) ar
   "symbol": "INFY",
   "trading_date": "2025-10-27",
   "ret_1d": -0.0137,
-  "ret_5d": 0.0204,
-  "ret_20d": 0.0047,
-  "vol_20d_annualized": 0.2483,
-  "sma_20": 1476.52,
-  "sma_50": 1483.08,
-  "sma_200": 1603.46,
-  "beta_60d_nifty": 0.9918,
-  "volume_ratio_20d": 1.0141,
-  "volume_zscore_50d": -0.19,
-  "volume_log_zscore_50d": 0.0125,
+  "ret_5d": 0.044,
+  "ret_20d": 0.0133,
+  "vol_20d_annualized": 0.2452,
+  "sma_20": 1477.02,
+  "sma_50": 1485.82,
+  "sma_200": 1600.67,
+  "beta_60d_nifty": 1.1724,
+  "volume_ratio_20d": 0.9323,
+  "volume_zscore_50d": -0.2253,
+  "volume_log_zscore_50d": -0.021,
   "is_volume_spike_ratio": 0,
   "is_volume_spike_zscore": 0,
   "distance_52w_high": -25.0168,
   "distance_52w_low": 15.1109,
-  "volatility_annualized": 0.2483,
-  "ttm_pe": 22.62,
+  "volatility_annualized": 0.2452,
+  "ttm_pe": null,
   "roe_pct": 30.84,
   "debt_to_equity": 0.0,
   "opm_pct": 21.15,
-  "updated_at": "2026-11-03T17:31:44.717124+00:00"
+  "updated_at": "2026-11-22T11:49:04.049567+00:00",
+  "is_orphaned": 0
 }
 ```
 
@@ -126,28 +129,29 @@ Full cross-sectional factor state as of the latest trading session in the histor
 ```json
 {
   "symbol": "INFY",
-  "trading_date": "2026-10-28",
-  "ret_1d": -0.0343,
-  "ret_5d": -0.0067,
-  "ret_20d": 0.1229,
-  "vol_20d_annualized": 0.3819,
-  "sma_20": 1071.39,
-  "sma_50": 1083.81,
-  "sma_200": 1222.12,
-  "beta_60d_nifty": 1.0733,
-  "volume_ratio_20d": 0.9984,
-  "volume_zscore_50d": 0.7178,
-  "volume_log_zscore_50d": 0.9418,
+  "trading_date": "2026-11-20",
+  "ret_1d": 0.0056,
+  "ret_5d": -0.0381,
+  "ret_20d": -0.0484,
+  "vol_20d_annualized": 0.2845,
+  "sma_20": 1145.85,
+  "sma_50": 1090.36,
+  "sma_200": 1177.54,
+  "beta_60d_nifty": 0.5991,
+  "volume_ratio_20d": 1.1314,
+  "volume_zscore_50d": 0.2307,
+  "volume_log_zscore_50d": 0.4374,
   "is_volume_spike_ratio": 0,
   "is_volume_spike_zscore": 0,
-  "distance_52w_high": -35.0029,
-  "distance_52w_low": 14.5604,
-  "volatility_annualized": 0.3819,
-  "ttm_pe": 16.21,
+  "distance_52w_high": -36.4583,
+  "distance_52w_low": 11.9951,
+  "volatility_annualized": 0.2845,
+  "ttm_pe": 64.17,
   "roe_pct": 32.24,
   "debt_to_equity": 0.0,
   "opm_pct": 21.03,
-  "updated_at": "2026-11-03T17:31:44.717124+00:00"
+  "updated_at": "2026-11-22T11:49:04.049567+00:00",
+  "is_orphaned": 0
 }
 ```
 
@@ -155,9 +159,35 @@ Full cross-sectional factor state as of the latest trading session in the histor
 
 ## 4. Watchlist Symbol Assessment: `SUZLON`
 
-> [!NOTE] Watchlist Status: `SUZLON`
-> `SUZLON` is **not** an active constituent of the authoritative 50-stock NIFTY 50 universe in `securities_master`, nor does it possess historical OHLCV or financial filings in the current local database.
-> As per directive instruction (*"displaying a sample factor row for INFY and SUZLON (if watchlist data is present)"*), its absence is formally recorded here. All 50 active universe constituents are 100% populated.
+Factor data for `SUZLON` found in database:
+```json
+{
+  "symbol": "SUZLON",
+  "trading_date": "2026-11-20",
+  "ret_1d": 0.0003,
+  "ret_5d": -0.0337,
+  "ret_20d": -0.0118,
+  "vol_20d_annualized": 0.4256,
+  "sma_20": 37.32,
+  "sma_50": 39.37,
+  "sma_200": 47.04,
+  "beta_60d_nifty": 1.2231,
+  "volume_ratio_20d": 0.5772,
+  "volume_zscore_50d": -0.5108,
+  "volume_log_zscore_50d": -0.5874,
+  "is_volume_spike_ratio": 0,
+  "is_volume_spike_zscore": 0,
+  "distance_52w_high": -38.8586,
+  "distance_52w_low": 11.4932,
+  "volatility_annualized": 0.4256,
+  "ttm_pe": 36.24,
+  "roe_pct": 22.44,
+  "debt_to_equity": 0.0322,
+  "opm_pct": 18.57,
+  "updated_at": "2026-11-22T12:01:01.419003+00:00",
+  "is_orphaned": 0
+}
+```
 
 ---
 
@@ -167,11 +197,11 @@ Cross-sectional snapshot across diverse sectors (IT, Energy, Banking, Consumer, 
 
 | Symbol | Close (₹) | SMA 20 | SMA 50 | SMA 200 | Ann. Vol | Beta (60d) | Vol Ratio (20d) | Vol Z-Score | TTM P/E | ROE % | D/E | OPM % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **BAJFINANCE** | ₹928.95 | 962.85 | 1,020.94 | 973.70 | 0.3323 | 1.4230 | 0.71 | -0.07 | 27.26 | 18.74% | 3.2301 | 31.95% |
-| **HDFCBANK** | ₹692.80 | 712.29 | 716.12 | 796.77 | 0.2400 | 0.9768 | 0.60 | -0.78 | 10.84 | 14.37% | 0.0000 | 42.06% |
-| **RELIANCE** | ₹1,190.00 | 1,192.59 | 1,250.00 | 1,339.25 | 0.2585 | 1.1717 | 1.00 | 0.49 | 16.82 | 10.64% | 0.3222 | 17.68% |
-| **TCS** | ₹2,530.00 | 2,223.27 | 2,248.22 | 2,450.62 | 0.3535 | 1.1190 | 1.21 | 0.99 | 17.75 | 50.57% | 0.0000 | 24.79% |
-| **TITAN** | ₹4,299.70 | 4,513.83 | 4,816.51 | 4,437.72 | 0.2230 | 0.8616 | 0.79 | -0.12 | 89.61 | 23.28% | 0.5027 | 9.54% |
+| **BAJFINANCE** | ₹928.95 | 962.85 | 1,020.94 | 973.56 | 0.3323 | 1.4230 | 0.71 | -0.07 | NULL | 18.74% | NULL | NULL |
+| **HDFCBANK** | ₹692.80 | 712.29 | 716.12 | 796.44 | 0.2400 | 0.9768 | 0.60 | -0.78 | NULL | 14.37% | NULL | NULL |
+| **RELIANCE** | ₹1,190.00 | 1,192.59 | 1,250.00 | 1,337.53 | 0.2585 | 1.1717 | 1.00 | 0.49 | NULL | 10.64% | 0.3200 | 17.68% |
+| **TCS** | ₹2,530.00 | 2,223.27 | 2,248.22 | 2,450.62 | 0.3535 | 1.1190 | 1.21 | 0.99 | NULL | 50.57% | 0.0000 | 24.79% |
+| **TITAN** | ₹4,299.70 | 4,513.83 | 4,816.51 | 4,438.58 | 0.2230 | 0.8616 | 0.79 | -0.12 | NULL | 23.28% | 0.5000 | 9.54% |
 
 ---
 

@@ -245,6 +245,16 @@ class FactorScreener:
             de_expr = "COALESCE(q.debt_to_equity, qf.qf_de" + (", ff.debt_to_equity" if has_ff else "") + (", fa.calc_de" if has_fa else "") + ", NULL) AS debt_to_equity"
             opm_expr = "COALESCE(q.opm_pct, qf.qf_opm" + (", ff.operating_margin_ttm" if has_ff else "") + (", fa.calc_opm" if has_fa else "") + ", NULL) AS opm_pct"
 
+            ldeliv_cte = """
+                ldeliv AS (
+                    SELECT symbol, delivery_qty AS l_deliv_qty, volume AS l_deliv_vol
+                    FROM ohlcv_daily
+                    WHERE delivery_qty > 0 AND volume > 0
+                    GROUP BY symbol
+                    HAVING trading_date = MAX(trading_date)
+                )
+            """
+
             select_cols = f"""
                 q.symbol,
                 q.trading_date,
@@ -269,7 +279,10 @@ class FactorScreener:
                 o.volume,
                 o.turnover,
                 o.delivery_qty,
-                ROUND(CAST(o.delivery_qty AS REAL) / NULLIF(o.volume, 0) * 100.0, 2) AS delivery_pct,
+                ROUND(COALESCE(
+                    CAST(NULLIF(o.delivery_qty, 0) AS REAL) / NULLIF(o.volume, 0) * 100.0,
+                    CAST(ldeliv.l_deliv_qty AS REAL) / NULLIF(ldeliv.l_deliv_vol, 0) * 100.0
+                ), 1) AS delivery_pct,
                 ROUND(COALESCE(o.turnover, o.close * o.volume) / 10000000.0, 2) AS turnover_cr,
                 q.distance_52w_high,
                 q.distance_52w_low,
@@ -292,10 +305,13 @@ class FactorScreener:
             df = pd.DataFrame()
             if effective_date:
                 exact_sql = f"""
+                WITH {ldeliv_cte}
                 SELECT {select_cols}
                 FROM quant_factors_daily q
                 JOIN ohlcv_daily o 
                   ON q.symbol = o.symbol AND q.trading_date = o.trading_date
+                LEFT JOIN ldeliv
+                  ON q.symbol = ldeliv.symbol
                 {fd_join}
                 {qf_join}
                 {fa_join}
@@ -335,13 +351,16 @@ class FactorScreener:
                     WHERE (? IS NULL OR trading_date <= ?)
                       AND COALESCE(is_orphaned, 0) = 0
                     GROUP BY symbol
-                )
+                ),
+                {ldeliv_cte}
                 SELECT {select_cols}
                 FROM max_dates m
                 JOIN quant_factors_daily q
                   ON q.symbol = m.symbol AND q.trading_date = m.max_date
                 JOIN ohlcv_daily o 
                   ON q.symbol = o.symbol AND q.trading_date = o.trading_date
+                LEFT JOIN ldeliv
+                  ON q.symbol = ldeliv.symbol
                 {fd_join}
                 {qf_join}
                 {fa_join}
@@ -368,7 +387,8 @@ class FactorScreener:
         numeric_cols = [
             "close", "sma_20", "sma_50", "sma_200", "ret_1d", "ret_5d", "ret_20d",
             "volatility_annualized", "volatility_20d", "rsi_14", "beta_60d_nifty", "volume_ratio_20d",
-            "volume_zscore_50d", "ttm_pe", "roe_pct", "debt_to_equity", "opm_pct"
+            "volume_zscore_50d", "ttm_pe", "roe_pct", "debt_to_equity", "opm_pct",
+            "delivery_pct", "turnover_cr", "volume", "delivery_qty"
         ]
         for col in numeric_cols:
             if col in df.columns:

@@ -176,6 +176,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Cloud database hydration error: {e}", exc_info=True)
 
+    # 1b. Self-healing supervisor state evaluation & champion binding
+    try:
+        from src.supervisor.state_machine import SupervisorStateMachine
+        from src.storage.database import DatabaseManager
+        sup_mgr = SupervisorStateMachine(DatabaseManager(DATABASE_PATH))
+        recovered_state = sup_mgr.evaluate_and_recover()
+        logger.info(f"Supervisor post-startup status: {recovered_state.get('status')} (Active: {recovered_state.get('active_model_id')})")
+    except Exception as sup_err:
+        logger.warning(f"Supervisor startup recovery error: {sup_err}")
+
     daemon_task = None
     embedded_task = None
 

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS ohlcv_daily (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_date ON ohlcv_daily(symbol, trading_date);
+CREATE INDEX IF NOT EXISTS idx_ohlcv_delivery ON ohlcv_daily(symbol, trading_date DESC) WHERE delivery_qty > 0 AND volume > 0;
 
 CREATE TABLE IF NOT EXISTS corporate_actions (
     id TEXT UNIQUE,

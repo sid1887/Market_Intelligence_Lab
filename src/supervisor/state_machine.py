@@ -39,6 +39,83 @@ class SupervisorStateMachine:
                     (datetime.now(timezone.utc).isoformat(),)
                 )
 
+    def evaluate_and_recover(self) -> Dict[str, Any]:
+        """
+        Self-healing recovery routine:
+        Evaluates system invariants and recovers state to NORMAL if data & models are valid.
+        1. Checks for unquarantined synthetic data in ohlcv_daily.
+        2. Locates an active CHAMPION or PROMOTED model in model_registry.
+        3. Updates active_model_id and recovers supervisor_state to NORMAL.
+        """
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE is_synthetic = 1 AND provenance_class != 'SYNTHETIC_TEST'")
+            unquarantined = cur.fetchone()[0]
+            if unquarantined > 0:
+                logger.warning(f"Recovery halted: {unquarantined} unquarantined synthetic records remain in DB.")
+                return self.get_current_state()
+
+            # Check if current active_model_id is already valid champion
+            cur.execute("SELECT active_model_id FROM supervisor_state WHERE singleton_id = 1")
+            row = cur.fetchone()
+            curr_active_id = row[0] if row else None
+
+            valid_active = False
+            if curr_active_id:
+                cur.execute("SELECT model_id, model_name, status FROM model_registry WHERE model_id = ? AND status IN ('CHAMPION', 'PROMOTED')", (curr_active_id,))
+                if cur.fetchone():
+                    valid_active = True
+
+            target_model_id = curr_active_id
+            if not valid_active:
+                cur.execute(
+                    """
+                    SELECT model_id, model_name, status
+                    FROM model_registry
+                    WHERE status IN ('CHAMPION', 'PROMOTED')
+                    ORDER BY CASE WHEN status = 'CHAMPION' THEN 1 ELSE 2 END, created_at DESC
+                    LIMIT 1
+                    """
+                )
+                champ = cur.fetchone()
+                if champ:
+                    target_model_id = champ[0]
+                else:
+                    target_model_id = None
+
+            if target_model_id:
+                conn.execute(
+                    """
+                    UPDATE supervisor_state
+                    SET current_state = 'NORMAL',
+                        active_model_id = ?,
+                        last_transition_at = ?,
+                        transition_reason = 'Autonomous recovery: System invariants healthy and champion model verified.',
+                        updated_at = ?
+                    WHERE singleton_id = 1
+                    """,
+                    (target_model_id, now_iso, now_iso)
+                )
+                conn.commit()
+                logger.info(f"Supervisor recovered to NORMAL with champion model: {target_model_id}")
+            else:
+                conn.execute(
+                    """
+                    UPDATE supervisor_state
+                    SET current_state = 'NO_ACTIVE_MODEL',
+                        active_model_id = NULL,
+                        last_transition_at = ?,
+                        transition_reason = 'No validated champion model found in registry.',
+                        updated_at = ?
+                    WHERE singleton_id = 1
+                    """,
+                    (now_iso, now_iso)
+                )
+                conn.commit()
+
+        return self.get_current_state()
+
     def get_current_state(self) -> Dict[str, Any]:
         """Dynamically evaluates supervisor state and model validity adhering to strict governance invariants."""
         with self.db.get_connection() as conn:

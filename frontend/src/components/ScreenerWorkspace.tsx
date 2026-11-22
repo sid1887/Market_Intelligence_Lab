@@ -75,14 +75,18 @@ export const SECTOR_FILTERS: string[] = [
 
 function matchSector(item: ScreenerCandidate, filter: string): boolean {
   if (filter === "All") return true;
-  const sec = (item.sector || "").toLowerCase();
+  const sec = (item.sector || "").trim().toLowerCase();
+  if (!sec || sec === "equities" || sec === "general" || sec === "unclassified") {
+    return false;
+  }
   const fLower = filter.toLowerCase();
   if (filter === "IT")
     return (
-      sec.includes("it") ||
+      sec === "it" ||
       sec.includes("tech") ||
       sec.includes("software") ||
-      sec.includes("information")
+      sec.includes("information technology") ||
+      /\bit\b/.test(sec)
     );
   if (filter === "Energy")
     return (
@@ -695,12 +699,12 @@ function ScreenerWorkspaceComponent({
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#070b14] text-slate-100 select-none min-h-0">
-      {/* Top Filter and Navigation Strip */}
-      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 bg-[#050811]">
-        {/* Left: View Mode Toggle & Search (Zone 1) */}
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+      {/* Top Filter and Navigation Strip (2-Row Responsive Layout) */}
+      <div className="shrink-0 border-b border-white/[0.06] px-3.5 py-2 flex flex-col gap-2 bg-[#050811]">
+        {/* Row 1: View Mode Switcher on Left, Columns/Session/Equities on Right */}
+        <div className="flex items-center justify-between gap-2 w-full">
           {onViewModeChange && (
-            <div className="flex items-center p-0.5 rounded-lg bg-[#050811] border border-white/[0.06] shrink-0">
+            <div className="flex items-center p-0.5 rounded-lg bg-[#070b14] border border-white/[0.06] shrink-0">
               <button
                 onClick={() => onViewModeChange("table")}
                 aria-label="Table view mode"
@@ -713,7 +717,7 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <TableIcon className="w-3 h-3" />
-                  <span className="hidden xl:inline">Screener</span>
+                  <span className="hidden sm:inline">Screener</span>
                 </span>
               </button>
 
@@ -729,7 +733,7 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <LayoutGrid className="w-3 h-3" />
-                  <span className="hidden xl:inline">Heatmap</span>
+                  <span className="hidden sm:inline">Heatmap</span>
                 </span>
               </button>
 
@@ -745,97 +749,97 @@ function ScreenerWorkspaceComponent({
               >
                 <span className="flex items-center gap-1.5">
                   <Grid3X3 className="w-3 h-3" />
-                  <span className="hidden xl:inline">Cards</span>
+                  <span className="hidden sm:inline">Cards</span>
                 </span>
               </button>
             </div>
           )}
 
-          {/* Quick Search Input */}
-          <div className="relative flex-1 min-w-[160px] max-w-sm">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter ticker, company name, sector..."
-              aria-label="Filter tickers, company names, or sectors"
-              className="w-full bg-[#050811] border border-white/[0.08] focus:border-cyan-500/60 rounded-md pl-8 pr-7 py-1 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none transition-all"
-            />
-            {search && (
+          {/* Right: Column Picker, As of Date & Candidate Count */}
+          <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 shrink-0">
+            <div className="relative">
               <button
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                onClick={() => setShowColumnPicker((v) => !v)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-mono border transition-colors",
+                  showColumnPicker
+                    ? "bg-cyan-950/80 text-cyan-300 border-cyan-500/40"
+                    : "bg-slate-900 border-white/[0.08] text-slate-400 hover:text-slate-200 hover:border-white/[0.15]"
+                )}
+                title="Customize Screener Table Columns"
               >
-                <X className="w-3 h-3" />
+                <SlidersHorizontal className="w-3 h-3 text-cyan-400" />
+                <span className="hidden sm:inline">Columns</span>
               </button>
+              {showColumnPicker && (
+                <div className="absolute right-0 mt-1.5 w-44 bg-[#0a0e17] border border-white/[0.12] rounded-xl shadow-2xl p-2 z-40 space-y-1">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider px-1 pb-1 border-b border-white/[0.06] flex justify-between items-center">
+                    <span>Columns</span>
+                    <button
+                      onClick={() => {
+                        setColumns(DEFAULT_COLUMNS);
+                        try {
+                          localStorage.setItem("mil:screener-columns", JSON.stringify(DEFAULT_COLUMNS));
+                        } catch {}
+                      }}
+                      className="text-cyan-400 hover:text-cyan-300 text-[10px]"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  {SCREENER_COLUMNS.map((col) => (
+                    <label
+                      key={col.id}
+                      className="flex items-center justify-between px-2 py-1 rounded text-xs font-mono text-slate-300 hover:bg-white/[0.04] cursor-pointer"
+                    >
+                      <span>{col.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(columns[col.id])}
+                        onChange={() => toggleColumn(col.id)}
+                        className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {asOfDate && (
+              <span className="hidden sm:inline px-2 py-1 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
+                <span className="text-slate-500">Session: </span>
+                <strong className="text-slate-200">{asOfDate}</strong>
+              </span>
             )}
+            <span className="px-2 py-1 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
+              <strong className="text-cyan-400">{filteredCandidates.length}</strong>
+              <span className="hidden sm:inline text-slate-500"> / {candidates.length}</span>
+              <span className="text-slate-400"> Equities</span>
+            </span>
           </div>
         </div>
 
-        {/* Right: Column Picker, As of Date & Candidate Count (Zone 2) */}
-        <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400 shrink-0">
-          <div className="relative">
+        {/* Row 2: Full-Width Search Input */}
+        <div className="relative w-full">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search ticker, company name, sector (e.g. RELIANCE, Tata, Pharma)..."
+            aria-label="Filter tickers, company names, or sectors"
+            className="w-full bg-[#070b14] border border-white/[0.08] focus:border-cyan-500/60 rounded-md pl-8 pr-7 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none transition-all"
+          />
+          {search && (
             <button
-              onClick={() => setShowColumnPicker((v) => !v)}
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-mono border transition-colors",
-                showColumnPicker
-                  ? "bg-cyan-950/80 text-cyan-300 border-cyan-500/40"
-                  : "bg-slate-900 border-white/[0.08] text-slate-400 hover:text-slate-200 hover:border-white/[0.15]"
-              )}
-              title="Customize Screener Table Columns"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
             >
-              <SlidersHorizontal className="w-3 h-3 text-cyan-400" />
-              <span className="hidden sm:inline">Columns</span>
+              <X className="w-3 h-3" />
             </button>
-            {showColumnPicker && (
-              <div className="absolute right-0 mt-1.5 w-44 bg-[#0a0e17] border border-white/[0.12] rounded-xl shadow-2xl p-2 z-40 space-y-1">
-                <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider px-1 pb-1 border-b border-white/[0.06] flex justify-between items-center">
-                  <span>Columns</span>
-                  <button
-                    onClick={() => {
-                      setColumns(DEFAULT_COLUMNS);
-                      try {
-                        localStorage.setItem("mil:screener-columns", JSON.stringify(DEFAULT_COLUMNS));
-                      } catch {}
-                    }}
-                    className="text-cyan-400 hover:text-cyan-300 text-[10px]"
-                  >
-                    Reset
-                  </button>
-                </div>
-                {SCREENER_COLUMNS.map((col) => (
-                  <label
-                    key={col.id}
-                    className="flex items-center justify-between px-2 py-1 rounded text-xs font-mono text-slate-300 hover:bg-white/[0.04] cursor-pointer"
-                  >
-                    <span>{col.label}</span>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(columns[col.id])}
-                      onChange={() => toggleColumn(col.id)}
-                      className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-                    />
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {asOfDate && (
-            <span className="hidden sm:inline px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
-              <span className="text-slate-500">Session: </span>
-              <strong className="text-slate-200">{asOfDate}</strong>
-            </span>
           )}
-          <span className="px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
-            <strong className="text-cyan-400">{filteredCandidates.length}</strong>
-            <span className="hidden sm:inline text-slate-500"> / {candidates.length}</span>
-            <span className="text-slate-400"> Equities</span>
-          </span>
         </div>
       </div>
 

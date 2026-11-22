@@ -299,6 +299,9 @@ class Bhavcopy10YHarvester:
                                 WHEN ohlcv_daily.provenance_class = 'EXCHANGE_OFFICIAL' THEN 'EXCHANGE_OFFICIAL' 
                                 ELSE excluded.provenance_class 
                             END,
+                            is_synthetic = excluded.is_synthetic,
+                            is_eligible_for_live_analytics = 1,
+                            is_eligible_for_backtest = 1,
                             is_eligible_for_training = 1,
                             retrieval_timestamp = excluded.retrieval_timestamp;
                     """, params)
