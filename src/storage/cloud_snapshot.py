@@ -28,6 +28,7 @@ EXPORTABLE_TABLES = [
     "fundamental_factors_daily",
     "financial_statements_annual",
     "financial_statements_quarterly",
+    "company_financial_statements",
     "corporate_disclosures",
     "corporate_actions",
     "portfolio_accounts",

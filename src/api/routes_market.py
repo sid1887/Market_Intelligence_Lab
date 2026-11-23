@@ -543,6 +543,36 @@ def get_stock_tearsheet(
             "operating_margin_pct": safe_float(d["operating_margin_pct"], 2)
         })
 
+    # Fetch Quarterly Financial Statements if available (revenue, EBITDA, net profit, EPS)
+    quarterly_statements = []
+    try:
+        cur.execute(
+            """
+            SELECT period_end_date, filing_date, is_audited, revenue, ebitda, net_profit, eps, total_debt, total_equity, cash_flow_from_ops
+            FROM financial_statements_quarterly
+            WHERE symbol = ?
+            ORDER BY period_end_date DESC
+            LIMIT 8
+            """,
+            (sym,)
+        )
+        q_rows = cur.fetchall()
+        for qr in q_rows:
+            quarterly_statements.append({
+                "period_end_date": qr["period_end_date"],
+                "filing_date": qr["filing_date"],
+                "is_audited": bool(qr["is_audited"]),
+                "revenue": safe_float(qr["revenue"], 2),
+                "ebitda": safe_float(qr["ebitda"], 2),
+                "net_profit": safe_float(qr["net_profit"], 2),
+                "eps": safe_float(qr["eps"], 2),
+                "total_debt": safe_float(qr["total_debt"], 2),
+                "total_equity": safe_float(qr["total_equity"], 2),
+                "cash_flow_from_ops": safe_float(qr["cash_flow_from_ops"], 2)
+            })
+    except Exception as e:
+        logger.debug(f"Quarterly statements fetch non-fatal: {e}")
+
     # Fetch Historical Daily Candlesticks (for lightweight-charts)
     if in_memory_candles:
         history = in_memory_candles
@@ -607,54 +637,80 @@ def get_stock_tearsheet(
 
     history = _sanitize_price_continuity(history)
 
-    # ── Robust Coalescing for Fundamental Ratios (ROE, D/E, TTM P/E, OPM) ──
+    # ── Robust Independent Coalescing for Fundamental Ratios (ROE, D/E, TTM P/E, OPM) ──
     roe_pct = safe_float(factors_row["roe_pct"], 2) if factors_row and factors_row["roe_pct"] is not None else None
     debt_to_equity = safe_float(factors_row["debt_to_equity"], 4) if factors_row and factors_row["debt_to_equity"] is not None else None
     ttm_pe = safe_float(factors_row["ttm_pe"], 2) if factors_row and factors_row["ttm_pe"] is not None else None
     opm_pct = safe_float(factors_row["opm_pct"], 2) if factors_row and factors_row["opm_pct"] is not None else None
 
-    # If any fundamental metric is missing from the newest row, coalesce latest non-null values
-    if None in (roe_pct, debt_to_equity, ttm_pe, opm_pct):
+    # Coalesce any missing metric independently from historical quant_factors_daily and fundamental_factors_daily
+    if ttm_pe is None or ttm_pe <= 0:
         cur.execute(
-            """
-            SELECT roe_pct, debt_to_equity, ttm_pe, opm_pct
-            FROM quant_factors_daily
-            WHERE symbol = ? AND (roe_pct IS NOT NULL OR debt_to_equity IS NOT NULL OR ttm_pe IS NOT NULL OR opm_pct IS NOT NULL)
-            ORDER BY trading_date DESC LIMIT 1
-            """,
+            "SELECT ttm_pe FROM quant_factors_daily WHERE symbol = ? AND ttm_pe IS NOT NULL AND ttm_pe > 0 ORDER BY trading_date DESC LIMIT 1",
             (sym,)
         )
-        qf_fund = cur.fetchone()
-        if qf_fund:
-            if roe_pct is None and qf_fund["roe_pct"] is not None:
-                roe_pct = safe_float(qf_fund["roe_pct"], 2)
-            if debt_to_equity is None and qf_fund["debt_to_equity"] is not None:
-                debt_to_equity = safe_float(qf_fund["debt_to_equity"], 4)
-            if ttm_pe is None and qf_fund["ttm_pe"] is not None:
-                ttm_pe = safe_float(qf_fund["ttm_pe"], 2)
-            if opm_pct is None and qf_fund["opm_pct"] is not None:
-                opm_pct = safe_float(qf_fund["opm_pct"], 2)
-
-        if None in (roe_pct, debt_to_equity, ttm_pe, opm_pct):
+        r = cur.fetchone()
+        if r and r[0] is not None:
+            ttm_pe = safe_float(r[0], 2)
+        else:
             cur.execute(
-                """
-                SELECT roe_pct, debt_to_equity, pe_ratio as ttm_pe, operating_margin_ttm as opm_pct
-                FROM fundamental_factors_daily
-                WHERE symbol = ? AND (roe_pct IS NOT NULL OR debt_to_equity IS NOT NULL OR pe_ratio IS NOT NULL OR operating_margin_ttm IS NOT NULL)
-                ORDER BY trading_date DESC LIMIT 1
-                """,
+                "SELECT pe_ratio FROM fundamental_factors_daily WHERE symbol = ? AND pe_ratio IS NOT NULL AND pe_ratio > 0 ORDER BY trading_date DESC LIMIT 1",
                 (sym,)
             )
-            ff_fund = cur.fetchone()
-            if ff_fund:
-                if roe_pct is None and ff_fund["roe_pct"] is not None:
-                    roe_pct = safe_float(ff_fund["roe_pct"], 2)
-                if debt_to_equity is None and ff_fund["debt_to_equity"] is not None:
-                    debt_to_equity = safe_float(ff_fund["debt_to_equity"], 4)
-                if ttm_pe is None and ff_fund["ttm_pe"] is not None:
-                    ttm_pe = safe_float(ff_fund["ttm_pe"], 2)
-                if opm_pct is None and ff_fund["opm_pct"] is not None:
-                    opm_pct = safe_float(ff_fund["opm_pct"], 2)
+            r2 = cur.fetchone()
+            if r2 and r2[0] is not None:
+                ttm_pe = safe_float(r2[0], 2)
+
+    if roe_pct is None:
+        cur.execute(
+            "SELECT roe_pct FROM quant_factors_daily WHERE symbol = ? AND roe_pct IS NOT NULL ORDER BY trading_date DESC LIMIT 1",
+            (sym,)
+        )
+        r = cur.fetchone()
+        if r and r[0] is not None:
+            roe_pct = safe_float(r[0], 2)
+        else:
+            cur.execute(
+                "SELECT roe_pct FROM fundamental_factors_daily WHERE symbol = ? AND roe_pct IS NOT NULL ORDER BY trading_date DESC LIMIT 1",
+                (sym,)
+            )
+            r2 = cur.fetchone()
+            if r2 and r2[0] is not None:
+                roe_pct = safe_float(r2[0], 2)
+
+    if debt_to_equity is None:
+        cur.execute(
+            "SELECT debt_to_equity FROM quant_factors_daily WHERE symbol = ? AND debt_to_equity IS NOT NULL ORDER BY trading_date DESC LIMIT 1",
+            (sym,)
+        )
+        r = cur.fetchone()
+        if r and r[0] is not None:
+            debt_to_equity = safe_float(r[0], 4)
+        else:
+            cur.execute(
+                "SELECT debt_to_equity FROM fundamental_factors_daily WHERE symbol = ? AND debt_to_equity IS NOT NULL ORDER BY trading_date DESC LIMIT 1",
+                (sym,)
+            )
+            r2 = cur.fetchone()
+            if r2 and r2[0] is not None:
+                debt_to_equity = safe_float(r2[0], 4)
+
+    if opm_pct is None:
+        cur.execute(
+            "SELECT opm_pct FROM quant_factors_daily WHERE symbol = ? AND opm_pct IS NOT NULL ORDER BY trading_date DESC LIMIT 1",
+            (sym,)
+        )
+        r = cur.fetchone()
+        if r and r[0] is not None:
+            opm_pct = safe_float(r[0], 2)
+        else:
+            cur.execute(
+                "SELECT operating_margin_ttm FROM fundamental_factors_daily WHERE symbol = ? AND operating_margin_ttm IS NOT NULL ORDER BY trading_date DESC LIMIT 1",
+                (sym,)
+            )
+            r2 = cur.fetchone()
+            if r2 and r2[0] is not None:
+                opm_pct = safe_float(r2[0], 2)
 
     # ── Robust Coalescing for Technical Volatility & Beta ──
     volatility_annualized = safe_float(factors_row["volatility_annualized"], 4) if factors_row and factors_row["volatility_annualized"] is not None else None
@@ -874,10 +930,49 @@ def get_stock_tearsheet(
         "ml_forecast": ml_forecast,
         "catalyst": catalyst,
         "recent_disclosures": disclosures,
+        "quarterly_statements": quarterly_statements,
         "history": history
     }
 
     return sanitize_for_json(payload)
+
+
+@router.get("/stocks/{symbol}/quarterly")
+@router.get("/api/v1/stocks/{symbol}/quarterly")
+def get_stock_quarterly_statements(
+    symbol: str,
+    limit: int = 12,
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """Returns historical quarterly financial statement records (revenue, EBITDA, net profit, EPS) for an equity."""
+    sym = symbol.upper().strip()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT period_end_date, filing_date, is_audited, revenue, ebitda, net_profit, eps, total_debt, total_equity, cash_flow_from_ops
+        FROM financial_statements_quarterly
+        WHERE symbol = ?
+        ORDER BY period_end_date DESC
+        LIMIT ?
+        """,
+        (sym, max(1, limit))
+    )
+    rows = cur.fetchall()
+    return sanitize_for_json([
+        {
+            "period_end_date": r["period_end_date"],
+            "filing_date": r["filing_date"],
+            "is_audited": bool(r["is_audited"]),
+            "revenue": safe_float(r["revenue"], 2),
+            "ebitda": safe_float(r["ebitda"], 2),
+            "net_profit": safe_float(r["net_profit"], 2),
+            "eps": safe_float(r["eps"], 2),
+            "total_debt": safe_float(r["total_debt"], 2),
+            "total_equity": safe_float(r["total_equity"], 2),
+            "cash_flow_from_ops": safe_float(r["cash_flow_from_ops"], 2)
+        }
+        for r in rows
+    ])
 
 
 @router.get("/stocks/{symbol}/history")

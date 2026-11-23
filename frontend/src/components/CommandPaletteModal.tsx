@@ -64,12 +64,34 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
 
   const handleSelect = (symbol: string) => {
     try {
-      const updated = [symbol, ...recentSearches.filter((s) => s !== symbol)].slice(0, 5);
+      const cleanSym = symbol.trim().toUpperCase().replace(/[^A-Z0-9_\-&]/g, "");
+      if (!cleanSym) return;
+      const updated = [cleanSym, ...recentSearches.filter((s) => s !== cleanSym)].slice(0, 5);
       setRecentSearches(updated);
       localStorage.setItem("mil:recent-searches", JSON.stringify(updated));
     } catch {}
-    onSelect(symbol);
+    onSelect(symbol.trim().toUpperCase());
     onClose();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setCursorIndex((prev) => (filtered.length > 0 ? (prev + 1) % filtered.length : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setCursorIndex((prev) => (filtered.length > 0 ? (prev - 1 + filtered.length) % filtered.length : 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (filtered.length > 0 && filtered[cursorIndex]) {
+        handleSelect(filtered[cursorIndex].symbol);
+      } else if (query.trim().length >= 2) {
+        handleSelect(query.trim().toUpperCase());
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    }
   };
 
   return (
@@ -99,6 +121,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Search ticker, company, or sector (e.g. INFY, Pharma)..."
               className="flex-1 bg-transparent text-sm font-mono text-slate-100 placeholder-slate-500 outline-none"
             />
@@ -159,8 +182,19 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
           {/* Results List */}
           <div ref={listRef} className="max-h-[380px] overflow-y-auto py-1.5 scrollbar-thin scrollbar-thumb-slate-800">
             {filtered.length === 0 && (
-              <div className="px-4 py-8 text-center text-xs font-mono text-slate-500">
-                No matching equities found for &ldquo;{query}&rdquo;
+              <div className="px-4 py-8 text-center text-xs font-mono space-y-3">
+                <p className="text-slate-500">
+                  No screener matches for &ldquo;{query}&rdquo;
+                </p>
+                {query.trim().length >= 2 && (
+                  <button
+                    onClick={() => handleSelect(query.trim().toUpperCase())}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-xs font-mono hover:bg-cyan-500/20 transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+                  >
+                    <span>Inspect &ldquo;{query.trim().toUpperCase()}&rdquo; on NSE Cash Segment</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-cyan-400" />
+                  </button>
+                )}
               </div>
             )}
             {filtered.map((item, idx) => {

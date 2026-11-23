@@ -49,6 +49,8 @@ def get_backtest_presets():
         tester = PortfolioBacktester(db)
         bounds = tester.get_available_date_bounds()
 
+        default_start = "2024-11-01" if bounds.get("start_date") and bounds["start_date"] < "2024-11-01" else bounds["start_date"]
+
         return sanitize_for_json({
             "strategy_modes": [
                 {
@@ -78,7 +80,7 @@ def get_backtest_presets():
                 "top_n": 15,
                 "rebalance_every_n_days": 20,
                 "strategy_mode": "BLENDED_20D_60D",
-                "start_date": bounds["start_date"],
+                "start_date": default_start,
                 "end_date": bounds["end_date"]
             },
             "date_bounds": bounds

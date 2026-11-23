@@ -20,6 +20,7 @@ const StockChart = dynamic(withRetry(() => import("@/components/StockChart")), {
 
 import InvestmentMemoCard, { InvestmentMemo } from "@/components/InvestmentMemoCard";
 import UnifiedIntelligenceHub, { Disclosure } from "@/components/UnifiedIntelligenceHub";
+import QuarterlyFinancialsCard, { QuarterlyStatement } from "@/components/QuarterlyFinancialsCard";
 import { NewsArticle } from "@/components/NewsImpactCard";
 import { FactorPentagonRadar } from "@/components/FactorPentagonRadar";
 import { RiskRewardVectorBar } from "@/components/RiskRewardVectorBar";
@@ -44,6 +45,7 @@ const TEARSHEET_SECTIONS = [
   { id: "tearsheet-attribution", label: "Quant Attribution & Radar" },
   { id: "tearsheet-thesis", label: "Investment Memo" },
   { id: "tearsheet-health", label: "Fundamentals & Risk" },
+  { id: "tearsheet-financials", label: "Quarterly Financials" },
   { id: "tearsheet-wire", label: "Live Intelligence & Filings" },
 ];
 
@@ -130,6 +132,7 @@ interface TearsheetData {
   } | null;
   catalyst?: unknown;
   recent_disclosures: Disclosure[];
+  quarterly_statements?: QuarterlyStatement[];
   history: CandleData[];
 }
 
@@ -1106,7 +1109,7 @@ export default function StockTearsheetPage() {
           <InvestmentMemoCard symbol={data.symbol} initialMemo={memo} />
         </section>
 
-        {/* Core 4-Card Bento Grid: Fundamentals & Technicals (with strict null checking) */}
+        {/* Core 5-Card Bento Grid: Fundamentals & Technicals (with strict null checking) */}
         <section id="tearsheet-health" className="space-y-4 scroll-mt-28">
           <div className="flex items-center space-x-2">
             <Activity className="w-4 h-4 text-cyan-400" />
@@ -1115,7 +1118,7 @@ export default function StockTearsheetPage() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Card 1: Debt-to-Equity (D/E) */}
             <BentoCard
               title="DEBT-TO-EQUITY (D/E)"
@@ -1170,7 +1173,34 @@ export default function StockTearsheetPage() {
               }
             />
 
-            {/* Card 3: 60-Day Rolling Beta vs Nifty 50 */}
+            {/* Card 3: TTM P/E Ratio (Coalesced) */}
+            <BentoCard
+              title="TTM P/E RATIO"
+              value={
+                data.fundamentals.ttm_pe !== null
+                  ? `${data.fundamentals.ttm_pe.toFixed(1)}x`
+                  : "Awaiting Earnings"
+              }
+              subLabel={
+                data.fundamentals.ttm_pe === null
+                  ? "Awaiting TTM Earnings"
+                  : data.fundamentals.ttm_pe < 25.0
+                  ? "< 25x Reasonable Multiple"
+                  : "Growth / Premium Valuation"
+              }
+              isPositive={
+                data.fundamentals.ttm_pe === null
+                  ? undefined
+                  : data.fundamentals.ttm_pe < 25.0
+              }
+              badge={
+                data.fundamentals.ttm_pe !== null && data.fundamentals.ttm_pe < 15
+                  ? "VALUE MULTIPLE"
+                  : undefined
+              }
+            />
+
+            {/* Card 4: 60-Day Rolling Beta vs Nifty 50 */}
             <BentoCard
               title="60D ROLLING BETA"
               value={
@@ -1188,7 +1218,7 @@ export default function StockTearsheetPage() {
               isPositive={undefined}
             />
 
-            {/* Card 4: Distance from 200-day SMA */}
+            {/* Card 5: Distance from 200-day SMA */}
             <BentoCard
               title="DISTANCE FROM 200 SMA"
               value={
@@ -1284,9 +1314,11 @@ export default function StockTearsheetPage() {
             </div>
 
             <div className="bg-[#050810]/70 p-3 rounded-xl border border-white/[0.06]">
-              <span className="text-slate-400 block text-[11px]">TTM P/E Ratio</span>
+              <span className="text-slate-400 block text-[11px]">Volume Z-Score</span>
               <span className="text-slate-100 font-semibold font-mono mt-0.5 block tabular-nums">
-                {data.fundamentals.ttm_pe !== null ? `${data.fundamentals.ttm_pe.toFixed(1)}x` : "—"}
+                {data.technicals.volume_zscore_50d !== null && data.technicals.volume_zscore_50d !== undefined
+                  ? `${data.technicals.volume_zscore_50d >= 0 ? "+" : ""}${data.technicals.volume_zscore_50d.toFixed(2)}σ`
+                  : "0.00σ"}
               </span>
             </div>
 
@@ -1306,6 +1338,14 @@ export default function StockTearsheetPage() {
               </span>
             </div>
           </div>
+        </section>
+
+        {/* Quarterly Financials & Performance Trajectory */}
+        <section id="tearsheet-financials" className="scroll-mt-28">
+          <QuarterlyFinancialsCard
+            symbol={data.symbol}
+            statements={data.quarterly_statements}
+          />
         </section>
 
         {/* Unified Live Intelligence & Corporate Filings Hub */}
