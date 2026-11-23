@@ -884,7 +884,7 @@ def get_stock_tearsheet(
 @router.get("/api/v1/stocks/{symbol}/history")
 def get_stock_history(
     symbol: str,
-    limit: int = 5000,
+    limit: int = 10000,
     conn: sqlite3.Connection = Depends(get_db_connection)
 ):
     """

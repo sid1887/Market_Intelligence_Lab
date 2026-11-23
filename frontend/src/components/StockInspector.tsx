@@ -459,8 +459,8 @@ function StockInspectorComponent({
                     Historical Price & 20D Forecast Cone
                   </span>
                 </div>
-                <span className="text-[10px] font-mono text-slate-400 tabular-nums">
-                  {candles.length} Candles Loaded
+                <span className="text-[10px] font-mono text-cyan-400 tabular-nums">
+                  {candles.length.toLocaleString()} Bars ({(candles.length / 252).toFixed(1)}Y)
                 </span>
               </div>
               <StockChart

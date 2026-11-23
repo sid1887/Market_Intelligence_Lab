@@ -12,8 +12,7 @@ import {
   CrosshairMode,
   IChartApi,
   ISeriesApi,
-  IPriceLine,
-  Time
+  IPriceLine
 } from "lightweight-charts";
 
 export interface CandleData {
@@ -199,26 +198,19 @@ export default function StockChart({
     });
     volumeSeriesRef.current = volumeSeries;
 
-    // Sort historical data chronologically
-    const sortedData = [...data].sort((a, b) => (a.time > b.time ? 1 : -1));
-
-    // Timeframe filtering
-    let filteredData = sortedData;
-    if (activeRange === "3M") {
-      filteredData = sortedData.slice(-63);
-    } else if (activeRange === "6M") {
-      filteredData = sortedData.slice(-126);
-    } else if (activeRange === "1Y") {
-      filteredData = sortedData.slice(-252);
-    } else if (activeRange === "3Y") {
-      filteredData = sortedData.slice(-756);
-    } else if (activeRange === "5Y") {
-      filteredData = sortedData.slice(-1260);
-    } else if (activeRange === "MAX") {
-      filteredData = sortedData;
+    // Deduplicate and sort historical data chronologically
+    const seenTimes = new Set<string>();
+    const sortedData: CandleData[] = [];
+    for (const item of [...data].sort((a, b) => (a.time > b.time ? 1 : -1))) {
+      if (item && item.time && !seenTimes.has(item.time)) {
+        seenTimes.add(item.time);
+        sortedData.push(item);
+      }
     }
+    if (sortedData.length === 0) return;
 
-    const candlePayload = filteredData.map(d => ({
+    // Load ALL historical candlesticks into series to enable full 10Y+ zooming, panning & MAX range view
+    const candlePayload = sortedData.map(d => ({
       time: d.time,
       open: d.open,
       high: d.high,
@@ -226,7 +218,7 @@ export default function StockChart({
       close: d.close
     }));
 
-    const volumePayload = filteredData.map(d => ({
+    const volumePayload = sortedData.map(d => ({
       time: d.time,
       value: d.volume,
       color: d.close >= d.open ? "rgba(16, 185, 129, 0.35)" : "rgba(239, 68, 68, 0.35)"
@@ -235,35 +227,27 @@ export default function StockChart({
     candlestickSeries.setData(candlePayload);
     volumeSeries.setData(volumePayload);
 
-    // Initial visible range configuration with progressive reveal animation
-    let animRafId: number | null = null;
+    // Initial visible range configuration based on activeRange
+    const totalBars = sortedData.length;
+    const rightPadding = showForecast && forecast?.projections?.length ? 22 : 4;
+
     if (activeRange === "MAX") {
       chart.timeScale().fitContent();
-    } else if (filteredData.length > 0) {
-      const totalBars = filteredData.length;
-      const startBars = Math.min(60, totalBars);
+    } else if (totalBars > 0) {
+      let count = 252;
+      if (activeRange === "3M") count = 63;
+      else if (activeRange === "6M") count = 126;
+      else if (activeRange === "1Y") count = 252;
+      else if (activeRange === "3Y") count = 756;
+      else if (activeRange === "5Y") count = 1260;
+
+      const fromIndex = Math.max(0, totalBars - count);
       try {
-        chart.timeScale().setVisibleLogicalRange({ from: totalBars - startBars, to: totalBars });
+        chart.timeScale().setVisibleLogicalRange({
+          from: fromIndex,
+          to: totalBars + rightPadding,
+        });
       } catch {}
-
-      const startTime = performance.now();
-      const duration = 650;
-
-      const animateRange = (now: number) => {
-        const progress = Math.min((now - startTime) / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        const fromIndex = Math.floor((totalBars - startBars) * (1 - eased));
-        try {
-          chart.timeScale().setVisibleLogicalRange({
-            from: fromIndex,
-            to: totalBars + 5,
-          });
-        } catch {}
-        if (progress < 1) {
-          animRafId = requestAnimationFrame(animateRange);
-        }
-      };
-      animRafId = requestAnimationFrame(animateRange);
     }
 
     const isNarrowViewport = container.clientWidth < 640;
@@ -348,9 +332,15 @@ export default function StockChart({
       ]);
     }
 
+    // Fast O(1) lookup map for crosshair hover across all historical dates
+    const historyMap = new Map<string, CandleData>();
+    for (const d of sortedData) {
+      historyMap.set(d.time, d);
+    }
+
     // Default hover data: latest historical session
-    if (filteredData.length > 0) {
-      setHoverData(filteredData[filteredData.length - 1]);
+    if (sortedData.length > 0) {
+      setHoverData(sortedData[sortedData.length - 1]);
       setHoverProjection(null);
     }
 
@@ -364,12 +354,12 @@ export default function StockChart({
         param.point.y < 0 ||
         param.point.y > container.clientHeight
       ) {
-        if (filteredData.length > 0) {
-          setHoverData(filteredData[filteredData.length - 1]);
+        if (sortedData.length > 0) {
+          setHoverData(sortedData[sortedData.length - 1]);
           setHoverProjection(null);
         }
       } else {
-        const histItem = filteredData.find(d => d.time === param.time);
+        const histItem = historyMap.get(param.time as string);
         if (histItem) {
           setHoverData(histItem);
           setHoverProjection(null);
@@ -381,8 +371,6 @@ export default function StockChart({
         }
       }
     });
-
-    chart.timeScale().fitContent();
 
     // Container ResizeObserver with requestAnimationFrame debouncing
     let rafId: number | null = null;
@@ -406,9 +394,6 @@ export default function StockChart({
     resizeObserver.observe(container);
 
     return () => {
-      if (animRafId !== null) {
-        cancelAnimationFrame(animRafId);
-      }
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
@@ -426,23 +411,29 @@ export default function StockChart({
   useEffect(() => {
     if (!chartRef.current || !data || data.length === 0) return;
     const sortedData = [...data].sort((a, b) => (a.time > b.time ? 1 : -1));
-    let slice = sortedData;
-    if (activeRange === "3M") slice = sortedData.slice(-63);
-    else if (activeRange === "6M") slice = sortedData.slice(-126);
-    else if (activeRange === "1Y") slice = sortedData.slice(-252);
-    else if (activeRange === "3Y") slice = sortedData.slice(-756);
-    else if (activeRange === "5Y") slice = sortedData.slice(-1260);
-    else if (activeRange === "MAX") slice = sortedData;
+    const totalBars = sortedData.length;
+    if (totalBars === 0) return;
 
     if (activeRange === "MAX") {
       chartRef.current.timeScale().fitContent();
-    } else if (slice.length > 0) {
-      chartRef.current.timeScale().setVisibleRange({
-        from: slice[0].time as unknown as Time,
-        to: slice[slice.length - 1].time as unknown as Time,
-      });
+    } else {
+      let count = 252;
+      if (activeRange === "3M") count = 63;
+      else if (activeRange === "6M") count = 126;
+      else if (activeRange === "1Y") count = 252;
+      else if (activeRange === "3Y") count = 756;
+      else if (activeRange === "5Y") count = 1260;
+
+      const fromIndex = Math.max(0, totalBars - count);
+      const rightPadding = showForecast && forecast?.projections?.length ? 22 : 4;
+      try {
+        chartRef.current.timeScale().setVisibleLogicalRange({
+          from: fromIndex,
+          to: totalBars + rightPadding,
+        });
+      } catch {}
     }
-  }, [activeRange, data]);
+  }, [activeRange, data, showForecast, forecast]);
 
   // Synchronize ATH/ATL Markers (L7) & Custom Drawn Price Levels (L6)
   useEffect(() => {
@@ -534,11 +525,16 @@ export default function StockChart({
         {/* Left: Telemetry Readout */}
         <div>
           {!compact && (
-            <div className="flex items-center space-x-3 mb-1">
+            <div className="flex items-center space-x-2.5 mb-1">
               <h2 className="text-base font-bold text-slate-100 font-mono tracking-tight">{symbol} Price Action</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono">
                 NSE Cash (EQ)
               </span>
+              {data && data.length > 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-800/40 text-cyan-300 font-mono">
+                  {data.length.toLocaleString()} Bars ({(data.length / 252).toFixed(1)}Y)
+                </span>
+              )}
             </div>
           )}
 
