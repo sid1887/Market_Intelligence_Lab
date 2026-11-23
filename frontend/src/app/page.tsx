@@ -12,7 +12,6 @@ import {
   LayoutDashboard,
   Briefcase,
   LineChart,
-  FileSpreadsheet,
   X,
 } from "lucide-react";
 import NotificationCenterPopover from "@/components/NotificationCenterPopover";
@@ -337,23 +336,11 @@ export default function CockpitPage() {
             </Link>
 
             <Link
-              href="/portfolio?tab=real_tradebook"
-              className="relative px-3 py-1.5 text-xs font-mono font-medium rounded-lg transition-colors flex items-center gap-1.5 text-slate-400 hover:text-slate-200 group"
-              title="Encrypted Angel One Real Tradebook & Master Excel"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 relative z-10 text-emerald-400 group-hover:scale-110 transition-transform" />
-              <span className="relative z-10 hidden sm:inline">Real Tradebook</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-mono hidden xl:inline">
-                Excel
-              </span>
-            </Link>
-
-            <Link
               href="/portfolio"
               className="relative px-3 py-1.5 text-xs font-mono font-medium rounded-lg transition-colors flex items-center gap-1.5 text-slate-400 hover:text-slate-200"
             >
               <Briefcase className="w-3.5 h-3.5 relative z-10" />
-              <span className="relative z-10 hidden sm:inline">Portfolios</span>
+              <span className="relative z-10 hidden sm:inline">Portfolio</span>
             </Link>
 
             <Link
@@ -551,7 +538,7 @@ export default function CockpitPage() {
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609]/95 backdrop-blur-lg border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <Link
           href="/"
-          className="relative flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-mono text-cyan-300 font-bold"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-cyan-300 font-bold"
         >
           <motion.div
             layoutId="mobile-nav-indicator"
@@ -562,29 +549,22 @@ export default function CockpitPage() {
           <span className="relative z-10">Screener</span>
         </Link>
         <Link
-          href="/portfolio?tab=real_tradebook"
-          className="relative flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-mono text-slate-400 hover:text-emerald-300"
-        >
-          <FileSpreadsheet className="w-4 h-4 mb-0.5 text-emerald-400" />
-          <span>Tradebook</span>
-        </Link>
-        <Link
           href="/portfolio"
-          className="relative flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
         >
           <Briefcase className="w-4 h-4 mb-0.5 text-slate-400" />
-          <span>Portfolios</span>
+          <span>Portfolio</span>
         </Link>
         <Link
           href="/backtest"
-          className="relative flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
         >
           <LineChart className="w-4 h-4 mb-0.5 text-slate-400" />
           <span>Backtest</span>
         </Link>
         <button
           onClick={() => milEvents.emit("mil:open-copilot", { symbol: selectedSymbol || "RELIANCE" })}
-          className="relative flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-mono text-slate-400 hover:text-cyan-300"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-cyan-300"
         >
           <BrainCircuit className="w-4 h-4 mb-0.5 text-cyan-400" />
           <span>Copilot</span>

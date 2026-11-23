@@ -657,12 +657,14 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
             SELECT symbol, open, high, low, close, volume, trading_date,
                    ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) as rn
             FROM ohlcv_daily
+            WHERE symbol IN (SELECT symbol FROM user_watchlists)
         ) o ON w.symbol = o.symbol AND o.rn = 1
         LEFT JOIN (
             SELECT symbol, ret_1d, ret_5d, ret_20d, sma_20, sma_50, sma_200,
                    volatility_annualized, beta_60d_nifty, ttm_pe, roe_pct, debt_to_equity, opm_pct,
                    ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) as rn
             FROM quant_factors_daily
+            WHERE symbol IN (SELECT symbol FROM user_watchlists)
         ) q ON w.symbol = q.symbol AND q.rn = 1
         ORDER BY w.symbol ASC;
         """

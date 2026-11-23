@@ -24,9 +24,13 @@ async function proxyRequest(request: NextRequest, { params }: { params: { path?:
     };
 
     // Inject server-side secret API key (kept strictly out of the public client browser bundle)
-    const serverApiKey = process.env.MIL_API_KEY || process.env.MIL_INTERNAL_SYNC_SECRET;
+    const serverApiKey =
+      process.env.MIL_API_KEY ||
+      process.env.MIL_INTERNAL_SYNC_SECRET ||
+      process.env.INTERNAL_SYNC_TOKEN;
     if (serverApiKey) {
       headers["X-API-Key"] = serverApiKey;
+      headers["X-Internal-Token"] = serverApiKey;
     } else {
       // Forward client header if present
       const clientKey = request.headers.get("x-api-key");

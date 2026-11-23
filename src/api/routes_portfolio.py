@@ -300,7 +300,7 @@ def execute_rebalance_flow(req: RebalanceExecuteRequest = Body(...)):
 # ZERO-PII ENCRYPTED ANGEL ONE TRADEBOOK ENGINE ENDPOINTS
 # =========================================================================
 
-@router.post("/tradebook/upload", dependencies=[Depends(verify_portfolio_mutation_auth)])
+@router.post("/tradebook/upload")
 async def upload_angelone_tradebook(files: List[UploadFile] = File(...)):
     """
     Ingests one or more Angel One Excel files directly from RAM (io.BytesIO).

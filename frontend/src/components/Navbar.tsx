@@ -11,7 +11,6 @@ import {
   LineChart,
   Briefcase,
   BrainCircuit,
-  FileSpreadsheet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { milEvents } from "@/lib/store";
@@ -20,17 +19,9 @@ import PushNotificationModal from "./PushNotificationModal";
 import NotificationCenterPopover from "./NotificationCenterPopover";
 import { checkPushSubscription, autoSyncPushSubscription } from "@/lib/pushNotifications";
 
-interface NavLinkItem {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
-}
-
-const NAV_LINKS: NavLinkItem[] = [
+const NAV_LINKS = [
   { href: "/", label: "Screener", icon: LayoutDashboard },
-  { href: "/portfolio?tab=real_tradebook", label: "Tradebook", icon: FileSpreadsheet, badge: "Excel" },
-  { href: "/portfolio", label: "Portfolios", icon: Briefcase },
+  { href: "/portfolio", label: "Portfolio", icon: Briefcase },
   { href: "/backtest", label: "Backtest", icon: LineChart },
 ];
 
@@ -38,30 +29,8 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentSearch, setCurrentSearch] = useState("");
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [isPushSubscribed, setIsPushSubscribed] = useState(false);
-
-  React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      setCurrentSearch(window.location.search);
-      const onPop = () => setCurrentSearch(window.location.search);
-      window.addEventListener("popstate", onPop);
-      return () => window.removeEventListener("popstate", onPop);
-    }
-  }, [pathname]);
-
-  const checkIsActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    if (href === "/backtest") return pathname.startsWith("/backtest");
-    if (href.includes("tab=real_tradebook")) {
-      return pathname === "/portfolio" && (currentSearch.includes("tab=real_tradebook") || !currentSearch.includes("tab="));
-    }
-    if (href === "/portfolio") {
-      return pathname === "/portfolio" && currentSearch.includes("tab=") && !currentSearch.includes("tab=real_tradebook");
-    }
-    return pathname === href;
-  };
 
   React.useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
@@ -129,8 +98,8 @@ export default function Navbar() {
 
         {/* Navigation Tabs with Framer Motion Spring Layout Indicator (Desktop) */}
         <nav className="hidden md:flex items-center space-x-1 sm:space-x-1.5 bg-[#080c14] border border-white/[0.06] p-1 rounded-xl">
-          {NAV_LINKS.map(({ href, label, icon: Icon, badge }) => {
-            const isActive = checkIsActive(href);
+          {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+            const isActive = pathname === href;
             return (
               <Link
                 key={href}
@@ -147,13 +116,8 @@ export default function Navbar() {
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <Icon className={cn("w-3.5 h-3.5 relative z-10", badge && !isActive ? "text-emerald-400" : "")} />
+                <Icon className="w-3.5 h-3.5 relative z-10" />
                 <span className="relative z-10 hidden sm:inline">{label}</span>
-                {badge && (
-                  <span className="relative z-10 text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-mono hidden xl:inline">
-                    {badge}
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -212,20 +176,20 @@ export default function Navbar() {
 
       {/* ──────────────── FIXED MOBILE BOTTOM NAVIGATION BAR (< 768px) ──────────────── */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609] border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {NAV_LINKS.map(({ href, label, icon: Icon, badge }) => {
-          const isActive = checkIsActive(href);
+        {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+          const isActive = pathname === href;
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                "flex flex-col items-center justify-center py-1 px-2.5 rounded-lg text-[10px] font-mono transition-colors",
+                "flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono transition-colors",
                 isActive
                   ? "text-cyan-300 font-bold bg-cyan-950/40"
                   : "text-slate-400 hover:text-slate-200"
               )}
             >
-              <Icon className={cn("w-4 h-4 mb-0.5", isActive ? (badge ? "text-emerald-400" : "text-cyan-400") : (badge ? "text-emerald-400/80" : "text-slate-400"))} />
+              <Icon className={cn("w-4 h-4 mb-0.5", isActive ? "text-cyan-400" : "text-slate-400")} />
               <span>{label}</span>
             </Link>
           );
