@@ -27,6 +27,9 @@ from src.copilot.llm_client import (
 )
 from src.copilot.distiller import CopilotKnowledgeDistiller, store_teacher_trace
 from src.copilot.mcp_bridge import QuantMCPBridge
+from src.copilot.trader_dna import TraderDNAEngine
+from src.copilot.memory_store import CopilotMemoryStore
+from src.copilot.live_tools import fetch_live_intraday_quote, search_live_web_catalysts
 from src.storage.database import DatabaseManager
 from src.api.utils import DATABASE_PATH
 
@@ -70,6 +73,8 @@ class MultiAgentDeliberationEngine:
         else:
             self.bridge = bridge or QuantMCPBridge()
             self.db = getattr(self.bridge, "db", None) or DatabaseManager()
+        self.trader_dna = TraderDNAEngine(self.db)
+        self.memory_store = CopilotMemoryStore(self.db)
 
     def _get_active_alias_map(self) -> Dict[str, str]:
         """Returns the base ALIAS_MAP merged with dynamic aliases from securities_master."""
@@ -198,24 +203,32 @@ class MultiAgentDeliberationEngine:
                 # 4. GARCH 20D bounds
                 garch = self.bridge.get_forecast_bounds(sym)
                 # 5. Latest 3 catalysts
-                cats = conn.execute("""
-                    SELECT causal_headline, triggered_at
-                    FROM market_catalysts
-                    WHERE symbol = ?
-                    ORDER BY triggered_at DESC
-                    LIMIT 3
-                """, (sym,)).fetchall()
-                catalysts = [dict(c) for c in cats]
+                catalysts = []
+                try:
+                    cats = conn.execute("""
+                        SELECT causal_headline, triggered_at
+                        FROM market_catalysts
+                        WHERE symbol = ?
+                        ORDER BY triggered_at DESC
+                        LIMIT 3
+                    """, (sym,)).fetchall()
+                    catalysts = [dict(c) for c in cats]
+                except Exception as ce:
+                    logger.debug(f"[COPILOT] Catalysts query error for {sym}: {ce}")
 
                 # 6. Latest 3 news headlines
-                news_rows = conn.execute("""
-                    SELECT title, source, published_at, impact_direction
-                    FROM equity_news_feed
-                    WHERE symbol = ?
-                    ORDER BY published_at DESC
-                    LIMIT 3
-                """, (sym,)).fetchall()
-                news = [dict(n) for n in news_rows]
+                news = []
+                try:
+                    news_rows = conn.execute("""
+                        SELECT title, source, published_at, impact_direction
+                        FROM equity_news_feed
+                        WHERE symbol = ?
+                        ORDER BY published_at DESC
+                        LIMIT 3
+                    """, (sym,)).fetchall()
+                    news = [dict(n) for n in news_rows]
+                except Exception as ne:
+                    logger.debug(f"[COPILOT] News query error for {sym}: {ne}")
 
                 # 7. Exact historical lookback bars (up to 65 daily bars for 5D, 20D, 60D lookbacks)
                 bars_rows = conn.execute("""
@@ -242,6 +255,24 @@ class MultiAgentDeliberationEngine:
 
                 current_price = latest_close if latest_close > 0 else funds.get("current_price", 0.0)
 
+                # 8. Live Intraday Quote (< 2.5s timeout, 60s cache)
+                live_q: Dict[str, Any] = {}
+                try:
+                    live_q = fetch_live_intraday_quote(sym, self.db)
+                    if live_q.get("is_live") and live_q.get("ltp"):
+                        current_price = float(live_q["ltp"])
+                        latest_close = current_price
+                except Exception as lqe:
+                    logger.debug(f"[COPILOT] Live intraday quote fetch error for {sym}: {lqe}")
+
+                # 9. Live Web Search & News Catalysts (< 2.5s timeout, 300s cache)
+                live_web: List[Dict[str, Any]] = []
+                try:
+                    cname = funds.get("company_name", sym)
+                    live_web = search_live_web_catalysts(sym, cname, "")
+                except Exception as webe:
+                    logger.debug(f"[COPILOT] Live web catalyst search error for {sym}: {webe}")
+
                 stocks_data[sym] = {
                     "symbol": sym,
                     "company_name": funds.get("company_name", sym),
@@ -267,6 +298,8 @@ class MultiAgentDeliberationEngine:
                     "ml_forecast": ml_fc,
                     "catalysts": catalysts,
                     "news": news,
+                    "live_quote": live_q,
+                    "live_web_catalysts": live_web,
                 }
 
             # Global Watchlist & Portfolio context
@@ -311,6 +344,24 @@ class MultiAgentDeliberationEngine:
         except Exception as pe:
             logger.debug(f"Portfolio telemetry query error: {pe}")
 
+        # Trader DNA behavioral profiling
+        trader_profile: Dict[str, Any] = {}
+        trader_dna_prompt = ""
+        try:
+            trader_profile = self.trader_dna.get_live_execution_profile()
+            trader_dna_prompt = self.trader_dna.format_dna_for_prompt()
+        except Exception as te:
+            logger.debug(f"[COPILOT] Trader DNA profile fetch skipped: {te}")
+
+        # Conversational episodic memory retrieval
+        episodes: List[Dict[str, Any]] = []
+        memory_prompt = ""
+        try:
+            episodes = self.memory_store.retrieve_relevant_episodes(target_syms, "")
+            memory_prompt = self.memory_store.format_episodes_for_prompt(episodes)
+        except Exception as me:
+            logger.debug(f"[COPILOT] Episodic memory fetch skipped: {me}")
+
         primary_sym = target_syms[0] if target_syms else "NIFTY 50"
         primary_data = stocks_data.get(primary_sym, {})
 
@@ -350,6 +401,12 @@ class MultiAgentDeliberationEngine:
             "user_watchlists": [dict(w) for w in watchlists],
             "portfolio_positions": [dict(p) for p in positions],
             "screener_leaders": screener_leaders,
+            "trader_dna": trader_profile,
+            "trader_dna_prompt": trader_dna_prompt,
+            "memory_episodes": episodes,
+            "memory_prompt": memory_prompt,
+            "live_quote": primary_data.get("live_quote"),
+            "live_web_catalysts": primary_data.get("live_web_catalysts", []),
         }
 
     def build_quant_context(
@@ -387,20 +444,34 @@ class MultiAgentDeliberationEngine:
             try:
                 reply = await self._call_llm_intent(intent, prompt, grounded, history)
                 if reply and len(reply.strip()) > 30:
-                    return reply.strip()
+                    clean_res = reply.strip()
+                    try:
+                        primary = symbols[0] if symbols else (symbol or "NIFTY 50")
+                        self.memory_store.distill_and_record_turn(prompt, primary, clean_res)
+                    except Exception:
+                        pass
+                    return clean_res
             except Exception as e:
                 logger.warning(f"[COPILOT] Live LLM call failed ({e}), using deterministic synthesis.")
 
         # Deterministic Grounded Synthesis Fallback
+        ans = ""
         if intent == "COMPARE":
-            return self._generate_deterministic_comparison(symbols, grounded)
+            ans = self._generate_deterministic_comparison(symbols, grounded)
         elif intent == "PORTFOLIO_WATCHLIST":
-            return self._generate_deterministic_portfolio_watchlist(grounded)
+            ans = self._generate_deterministic_portfolio_watchlist(grounded)
         elif intent == "DEBATE_THESIS":
             memo, _ = self._generate_deterministic_judge(grounded)
-            return memo
+            ans = memo
         else:
-            return self._generate_deterministic_qa(prompt, grounded)
+            ans = self._generate_deterministic_qa(prompt, grounded)
+
+        try:
+            primary = symbols[0] if symbols else (symbol or "NIFTY 50")
+            self.memory_store.distill_and_record_turn(prompt, primary, ans)
+        except Exception:
+            pass
+        return ans
 
     # ─────────────────────────────────────────────────────────────────────────────
     # 4. SSE STREAMING INTERFACE (WEB COPILOT DRAWER)
@@ -434,6 +505,32 @@ class MultiAgentDeliberationEngine:
 
         loop = asyncio.get_running_loop()
         grounded = await loop.run_in_executor(None, self._build_grounded_context, symbols, context_override)
+
+        # 1b. Live Market Telemetry & Trader DNA Event
+        live_q = grounded.get("live_quote") or {}
+        dna = grounded.get("trader_dna") or {}
+        streak = dna.get("consecutive_losses", 0)
+        dna_badge = "Active"
+        if dna.get("in_defensive_cooldown"):
+            dna_badge = f"Defensive Cooldown ({streak}L Streak)"
+        elif streak >= 2:
+            dna_badge = f"Defensive Sizing ({streak}L Streak)"
+
+        yield self._sse_event({
+            "stage": "live_telemetry",
+            "status": f"Fused live market pulse & behavioral DNA for {primary_sym}...",
+            "progress": 20,
+            "live_quote": {
+                "symbol": primary_sym,
+                "ltp": live_q.get("ltp", grounded.get("current_price")),
+                "change_pct": live_q.get("change_pct", 0.0),
+                "is_live": live_q.get("is_live", False),
+                "source": live_q.get("source", "EOD")
+            },
+            "web_catalysts_count": len(grounded.get("live_web_catalysts", [])),
+            "trader_dna_badge": dna_badge
+        })
+        await asyncio.sleep(0.05)
 
         # ─────────────────────────────────────────────────────────────────────────
         # ROUTE A: DEBATE_THESIS (The 3-Agent Committee)
@@ -491,6 +588,12 @@ class MultiAgentDeliberationEngine:
                 "progress": 75
             })
             await asyncio.sleep(0.015)
+
+        # Record turn in episodic memory
+        try:
+            self.memory_store.distill_and_record_turn(user_prompt, primary_sym, reply_content)
+        except Exception as me:
+            logger.debug(f"[COPILOT] Episodic memory turn recording skipped: {me}")
 
         # Send completion event
         primary_stock = grounded.get("stocks", {}).get(primary_sym, {})
@@ -643,6 +746,12 @@ class MultiAgentDeliberationEngine:
         model_used = telemetry.get("model_id") or ("groq:gpt-oss-120b" if is_live_llm_configured() else "local:deterministic-quant")
         token_usage = telemetry.get("token_usage") or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
+        # Record turn in episodic memory
+        try:
+            self.memory_store.distill_and_record_turn(user_prompt, symbol, judge_content)
+        except Exception as me:
+            logger.debug(f"[COPILOT] Episodic memory turn recording skipped: {me}")
+
         # COMPLETE
         yield self._sse_event({
             "stage": "complete",
@@ -773,7 +882,38 @@ class MultiAgentDeliberationEngine:
                 f"Live settled price is **₹{price:.2f}** as of {as_of}."
             )
 
-        # 4. DEFAULT: TECHNICALS & ML SYSTEMATIC DRIFT
+        # 4. TRADER DNA / HOLDING / BUY / SIZING / COACHING INTENT
+        trader_dna = context.get("trader_dna", {})
+        open_holdings = trader_dna.get("open_holdings", [])
+        holding_match = next((h for h in open_holdings if h.get("symbol") == primary_sym), None)
+        trade_keywords = ["buy", "purchase", "invest", "holding", "holdings", "cooldown", "breakeven", "dna", "coach", "should i", "allocation", "size", "drag", "friction"]
+
+        if holding_match or any(k in p_lower for k in trade_keywords):
+            target_20 = fc.get("expected_20d_price", round(price * 1.05, 2))
+            stop_floor = fc.get("invalidation_floor", round(price * 0.95, 2))
+            eval_res = self.trader_dna.evaluate_proposed_trade(primary_sym, price, target_20, stop_floor)
+
+            hold_sec = ""
+            if holding_match:
+                hold_sec = (
+                    f"### Open Position Status: {primary_sym}\n"
+                    f"• **Current Holding:** **{holding_match.get('quantity')} shares** @ avg ₹{holding_match.get('avg_buy_price', 0):.2f}\n"
+                    f"• **Current Value:** **₹{holding_match.get('current_value', 0):.2f}** (Unrealized P&L: **₹{holding_match.get('unrealized_pnl', 0):+.2f}**)\n\n"
+                )
+
+            return (
+                f"## Trader DNA Behavioral & Execution Analysis for {primary_sym}\n\n"
+                f"{hold_sec}"
+                f"• **Live Market Price:** **₹{price:.2f}**\n"
+                f"• **Coaching Guard:** `{eval_res.get('coaching_status')}`\n"
+                f"• **Coaching Advice:** {eval_res.get('advice')}\n"
+                f"• **Recommended Allocation:** Up to **₹{eval_res.get('max_capital_allowed', 0):,.2f}** ({eval_res.get('recommended_shares', 0)} shares)\n"
+                f"• **Fee Drag Breakeven:** **₹{eval_res.get('breakeven_price', price):.2f}** (`+{eval_res.get('fee_drag_pct', 0):.2f}%` gross required to cover ₹23.60 DP fee + taxes)\n"
+                f"• **Expected 20D Target:** **₹{target_20:.2f}** (Net Upside after friction: `{eval_res.get('net_upside_pct', 0):+.2f}%`)\n"
+                f"• **Stop Loss:** **₹{stop_floor:.2f}** (Net Risk after friction: `{eval_res.get('net_risk_pct', 0):.2f}%`)"
+            )
+
+        # 5. DEFAULT: TECHNICALS & ML SYSTEMATIC DRIFT
         mom_20d = tech.get("ret_20d_pct", 0.0)
         above_200 = "above" if tech.get("price_above_sma200") else "below"
         sma200 = tech.get("sma_200")
@@ -904,6 +1044,13 @@ class MultiAgentDeliberationEngine:
             "Cite exact numbers. Use clean Markdown."
         )
 
+        dna_prompt = context.get("trader_dna_prompt", "")
+        mem_prompt = context.get("memory_prompt", "")
+        if dna_prompt:
+            sys_msg += f"\n\n{dna_prompt}"
+        if mem_prompt:
+            sys_msg += f"\n\n{mem_prompt}"
+
         messages = [{"role": "system", "content": sys_msg}]
 
         # Inject up to 6 past conversation turns
@@ -937,7 +1084,9 @@ class MultiAgentDeliberationEngine:
                     "historical_drawdowns": d.get("historical_drawdowns"),
                     "ml_forecast": d.get("ml_forecast"),
                     "garch": d.get("forecast_20d"),
-                    "catalysts": d.get("catalysts")
+                    "catalysts": d.get("catalysts"),
+                    "live_quote": d.get("live_quote"),
+                    "live_web_catalysts": d.get("live_web_catalysts"),
                 }
                 for sym, d in context.get("stocks", {}).items()
             },
@@ -1214,6 +1363,27 @@ class MultiAgentDeliberationEngine:
             verdict = "HOLD"
             conviction = min(85, max(30, 55 + ml_boost))
 
+        # Micro-Capital Execution & Trader DNA Coaching Evaluation
+        eval_res: Dict[str, Any] = {}
+        try:
+            eval_res = self.trader_dna.evaluate_proposed_trade(sym, price, target, stop)
+        except Exception as ee:
+            logger.debug(f"[COPILOT] Trade evaluation failed: {ee}")
+
+        coaching_snippet = ""
+        if eval_res:
+            coaching_snippet = (
+                f"\n\n### Micro-Capital Execution & Trader DNA Coach\n"
+                f"- **Coaching Guard:** `{eval_res.get('coaching_status')}`\n"
+                f"- **Actionable Guidance:** {eval_res.get('advice')}\n"
+                f"- **Allocation Cap:** `₹{eval_res.get('max_capital_allowed', 0):,.2f}` (`{eval_res.get('recommended_shares', 0)} shares`)\n"
+                f"- **Fee Drag Breakeven:** `₹{eval_res.get('breakeven_price', price):.2f}` (`+{eval_res.get('fee_drag_pct', 0):.2f}%` gross required to cover ₹23.60 DP + statutory taxes)\n"
+                f"- **Net Upside after Friction:** `{eval_res.get('net_upside_pct', 0):+.2f}%` · **Net Risk:** `{eval_res.get('net_risk_pct', 0):.2f}%`"
+            )
+            if not eval_res.get("can_trade") and eval_res.get("coaching_status") == "COOLDOWN_ACTIVE":
+                verdict = "COOLDOWN_PAUSE"
+                conviction = min(conviction, 35)
+
         memo = (
             f"## Portfolio Manager Judicial Decision\n\n"
             f"**Recommendation:** `{verdict}`  \n"
@@ -1226,14 +1396,15 @@ class MultiAgentDeliberationEngine:
             f"- **Entry Anchor:** `₹{price:.2f}` (Current Settled Price)\n"
             f"- **Upside Objective (80% CI Target):** `₹{target:.2f}` (`+{upside:.1f}%`)\n"
             f"- **Invalidation Floor (Stop Loss):** `₹{stop:.2f}` (`-{risk:.1f}%`)\n"
-            f"- **Position Horizon:** `2 to 8 Weeks` · Rebalance on 200 SMA violation."
+            f"- **Position Horizon:** `2 to 8 Weeks` · Rebalance on 200 SMA violation.{coaching_snippet}"
         )
 
         return memo, {
             "verdict": verdict,
             "conviction_score": conviction,
             "target_price": target,
-            "stop_loss": stop
+            "stop_loss": stop,
+            "coaching": eval_res
         }
 
     async def deliberate_json(
@@ -1326,6 +1497,11 @@ class MultiAgentDeliberationEngine:
                 "ml_forecast": grounded.get("ml_forecast")
             }
 
+            try:
+                self.memory_store.distill_and_record_turn(user_prompt, primary_sym, judge_content)
+            except Exception as me:
+                logger.debug(f"[COPILOT] Episodic memory turn recording skipped: {me}")
+
             return {
                 "stage": "complete",
                 "status": "Deliberation complete.",
@@ -1374,6 +1550,11 @@ class MultiAgentDeliberationEngine:
             "model_used": model_used,
             "token_usage": token_usage
         }
+
+        try:
+            self.memory_store.distill_and_record_turn(user_prompt, primary_sym, reply_content)
+        except Exception as me:
+            logger.debug(f"[COPILOT] Episodic memory turn recording skipped: {me}")
 
         return {
             "stage": "complete",

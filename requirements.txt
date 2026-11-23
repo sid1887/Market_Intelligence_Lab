@@ -17,3 +17,5 @@ yfinance>=0.2.38
 pywebpush>=2.5.0
 # Optional LLM Extras (Lazy-loaded, not required for offline core)
 # openai>=1.30.0
+openpyxl>=3.1.2
+cryptography>=42.0.0

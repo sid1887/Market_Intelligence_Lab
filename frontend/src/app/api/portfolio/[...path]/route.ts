@@ -19,8 +19,7 @@ async function proxyRequest(request: NextRequest, { params }: { params: { path?:
     const targetUrl = `${backendBase}/portfolio/${subpath}${urlObj.search}`;
 
     const headers: Record<string, string> = {
-      "Accept": "application/json",
-      "Content-Type": "application/json",
+      "Accept": "application/json, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*",
       "ngrok-skip-browser-warning": "true",
     };
 
@@ -36,10 +35,15 @@ async function proxyRequest(request: NextRequest, { params }: { params: { path?:
       }
     }
 
+    const contentType = request.headers.get("content-type");
+    if (contentType) {
+      headers["Content-Type"] = contentType;
+    }
+
     const method = request.method;
-    let body: string | undefined = undefined;
+    let body: ArrayBuffer | undefined = undefined;
     if (method !== "GET" && method !== "HEAD") {
-      body = await request.text();
+      body = await request.arrayBuffer();
     }
 
     const backendRes = await fetch(targetUrl, {
@@ -49,12 +53,21 @@ async function proxyRequest(request: NextRequest, { params }: { params: { path?:
       cache: "no-store",
     });
 
-    const responseText = await backendRes.text();
-    return new NextResponse(responseText, {
+    const responseBuffer = await backendRes.arrayBuffer();
+    const resHeaders: Record<string, string> = {};
+
+    const resContentType = backendRes.headers.get("content-type");
+    if (resContentType) resHeaders["Content-Type"] = resContentType;
+
+    const contentDisposition = backendRes.headers.get("content-disposition");
+    if (contentDisposition) resHeaders["Content-Disposition"] = contentDisposition;
+
+    const cacheControl = backendRes.headers.get("cache-control");
+    if (cacheControl) resHeaders["Cache-Control"] = cacheControl;
+
+    return new NextResponse(responseBuffer, {
       status: backendRes.status,
-      headers: {
-        "Content-Type": backendRes.headers.get("content-type") || "application/json",
-      },
+      headers: resHeaders,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

@@ -44,3 +44,7 @@ data/models/
 # OS artifacts
 .DS_Store
 Thumbs.db
+
+# Encrypted Tradebook Records (PII-free, server encrypted)
+data/secure/
+data/secure/*.enc

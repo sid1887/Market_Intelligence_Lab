@@ -73,6 +73,18 @@ interface DistillationStats {
   last_trained_at?: string;
 }
 
+interface LiveTelemetryState {
+  liveQuote?: {
+    symbol?: string;
+    ltp?: number;
+    change_pct?: number;
+    is_live?: boolean;
+    source?: string;
+  };
+  webCatalystsCount?: number;
+  traderDnaBadge?: string;
+}
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -569,6 +581,7 @@ export default function CopilotDrawer({
   });
 
   const [mlForecast, setMlForecast] = useState<MLForecastData | null>(null);
+  const [liveTelemetry, setLiveTelemetry] = useState<LiveTelemetryState | null>(null);
   const [showMlPanel, setShowMlPanel] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isDebateActive, setIsDebateActive] = useState(false);
@@ -850,7 +863,13 @@ export default function CopilotDrawer({
         try {
           const data = JSON.parse(ev.data);
 
-          if (data.stage === "bull_analyst") {
+          if (data.stage === "live_telemetry") {
+            setLiveTelemetry({
+              liveQuote: data.live_quote,
+              webCatalystsCount: data.web_catalysts_count,
+              traderDnaBadge: data.trader_dna_badge,
+            });
+          } else if (data.stage === "bull_analyst") {
             setIsDebateActive(true);
             if (!bullStartTimeRef.current) bullStartTimeRef.current = Date.now();
             setBullElapsed(formatSeconds((Date.now() - bullStartTimeRef.current) / 1000));
@@ -1156,6 +1175,7 @@ export default function CopilotDrawer({
                   <button
                     onClick={() => {
                       setChatHistory([]);
+                      setLiveTelemetry(null);
                       setState({
                         stage: "idle",
                         statusText: "Ready for multi-agent quantitative deliberation.",
@@ -1225,6 +1245,41 @@ export default function CopilotDrawer({
                   </span>
                 )}
               </div>
+
+              {/* Live Market Telemetry & Trader DNA Badges */}
+              {liveTelemetry && (
+                <div className="px-3 sm:px-5 py-1.5 bg-[#03060c] border-b border-white/[0.06] flex items-center gap-2 overflow-x-auto text-[10px] font-mono scrollbar-none">
+                  {liveTelemetry.liveQuote && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      LIVE QUOTE: ₹{Number(liveTelemetry.liveQuote.ltp || 0).toFixed(2)}
+                      {liveTelemetry.liveQuote.change_pct !== undefined && (
+                        <span className={liveTelemetry.liveQuote.change_pct >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                          ({liveTelemetry.liveQuote.change_pct >= 0 ? "+" : ""}{Number(liveTelemetry.liveQuote.change_pct).toFixed(2)}%)
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {liveTelemetry.webCatalystsCount !== undefined && liveTelemetry.webCatalystsCount > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 shrink-0">
+                      <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
+                      WEB SEARCH: {liveTelemetry.webCatalystsCount} {liveTelemetry.webCatalystsCount === 1 ? "source" : "sources"}
+                    </span>
+                  )}
+                  {liveTelemetry.traderDnaBadge && (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border shrink-0 ${
+                      liveTelemetry.traderDnaBadge.includes("Cooldown")
+                        ? "bg-rose-950/60 border-rose-500/40 text-rose-300"
+                        : liveTelemetry.traderDnaBadge.includes("Defensive")
+                        ? "bg-amber-950/60 border-amber-500/40 text-amber-300"
+                        : "bg-emerald-950/60 border-emerald-500/30 text-emerald-300"
+                    }`}>
+                      <ShieldAlert className="w-2.5 h-2.5" />
+                      TRADER DNA: {liveTelemetry.traderDnaBadge}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Progress Indicator */}
               {state.stage !== "idle" && (

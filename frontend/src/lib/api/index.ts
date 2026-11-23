@@ -1474,4 +1474,121 @@ export async function toggleWatchlist(
   }
 }
 
+// =========================================================================
+// ZERO-PII ENCRYPTED ANGEL ONE TRADEBOOK API HELPERS
+// =========================================================================
+
+export interface TradebookClosedTrade {
+  symbol: string;
+  isin: string;
+  scrip_name: string;
+  qty: number;
+  buy_date: string;
+  sell_date: string;
+  hold_days: number;
+  avg_buy_price: number;
+  buy_value: number;
+  avg_sell_price: number;
+  sell_value: number;
+  gross_pnl: number;
+  trade_charges: number;
+  dp_charge: number;
+  net_pnl: number;
+  net_return_pct: number;
+  outcome: "WIN" | "LOSS";
+}
+
+export interface TradebookOpenHolding {
+  symbol: string;
+  isin: string;
+  scrip_name: string;
+  qty: number;
+  avg_buy_price: number;
+  buy_value: number;
+  closing_rate: number;
+  current_value: number;
+  unrealized_pnl: number;
+  unrealized_pnl_pct: number;
+}
+
+export interface TradebookScripAttribution {
+  symbol: string;
+  company_name: string;
+  trades: number;
+  wins: number;
+  losses: number;
+  win_rate_pct: number;
+  gross_pnl: number;
+  trade_charges: number;
+  dp_charges: number;
+  net_pnl: number;
+}
+
+export interface TradebookSummary {
+  total_capital: number;
+  realized_gross_pnl: number;
+  total_trade_taxes: number;
+  total_dp_charges: number;
+  total_friction: number;
+  true_net_pnl: number;
+  net_roi_pct: number;
+  total_trades: number;
+  win_count: number;
+  loss_count: number;
+  win_rate_pct: number;
+  profit_factor: number;
+  avg_hold_days: number;
+  fee_drag_pct: number;
+  open_count: number;
+  open_invested: number;
+  open_current: number;
+  open_unrealized_pnl: number;
+  open_unrealized_pct: number;
+  closed_trades: TradebookClosedTrade[];
+  open_holdings: TradebookOpenHolding[];
+  scrip_attribution: TradebookScripAttribution[];
+  merge_stats?: {
+    files_processed: number;
+    executions_merged: number;
+    closed_roundtrips_merged: number;
+    open_holdings_merged: number;
+    dp_charges_merged: number;
+    capital_entries_merged: number;
+  };
+}
+
+export async function fetchTradebookSummary(): Promise<TradebookSummary> {
+  const url = `${getPortfolioProxyBase()}/tradebook/summary`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to fetch tradebook summary (${res.status}): ${errorText}`);
+  }
+  return (await res.json()) as TradebookSummary;
+}
+
+export async function uploadTradebookFiles(files: File[]): Promise<TradebookSummary> {
+  const url = `${getPortfolioProxyBase()}/tradebook/upload`;
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    body: formData,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Upload failed (${res.status}): ${errorText}`);
+  }
+  clearMemoryCache();
+  return (await res.json()) as TradebookSummary;
+}
+
+export function getTradebookExportUrl(): string {
+  return `${getPortfolioProxyBase()}/tradebook/export`;
+}
+
+
 

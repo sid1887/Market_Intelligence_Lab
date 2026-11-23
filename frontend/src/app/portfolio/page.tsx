@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
-import { PositionsTable, OrdersBlotter, CapitalSeedModal, CapitalUtilizationGauge } from "@/components/portfolio";
+import { PositionsTable, OrdersBlotter, CapitalSeedModal, CapitalUtilizationGauge, RealTradebookPanel } from "@/components/portfolio";
 import {
   fetchPortfolioSummary,
   fetchPortfolioPositions,
@@ -51,6 +51,7 @@ import {
   Database,
   ChevronDown,
   ChevronUp,
+  FileSpreadsheet,
 } from "lucide-react";
 
 interface AccountTab {
@@ -62,6 +63,13 @@ interface AccountTab {
 }
 
 const ACCOUNTS: AccountTab[] = [
+  {
+    id: "real_tradebook",
+    name: "Real Tradebook & Master Excel",
+    badge: "Angel One Encrypted",
+    type: "MANUAL",
+    desc: "Zero-PII encrypted Angel One tradebook ledger, ₹23.60 DP fee reconciliation & 5-tab Master Excel.",
+  },
   {
     id: "paper_alpha_2",
     name: "Autonomous Micro-Quant",
@@ -167,6 +175,10 @@ function PortfolioContent() {
       setError(null);
       if (invalidateCache) {
         clearMemoryCache("/portfolio");
+      }
+      if (accId === "real_tradebook") {
+        setLoading(false);
+        return;
       }
       const [sumRes, posRes, ordRes, propRes, univRes, mlRes] = await Promise.allSettled([
         fetchPortfolioSummary(accId),
@@ -518,7 +530,13 @@ function PortfolioContent() {
             label: acc.name,
             badge: acc.badge,
             desc: acc.desc,
-            icon: acc.type === "SYSTEMATIC" ? <Sparkles className="w-4 h-4 text-cyan-400" /> : <Wallet className="w-4 h-4 text-amber-400" />,
+            icon: acc.id === "real_tradebook" ? (
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            ) : acc.type === "SYSTEMATIC" ? (
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+            ) : (
+              <Wallet className="w-4 h-4 text-amber-400" />
+            ),
           }))}
           activeTab={activeAccount}
           setActiveTab={(id) => {
@@ -625,7 +643,7 @@ function PortfolioContent() {
         )}
 
         {/* Summary Bento Metric Cards */}
-        {loading && !summary ? (
+        {activeAccount !== "real_tradebook" && (loading && !summary ? (
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
             {[...Array(5)].map((_, i) => (
               <div
@@ -694,7 +712,7 @@ function PortfolioContent() {
               delay={0.25}
             />
           </motion.div>
-        )}
+        ))}
 
         {/* Account Tab Content Container with AnimatePresence */}
         <AnimatePresence mode="wait">
@@ -706,6 +724,11 @@ function PortfolioContent() {
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="space-y-6"
           >
+        {/* Real Tradebook & Master Excel Panel */}
+        {activeAccount === "real_tradebook" ? (
+          <RealTradebookPanel />
+        ) : (
+          <>
         {/* FrontPage Discretionary Trade Ticket (Active for paper_manual_1) */}
         {activeAccount === "paper_manual_1" && (
           <div id="manual-trade-ticket" className="p-6 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
@@ -1125,6 +1148,8 @@ function PortfolioContent() {
           activeAccount={activeAccount}
           formatINR={formatINR}
         />
+          </>
+        )}
           </motion.div>
         </AnimatePresence>
       </main>

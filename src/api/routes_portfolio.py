@@ -9,7 +9,7 @@ import os
 import hmac
 import logging
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Query, Body, Header, Request, Depends
+from fastapi import APIRouter, HTTPException, Query, Body, Header, Request, Depends, UploadFile, File, Response
 from pydantic import BaseModel, Field
 
 from src.storage.database import DatabaseManager
@@ -294,3 +294,100 @@ def execute_rebalance_flow(req: RebalanceExecuteRequest = Body(...)):
     except Exception as e:
         logger.error(f"Error executing rebalance flow for {req.account_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Rebalance execution failed: {str(e)}")
+
+
+# =========================================================================
+# ZERO-PII ENCRYPTED ANGEL ONE TRADEBOOK ENGINE ENDPOINTS
+# =========================================================================
+
+@router.post("/tradebook/upload", dependencies=[Depends(verify_portfolio_mutation_auth)])
+async def upload_angelone_tradebook(files: List[UploadFile] = File(...)):
+    """
+    Ingests one or more Angel One Excel files directly from RAM (io.BytesIO).
+    Strict Zero-PII: ignores all top rows above section headers, deduplicates fills,
+    reconciles exact ₹23.60 DP charges, enriches live LTP, and updates master_tradebook.enc.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided for tradebook ingestion.")
+
+    try:
+        from src.portfolio.tradebook_engine import EncryptedTradebookEngine
+        db = get_database_manager(DATABASE_PATH)
+        engine = EncryptedTradebookEngine(db)
+
+        total_executions = 0
+        total_closed = 0
+        total_open = 0
+        total_dp = 0
+        total_capital = 0
+
+        for f in files:
+            content = await f.read()
+            if not content:
+                continue
+            summary = engine.parse_angelone_workbook(content)
+            stats = summary.get("merge_stats", {})
+            total_executions += stats.get("executions_merged", 0)
+            total_closed += stats.get("closed_roundtrips_merged", 0)
+            total_open += stats.get("open_holdings_merged", 0)
+            total_dp += stats.get("dp_charges_merged", 0)
+            total_capital += stats.get("capital_entries_merged", 0)
+
+        # Return latest summary with cumulative merge stats
+        final_summary = engine.get_tradebook_summary()
+        final_summary["merge_stats"] = {
+            "files_processed": len(files),
+            "executions_merged": total_executions,
+            "closed_roundtrips_merged": total_closed,
+            "open_holdings_merged": total_open,
+            "dp_charges_merged": total_dp,
+            "capital_entries_merged": total_capital,
+        }
+        return sanitize_for_json(final_summary)
+    except Exception as e:
+        logger.error(f"[TRADEBOOK-UPLOAD-ERROR] Failed to parse Angel One tradebook: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process tradebook: {str(e)}")
+
+
+@router.get("/tradebook/summary")
+def get_angelone_tradebook_summary():
+    """
+    Returns zero-PII tradebook metrics, closed round-trips with ₹23.60 DP reconciliation,
+    open demat holdings with live LTP, and scrip attribution.
+    """
+    try:
+        from src.portfolio.tradebook_engine import EncryptedTradebookEngine
+        db = get_database_manager(DATABASE_PATH)
+        engine = EncryptedTradebookEngine(db)
+        summary = engine.get_tradebook_summary()
+        return sanitize_for_json(summary)
+    except Exception as e:
+        logger.error(f"[TRADEBOOK-SUMMARY-ERROR] Error fetching tradebook summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tradebook summary: {str(e)}")
+
+
+@router.get("/tradebook/export")
+def export_master_tradebook_excel():
+    """
+    Decrypts master_tradebook.enc in RAM and streams MIL_Master_Trading_Record.xlsx.
+    Guaranteed zero PII, 5 institutional tabs, and full DP friction reconciliation.
+    """
+    try:
+        from src.portfolio.tradebook_engine import EncryptedTradebookEngine
+        db = get_database_manager(DATABASE_PATH)
+        engine = EncryptedTradebookEngine(db)
+        excel_bytes = engine.export_decrypted_master_excel()
+
+        return Response(
+            content=excel_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": "attachment; filename=MIL_Master_Trading_Record.xlsx",
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+            }
+        )
+    except Exception as e:
+        logger.error(f"[TRADEBOOK-EXPORT-ERROR] Error exporting master Excel: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to export master Excel: {str(e)}")
+
