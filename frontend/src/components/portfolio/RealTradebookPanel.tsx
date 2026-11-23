@@ -87,6 +87,23 @@ export function RealTradebookPanel() {
         ? `Reconciled ${stats.closed_roundtrips_merged} closed swings, ${stats.open_holdings_merged} open holdings, and ${stats.dp_charges_merged} DP charges.`
         : "Tradebook updated and encrypted successfully.";
       setSuccessMsg(`Merged ${selectedFiles.length} file(s) with Zero-PII sanitization. ${countStr}`);
+
+      // Automatically switch to populated subtab
+      if (res.closed_trades && res.closed_trades.length > 0) {
+        setActiveSubTab("closed");
+      } else if (res.open_holdings && res.open_holdings.length > 0) {
+        setActiveSubTab("open");
+      }
+
+      // Synchronize with fresh backend summary
+      try {
+        const fresh = await fetchTradebookSummary();
+        if (fresh && (fresh.total_trades > 0 || fresh.open_count > 0)) {
+          setSummary(fresh);
+        }
+      } catch {
+        // Fallback to res if fresh call errors
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);

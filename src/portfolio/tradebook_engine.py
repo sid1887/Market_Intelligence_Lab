@@ -135,7 +135,7 @@ class EncryptedTradebookEngine:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS real_open_holdings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    isin TEXT UNIQUE,
+                    isin TEXT,
                     symbol TEXT,
                     scrip_name TEXT,
                     qty INTEGER DEFAULT 0,
@@ -147,7 +147,8 @@ class EncryptedTradebookEngine:
                     current_value REAL DEFAULT 0.0,
                     unrealized_pnl REAL DEFAULT 0.0,
                     unrealized_pnl_pct REAL DEFAULT 0.0,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(isin, symbol, avg_buy_price)
                 )
             """)
 
@@ -188,7 +189,81 @@ class EncryptedTradebookEngine:
     # MULTI-REPORT ZERO-PII IN-MEMORY PARSER
     # =========================================================================
 
-    def parse_angelone_workbook(self, file_bytes: bytes) -> Dict[str, Any]:
+    def _detect_sheet_type(self, sheet, sheet_title: str, filename: Optional[str] = None) -> str:
+        """
+        Dynamically detects Angel One report sheet type using 3 redundant layers:
+        1. Explicit sheet title matching.
+        2. In-memory content inspection of the first 45 rows (searching for section banners & column anchors).
+        3. Filename hint as secondary fallback.
+        
+        Returns one of:
+        'trades_history', 'non_trade_charges', 'tax_pnl', 'profit_loss', 'ledger', 'statement_charges', or 'unknown'.
+        """
+        st = sheet_title.lower().replace(" ", "").replace("_", "").replace("-", "")
+        fn = (filename or "").lower().replace(" ", "").replace("_", "").replace("-", "")
+
+        # Quick Title Checks
+        if "nontrade" in st or "nontradecharge" in st:
+            return "non_trade_charges"
+        if "tradesandcharge" in st or "tradebook" in st or ("trade" in st and "history" in st):
+            return "trades_history"
+        if "brokingledger" in st or "clientledger" in st or "accountstatement" in st:
+            return "ledger"
+        if "tax" in st or "tradedetail" in st or "sgb" in st:
+            return "tax_pnl"
+        if "profit" in st or "pnl" in st or "p&l" in st:
+            return "profit_loss"
+
+        # Content & Header Scan (first 45 rows)
+        first_rows_text: List[str] = []
+        try:
+            for idx, row in enumerate(sheet.iter_rows(values_only=True, max_row=45)):
+                if row:
+                    row_txt = " ".join([str(c or "").strip().lower() for c in row if c is not None])
+                    if row_txt:
+                        first_rows_text.append(row_txt)
+        except Exception:
+            pass
+
+        full_content_str = " \n ".join(first_rows_text)
+
+        # 1. Non-Trade Charges
+        if "non trade charges" in full_content_str or ("cdsl" in full_content_str and "charge date" in full_content_str and "voucher" not in full_content_str):
+            return "non_trade_charges"
+
+        # 2. Trades History
+        if "tradebook and charges" in full_content_str or ("order id" in full_content_str and "trade id" in full_content_str):
+            return "trades_history"
+
+        # 3. Tax P&L (Delivery + Open Holdings)
+        if "delivery p&l" in full_content_str or ("buy date" in full_content_str and "sell date" in full_content_str and "isin" in full_content_str):
+            return "tax_pnl"
+
+        # 4. Profit & Loss
+        if "scripsymbol" in full_content_str or ("delivery pnl" in full_content_str and "company name" in full_content_str) or ("gross pnl" in full_content_str and "isin" not in full_content_str):
+            return "profit_loss"
+
+        # 5. Broking Ledger
+        if "transaction details" in full_content_str or ("transaction" in full_content_str and "voucher" in full_content_str) or ("running balance" in full_content_str and "credit" in full_content_str):
+            return "ledger"
+
+        # 6. Statement Charges (DP Fees)
+        if "cdsl charge" in full_content_str or ("angelone charge" in full_content_str) or ("quantity sold" in full_content_str and "total charge" in full_content_str):
+            return "statement_charges"
+
+        # Filename hints as final fallback
+        if "trade" in fn:
+            return "trades_history"
+        if "tax" in fn:
+            return "tax_pnl"
+        if "profit" in fn or "pnl" in fn:
+            return "profit_loss"
+        if "statement" in fn or "ledger" in fn:
+            return "ledger"
+
+        return "unknown"
+
+    def parse_angelone_workbook(self, file_bytes: bytes, filename: Optional[str] = None) -> Dict[str, Any]:
         """
         Parses an uploaded Angel One workbook directly from memory (io.BytesIO).
         Detects section banners dynamically and starts extracting only from header anchors.
@@ -211,34 +286,37 @@ class EncryptedTradebookEngine:
             sheet = wb[sheet_name]
             sheet_title = sheet_name.strip().lower()
 
-            # 1. Trades History (TradesAndCharges)
-            if "tradesandcharges" in sheet_title or ("trade" in sheet_title and "charge" in sheet_title) or "tradebook" in sheet_title:
-                count = self._parse_trades_and_charges(sheet, symbol_map)
-                parsed_stats["executions_merged"] += count
+            sheet_type = self._detect_sheet_type(sheet, sheet_title, filename)
+            logger.info(f"[TRADEBOOK-ENGINE] Sheet '{sheet_name}' (file: {filename}) classified as '{sheet_type}'")
 
-            # 2. Non Trade Charges (DP charges postings)
-            elif "non trade" in sheet_title or "nontrade" in sheet_title:
+            # 1. Non Trade Charges (Checked first so 'trade' keyword does not hijack it)
+            if sheet_type == "non_trade_charges":
                 c_dp = self._parse_non_trade_charges(sheet)
                 parsed_stats["dp_charges_merged"] += c_dp
 
+            # 2. Trades History
+            elif sheet_type == "trades_history":
+                count = self._parse_trades_and_charges(sheet, symbol_map)
+                parsed_stats["executions_merged"] += count
+
             # 3. Tax P&L (Delivery P&L and Open Holdings)
-            elif "tax" in sheet_title or "trade details" in sheet_title or "sgb" in sheet_title:
+            elif sheet_type == "tax_pnl":
                 c_closed, c_open = self._parse_tax_pnl_delivery_and_holdings(sheet, symbol_map)
                 parsed_stats["closed_roundtrips_merged"] += c_closed
                 parsed_stats["open_holdings_merged"] += c_open
 
             # 4. Profit & Loss (Equity P&L with ticker symbol mapping)
-            elif "profit" in sheet_title or "pnl" in sheet_title:
+            elif sheet_type == "profit_loss":
                 c_pnl = self._parse_profit_loss_equity(sheet, symbol_map)
                 parsed_stats["closed_roundtrips_merged"] += c_pnl
 
             # 5. Broking Ledger (Capital Funds Added)
-            elif "ledger" in sheet_title or "statement" in sheet_title or "broking" in sheet_title:
+            elif sheet_type == "ledger":
                 c_cap = self._parse_broking_ledger(sheet)
                 parsed_stats["capital_entries_merged"] += c_cap
 
             # 6. Charges Sheet (Specific DP Charges Breakdown)
-            elif "charge" in sheet_title:
+            elif sheet_type == "statement_charges":
                 c_dp = self._parse_statement_charges(sheet)
                 parsed_stats["dp_charges_merged"] += c_dp
 
@@ -935,9 +1013,9 @@ class EncryptedTradebookEngine:
             # Recompute Net P&L and Net Return %
             conn.execute("""
                 UPDATE real_closed_roundtrips
-                SET net_pnl = ROUND(gross_pnl - trade_charges - dp_charge, 2),
-                    net_return_pct = CASE WHEN buy_value > 0 THEN ROUND(((gross_pnl - trade_charges - dp_charge) / buy_value) * 100.0, 2) ELSE 0.0 END,
-                    outcome = CASE WHEN (gross_pnl - trade_charges - dp_charge) > 0 THEN 'WIN' ELSE 'LOSS' END
+                SET net_pnl = ROUND(COALESCE(gross_pnl, 0.0) - COALESCE(trade_charges, 0.0) - COALESCE(dp_charge, 23.60), 2),
+                    net_return_pct = CASE WHEN COALESCE(buy_value, 0.0) > 0 THEN ROUND(((COALESCE(gross_pnl, 0.0) - COALESCE(trade_charges, 0.0) - COALESCE(dp_charge, 23.60)) / buy_value) * 100.0, 2) ELSE 0.0 END,
+                    outcome = CASE WHEN (COALESCE(gross_pnl, 0.0) - COALESCE(trade_charges, 0.0) - COALESCE(dp_charge, 23.60)) > 0 THEN 'WIN' ELSE 'LOSS' END
             """)
             conn.commit()
 

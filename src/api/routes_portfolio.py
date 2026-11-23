@@ -325,13 +325,18 @@ async def upload_angelone_tradebook(files: List[UploadFile] = File(...)):
             content = await f.read()
             if not content:
                 continue
-            summary = engine.parse_angelone_workbook(content)
+            summary = engine.parse_angelone_workbook(content, filename=f.filename)
             stats = summary.get("merge_stats", {})
             total_executions += stats.get("executions_merged", 0)
             total_closed += stats.get("closed_roundtrips_merged", 0)
             total_open += stats.get("open_holdings_merged", 0)
             total_dp += stats.get("dp_charges_merged", 0)
             total_capital += stats.get("capital_entries_merged", 0)
+            logger.info(
+                f"[TRADEBOOK-UPLOAD] Merged '{f.filename}': executions={stats.get('executions_merged', 0)}, "
+                f"closed={stats.get('closed_roundtrips_merged', 0)}, open={stats.get('open_holdings_merged', 0)}, "
+                f"dp={stats.get('dp_charges_merged', 0)}, capital={stats.get('capital_entries_merged', 0)}"
+            )
 
         # Return latest summary with cumulative merge stats
         final_summary = engine.get_tradebook_summary()
@@ -343,6 +348,12 @@ async def upload_angelone_tradebook(files: List[UploadFile] = File(...)):
             "dp_charges_merged": total_dp,
             "capital_entries_merged": total_capital,
         }
+        logger.info(
+            f"[TRADEBOOK-UPLOAD-SUCCESS] Completed batch of {len(files)} file(s). "
+            f"Total closed trades={final_summary.get('total_trades', 0)}, "
+            f"Open count={final_summary.get('open_count', 0)}, "
+            f"Net P&L=₹{final_summary.get('true_net_pnl', 0.0)}"
+        )
         return sanitize_for_json(final_summary)
     except Exception as e:
         logger.error(f"[TRADEBOOK-UPLOAD-ERROR] Failed to parse Angel One tradebook: {e}", exc_info=True)
