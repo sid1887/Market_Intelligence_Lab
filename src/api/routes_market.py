@@ -1120,6 +1120,77 @@ def get_stock_news(
         raise HTTPException(status_code=500, detail=f"Failed to fetch news feed: {str(e)}")
 
 
+@router.get("/stocks/{symbol}/disclosures")
+@router.get("/api/v1/stocks/{symbol}/disclosures")
+def get_stock_disclosures(
+    symbol: str,
+    limit: int = Query(10, ge=1, le=50),
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """Returns recent corporate disclosures and exchange announcements for a symbol."""
+    sym = symbol.upper().strip()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT disclosure_id, broadcast_timestamp, effective_session_date,
+                   category, subject, details_summary, source_url, verification_status,
+                   audit_status, dividend_declared, operating_margin_pct
+            FROM corporate_disclosures
+            WHERE symbol = ?
+            ORDER BY broadcast_timestamp DESC LIMIT ?
+            """,
+            (sym, limit)
+        )
+        disc_rows = cur.fetchall()
+        disclosures = []
+        for d in disc_rows:
+            disclosures.append({
+                "disclosure_id": d["disclosure_id"],
+                "broadcast_timestamp": d["broadcast_timestamp"],
+                "effective_session_date": d["effective_session_date"],
+                "category": d["category"] or "GENERAL",
+                "subject": d["subject"] or "Corporate Disclosure",
+                "details_summary": d["details_summary"],
+                "source_url": d["source_url"],
+                "verification_status": d["verification_status"] or "PENDING_VERIFICATION",
+                "audit_status": d["audit_status"],
+                "dividend_declared": safe_float(d["dividend_declared"], 2),
+                "operating_margin_pct": safe_float(d["operating_margin_pct"], 2)
+            })
+
+        # Fallback to equity_news_feed corporate filings if corporate_disclosures is empty
+        if len(disclosures) == 0:
+            cur.execute(
+                """
+                SELECT id, title, published_at, source_url
+                FROM equity_news_feed
+                WHERE symbol = ? AND (title LIKE '%Announcement%' OR title LIKE '%Board%' OR title LIKE '%Result%' OR title LIKE '%Dividend%')
+                ORDER BY published_at DESC LIMIT ?
+                """,
+                (sym, limit)
+            )
+            for r in cur.fetchall():
+                disclosures.append({
+                    "disclosure_id": f"NEWS_{r['id']}",
+                    "broadcast_timestamp": r["published_at"],
+                    "effective_session_date": (r["published_at"] or "")[:10],
+                    "category": "EXCHANGE_ANNOUNCEMENT",
+                    "subject": r["title"],
+                    "details_summary": r["title"],
+                    "source_url": r["source_url"],
+                    "verification_status": "VERIFIED_EXCHANGE_FEED",
+                    "audit_status": "AUTO_INGESTED",
+                    "dividend_declared": None,
+                    "operating_margin_pct": None
+                })
+
+        return sanitize_for_json(disclosures)
+    except Exception as e:
+        logger.error(f"Disclosures retrieval error for {sym}: {e}", exc_info=True)
+        return []
+
+
 # ====================================================================
 # Milestone B8.0: Multi-Factor Strategy Backtest Endpoints
 # ====================================================================

@@ -4,6 +4,8 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import { motion, AnimatePresence } from "framer-motion";
+import { AnimatedNumber } from "@/lib/AnimatedNumber";
 import { withRetry } from "@/lib/lazyWithRetry";
 import type { CandleData, ForecastData } from "@/components/StockChart";
 
@@ -627,17 +629,31 @@ export default function StockTearsheetPage() {
               className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/40 text-xs font-mono text-slate-300 hover:text-white transition-all shadow-sm"
               title="Share Tearsheet Link"
             >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-300 font-semibold">Copied Link!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Share</span>
-                </>
-              )}
+              <AnimatePresence mode="wait">
+                {copied ? (
+                  <motion.span
+                    key="copied"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="flex items-center gap-1.5 text-emerald-400 font-semibold"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Copied Link!</span>
+                  </motion.span>
+                ) : (
+                  <motion.span
+                    key="share"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="flex items-center gap-1.5 text-slate-300"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Share</span>
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </button>
 
             <span className="text-xs text-slate-400 font-mono px-3 py-1 rounded-xl bg-white/[0.03] border border-white/[0.06]">
@@ -653,13 +669,20 @@ export default function StockTearsheetPage() {
               key={sec.id}
               onClick={() => scrollToSection(sec.id)}
               className={cn(
-                "px-3 py-1 rounded-lg text-xs font-mono whitespace-nowrap transition-all",
+                "relative px-3 py-1 rounded-lg text-xs font-mono whitespace-nowrap transition-colors",
                 activeSection === sec.id
-                  ? "bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold shadow-[0_0_10px_rgba(6,182,212,0.2)]"
+                  ? "text-cyan-300 font-semibold"
                   : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
               )}
             >
-              {sec.label}
+              {activeSection === sec.id && (
+                <motion.div
+                  layoutId="tearsheet-active-section"
+                  className="absolute inset-0 bg-cyan-950/80 border border-cyan-500/40 rounded-lg shadow-[0_0_10px_rgba(6,182,212,0.25)]"
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10">{sec.label}</span>
             </button>
           ))}
         </div>
@@ -679,20 +702,26 @@ export default function StockTearsheetPage() {
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
                     {data.symbol}
                   </h1>
-                  <button
+                  <motion.button
                     onClick={handleToggleWatchlist}
+                    whileTap={{ scale: 0.85 }}
                     className="p-1 rounded-lg hover:bg-white/[0.08] transition-colors"
                     title={isBookmarked ? "Remove from Watchlist" : "Pin to Watchlist"}
                   >
-                    <Star
-                      className={cn(
-                        "w-5 h-5 transition-all",
-                        isBookmarked
-                          ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.6)]"
-                          : "text-slate-500 hover:text-amber-300"
-                      )}
-                    />
-                  </button>
+                    <motion.div
+                      animate={isBookmarked ? { scale: [1, 1.35, 1], rotate: [0, 15, -15, 0] } : {}}
+                      transition={{ duration: 0.35 }}
+                    >
+                      <Star
+                        className={cn(
+                          "w-5 h-5 transition-colors",
+                          isBookmarked
+                            ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.6)]"
+                            : "text-slate-500 hover:text-amber-300"
+                        )}
+                      />
+                    </motion.div>
+                  </motion.button>
                 </div>
 
                 <span className="text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-slate-300 font-mono">
@@ -722,7 +751,7 @@ export default function StockTearsheetPage() {
               <div>
                 <span className="text-xs text-slate-400 font-mono block">Latest Close</span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono tracking-tight tabular-nums">
-                  ₹{data.latest_ohlcv.close.toFixed(2)}
+                  ₹<AnimatedNumber value={data.latest_ohlcv.close} duration={600} />
                 </div>
               </div>
 

@@ -52,6 +52,18 @@ def get_db_connection():
         conn.close()
 
 
+def get_write_db_connection():
+    """
+    Dependency that provides a safe writable SQLite connection configured for WAL mode.
+    """
+    db_mgr = get_database_manager()
+    conn = db_mgr.get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def safe_float(val: Any, precision: Optional[int] = None) -> Optional[float]:
     """
     Safely converts a value to float and handles None, NaN, Inf, and pd.NA.

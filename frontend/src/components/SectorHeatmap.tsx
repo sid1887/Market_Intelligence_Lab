@@ -119,7 +119,15 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
             </div>
 
             {/* Weighted Treemap Heatmap Glass Tiles (A7) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
+            <motion.div
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: 0.02, delayChildren: 0.04 } },
+              }}
+              initial="hidden"
+              animate="visible"
+              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1"
+            >
               {stocks.map((stock) => {
                 const isActive = stock.symbol === activeSymbol;
                 const ret = stock.excess_ret_20d ?? 0;
@@ -128,6 +136,12 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
                 const isHero =
                   (stock.target_allocation_pct && stock.target_allocation_pct >= 2.5) ||
                   score >= 80;
+
+                const returnIntensity = Math.abs(ret);
+                const glowColor =
+                  ret >= 0
+                    ? `rgba(16, 185, 129, ${Math.min(Math.max(returnIntensity * 3, 0.15), 0.5)})`
+                    : `rgba(244, 63, 94, ${Math.min(Math.max(returnIntensity * 3, 0.15), 0.5)})`;
 
                 let colorClasses =
                   "bg-white/[0.02] border-white/[0.06] text-slate-300 hover:border-cyan-500/30";
@@ -153,14 +167,18 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
                 return (
                   <motion.div
                     key={stock.symbol}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    variants={{
+                      hidden: { opacity: 0, scale: 0.9 },
+                      visible: { opacity: 1, scale: 1, transition: { type: "spring", stiffness: 350, damping: 25 } },
+                    }}
+                    whileHover={{ scale: 1.05, boxShadow: `0 0 18px ${glowColor}`, zIndex: 10 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={() => onSelect(stock.symbol)}
                     onMouseEnter={() => {
                       if (onHover) onHover(stock.symbol);
                     }}
                     className={cn(
-                      "cursor-pointer rounded-xl border p-2.5 flex flex-col justify-between transition-all duration-150 min-h-[68px]",
+                      "cursor-pointer rounded-xl border p-2.5 flex flex-col justify-between transition-all duration-150 min-h-[68px] relative",
                       isHero ? "col-span-2 min-h-[76px] bg-gradient-to-br from-white/[0.04] to-transparent" : "col-span-1",
                       colorClasses
                     )}
@@ -204,7 +222,7 @@ export const SectorHeatmap: React.FC<SectorHeatmapProps> = ({
                   </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
           </div>
         );
       })}

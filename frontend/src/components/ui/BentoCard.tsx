@@ -3,6 +3,7 @@
 import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { AnimatedNumber } from "@/lib/AnimatedNumber";
 
 export interface BentoCardProps {
   title: string;
@@ -15,6 +16,43 @@ export interface BentoCardProps {
   delay?: number;
   className?: string;
   onClick?: () => void;
+}
+
+function renderFormattedValue(val: string | number) {
+  if (typeof val === "number") {
+    const decimals = Number.isInteger(val) ? 0 : 2;
+    return <AnimatedNumber value={val} decimals={decimals} />;
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    // Currency like ₹1,234.56 or $1,234.56
+    const currencyMatch = trimmed.match(/^([₹$€£])\s*([\d,]+(?:\.\d+)?)$/);
+    if (currencyMatch) {
+      const prefix = currencyMatch[1];
+      const num = parseFloat(currencyMatch[2].replace(/,/g, ""));
+      const decimals = currencyMatch[2].includes(".") ? currencyMatch[2].split(".")[1].length : 0;
+      if (!isNaN(num)) {
+        return <AnimatedNumber value={num} prefix={prefix} decimals={decimals} />;
+      }
+    }
+    // Percentage like 12.5% or +12.5%
+    const pctMatch = trimmed.match(/^([+-]?)([\d,]+(?:\.\d+)?)(%)$/);
+    if (pctMatch) {
+      const sign = pctMatch[1];
+      const num = parseFloat(pctMatch[2].replace(/,/g, ""));
+      const decimals = pctMatch[2].includes(".") ? pctMatch[2].split(".")[1].length : 0;
+      if (!isNaN(num)) {
+        return <AnimatedNumber value={sign === "-" ? -num : num} prefix={sign === "+" ? "+" : ""} suffix="%" decimals={decimals} />;
+      }
+    }
+    // Plain number
+    const plainNum = parseFloat(trimmed.replace(/,/g, ""));
+    if (!isNaN(plainNum) && /^-?\d+(?:\.\d+)?$/.test(trimmed.replace(/,/g, ""))) {
+      const decimals = trimmed.includes(".") ? trimmed.split(".")[1].length : 0;
+      return <AnimatedNumber value={plainNum} decimals={decimals} />;
+    }
+  }
+  return val;
 }
 
 export function BentoCard({
@@ -148,13 +186,17 @@ export function BentoCard({
 
         <div>
           <div className="font-mono text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tighter text-white tabular-nums drop-shadow-sm">
-            {value}
+            {renderFormattedValue(value)}
           </div>
 
           {(delta || subLabel || badge) && (
             <div className="mt-2.5 flex items-center flex-wrap gap-1.5 font-mono text-xs">
               {delta && (
-                <span
+                <motion.span
+                  key={delta}
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: delay + 0.15, duration: 0.2 }}
                   className={cn(
                     "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold font-mono border tabular-nums",
                     isPositive === true
@@ -166,7 +208,7 @@ export function BentoCard({
                 >
                   {isPositive === true ? "↑ " : isPositive === false ? "↓ " : ""}
                   {delta}
-                </span>
+                </motion.span>
               )}
               {badge && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium font-mono border bg-cyan-950/70 border-cyan-800 text-cyan-300">

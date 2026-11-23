@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
-import { PositionsTable, OrdersBlotter, CapitalSeedModal } from "@/components/portfolio";
+import { PositionsTable, OrdersBlotter, CapitalSeedModal, CapitalUtilizationGauge } from "@/components/portfolio";
 import {
   fetchPortfolioSummary,
   fetchPortfolioPositions,
@@ -644,7 +645,12 @@ function PortfolioContent() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5"
+          >
             <BentoCard
               title="Total NAV"
               value={formatINR(totalNav)}
@@ -687,9 +693,19 @@ function PortfolioContent() {
               icon={<ShieldCheck className="w-4 h-4 text-indigo-400" />}
               delay={0.25}
             />
-          </div>
+          </motion.div>
         )}
 
+        {/* Account Tab Content Container with AnimatePresence */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeAccount}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="space-y-6"
+          >
         {/* FrontPage Discretionary Trade Ticket (Active for paper_manual_1) */}
         {activeAccount === "paper_manual_1" && (
           <div id="manual-trade-ticket" className="p-6 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-5">
@@ -945,44 +961,54 @@ function PortfolioContent() {
         )}
 
         {/* Pending Rebalance Proposal Banner (Active for Systematic Accounts) */}
-        {activeAccount !== "paper_manual_1" && proposal && (
-          <div className="p-5 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center space-x-3.5">
-              <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xs font-mono text-cyan-300 font-semibold">
-                    Rebalance Session: {proposal.session_date}
-                  </span>
-                  <span
-                    className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono border ${
-                      proposal.status === "EXECUTED"
-                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                        : "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                    }`}
-                  >
-                    STATUS: {proposal.status}
+        <AnimatePresence>
+          {activeAccount !== "paper_manual_1" && proposal && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="overflow-hidden"
+            >
+              <div className="p-5 rounded-2xl bg-[#080c14] border border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center space-x-3.5">
+                  <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xs font-mono text-cyan-300 font-semibold">
+                        Rebalance Session: {proposal.session_date}
+                      </span>
+                      <span
+                        className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono border ${
+                          proposal.status === "EXECUTED"
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                        }`}
+                      >
+                        STATUS: {proposal.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                      Model: <span className="text-slate-300">{proposal.model_composite_id || "8_FACTOR_BLENDED"}</span> • Projected Turnover: <span className="text-cyan-400 tabular-nums">{proposal.turnover_pct}%</span> • Est. Friction: <span className="text-slate-300 tabular-nums">{proposal.projected_cost_bps} bps</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-mono px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] tabular-nums">
+                    {Object.keys(proposal.holdings_after || {}).length} Target Equities
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 font-mono">
-                  Model: <span className="text-slate-300">{proposal.model_composite_id || "8_FACTOR_BLENDED"}</span> • Projected Turnover: <span className="text-cyan-400 tabular-nums">{proposal.turnover_pct}%</span> • Est. Friction: <span className="text-slate-300 tabular-nums">{proposal.projected_cost_bps} bps</span>
-                </p>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-mono px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] tabular-nums">
-                {Object.keys(proposal.holdings_after || {}).length} Target Equities
-              </span>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Dynamic Portfolio Sector Concentration & Cash Solvency Bar */}
         <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-2.5">
               <div className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
                 <PieChart className="w-4 h-4" />
@@ -997,14 +1023,20 @@ function PortfolioContent() {
               </div>
             </div>
 
-            {sectorSolvencyMetrics.hasExceeding35 && (
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-xs font-mono font-semibold animate-pulse">
-                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>
-                  High Concentration: {sectorSolvencyMetrics.exceedingSector?.name} ({sectorSolvencyMetrics.exceedingSector?.pct.toFixed(1)}%) &gt; 35%
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-4">
+              <CapitalUtilizationGauge
+                utilized={summary?.invested_value ?? summary?.equity_value ?? 0}
+                total={totalNav}
+              />
+              {sectorSolvencyMetrics.hasExceeding35 && (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-xs font-mono font-semibold animate-pulse">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    High Concentration: {sectorSolvencyMetrics.exceedingSector?.name} ({sectorSolvencyMetrics.exceedingSector?.pct.toFixed(1)}%) &gt; 35%
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Stacked Proportional Bar */}
@@ -1093,6 +1125,8 @@ function PortfolioContent() {
           activeAccount={activeAccount}
           formatINR={formatINR}
         />
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Capital Management Modal (Extracted Subcomponent) */}

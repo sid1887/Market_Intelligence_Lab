@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import {
   createChart,
   CandlestickSeries,
@@ -234,14 +235,35 @@ export default function StockChart({
     candlestickSeries.setData(candlePayload);
     volumeSeries.setData(volumePayload);
 
-    // Initial visible range configuration
+    // Initial visible range configuration with progressive reveal animation
+    let animRafId: number | null = null;
     if (activeRange === "MAX") {
       chart.timeScale().fitContent();
     } else if (filteredData.length > 0) {
-      chart.timeScale().setVisibleRange({
-        from: filteredData[0].time as unknown as Time,
-        to: filteredData[filteredData.length - 1].time as unknown as Time,
-      });
+      const totalBars = filteredData.length;
+      const startBars = Math.min(60, totalBars);
+      try {
+        chart.timeScale().setVisibleLogicalRange({ from: totalBars - startBars, to: totalBars });
+      } catch {}
+
+      const startTime = performance.now();
+      const duration = 650;
+
+      const animateRange = (now: number) => {
+        const progress = Math.min((now - startTime) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const fromIndex = Math.floor((totalBars - startBars) * (1 - eased));
+        try {
+          chart.timeScale().setVisibleLogicalRange({
+            from: fromIndex,
+            to: totalBars + 5,
+          });
+        } catch {}
+        if (progress < 1) {
+          animRafId = requestAnimationFrame(animateRange);
+        }
+      };
+      animRafId = requestAnimationFrame(animateRange);
     }
 
     const isNarrowViewport = container.clientWidth < 640;
@@ -384,6 +406,9 @@ export default function StockChart({
     resizeObserver.observe(container);
 
     return () => {
+      if (animRafId !== null) {
+        cancelAnimationFrame(animRafId);
+      }
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
@@ -498,7 +523,12 @@ export default function StockChart({
   const changePct = latest && latest.open > 0 ? (changeVal / latest.open) * 100 : 0;
 
   return (
-    <div className={`bg-[#050811] border border-white/[0.05] rounded-xl shadow-xl overflow-hidden ${compact ? "p-3" : "p-4"}`}>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className={`bg-[#050811] border border-white/[0.05] rounded-xl shadow-xl overflow-hidden ${compact ? "p-3" : "p-4"}`}
+    >
       {/* Top Header: Telemetry & Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-white/[0.05]">
         {/* Left: Telemetry Readout */}
@@ -751,6 +781,6 @@ export default function StockChart({
           TradingView Lightweight-Charts
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

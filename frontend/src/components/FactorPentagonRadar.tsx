@@ -114,15 +114,19 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
           </radialGradient>
         </defs>
 
-        {/* Concentric Web Rings (5-axis polygon spiderweb) */}
-        {[0.25, 0.5, 0.75, 1.0].map((ring) => (
-          <polygon
+        {/* Concentric Web Rings (5-axis polygon spiderweb with spring entrance) */}
+        {[0.25, 0.5, 0.75, 1.0].map((ring, i) => (
+          <motion.polygon
             key={ring}
-            points={[0, 1, 2, 3, 4].map((i) => getPointStr(i, ring)).join(" ")}
+            points={[0, 1, 2, 3, 4].map((idx) => getPointStr(idx, ring)).join(" ")}
             fill="none"
             stroke="rgba(255, 255, 255, 0.08)"
             strokeWidth="1"
             strokeDasharray={ring < 1.0 ? "2 3" : undefined}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            style={{ transformOrigin: `${center}px ${center}px` }}
+            transition={{ delay: i * 0.06, type: "spring", stiffness: 220, damping: 22 }}
           />
         ))}
 
@@ -174,9 +178,20 @@ export const FactorPentagonRadar: React.FC<FactorRadarProps> = ({
 
         {/* Morphing Primary Data Pentagon Polygon */}
         <motion.polygon
-          initial={false}
-          animate={{ points: polygonPoints }}
-          transition={{ type: "spring", stiffness: 240, damping: 24 }}
+          initial={{ scale: 0.85, opacity: 0 }}
+          animate={{
+            points: polygonPoints,
+            scale: 1,
+            opacity: 1,
+            fillOpacity: (conviction ?? 0) >= 70 ? [0.65, 0.9, 0.65] : 0.75,
+          }}
+          transition={{
+            type: "spring",
+            stiffness: 240,
+            damping: 24,
+            fillOpacity: (conviction ?? 0) >= 70 ? { duration: 2.5, repeat: Infinity, ease: "easeInOut" } : undefined,
+          }}
+          style={{ transformOrigin: `${center}px ${center}px` }}
           fill="url(#radarPentagonGlow)"
           stroke="#22d3ee"
           strokeWidth="2"

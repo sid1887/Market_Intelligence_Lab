@@ -33,6 +33,7 @@ import ScreenerWorkspace from "@/components/ScreenerWorkspace";
 import StockInspector from "@/components/StockInspector";
 import IngestStatusButton from "@/components/IngestStatusButton";
 import { CommandPaletteModal } from "@/components/CommandPaletteModal";
+import ParticleField from "@/components/ParticleField";
 import { PanelErrorBoundary } from "@/components/PanelErrorBoundary";
 import { KeyboardShortcutModal } from "@/components/KeyboardShortcutModal";
 import { useBackButtonClose } from "@/hooks/useBackButtonClose";
@@ -278,6 +279,7 @@ export default function CockpitPage() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] bg-grid-pattern relative select-none text-slate-100 font-sans">
+      <ParticleField />
       {/* ──────────────── 1. TOP HEADER NAVIGATION (V8 Institutional Aesthetic) ──────────────── */}
       <header className="h-14 shrink-0 border-b border-white/[0.08] bg-[#040609] flex items-center justify-between px-3 sm:px-6 z-30 transition-all">
         {/* Left: Brand + Navigation Tabs with Framer Motion Spring Indicator */}
@@ -511,31 +513,36 @@ export default function CockpitPage() {
       )}
 
       {/* ──────────────── 5. FIXED MOBILE BOTTOM NAVIGATION BAR (< 768px) ──────────────── */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609] border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#040609]/95 backdrop-blur-lg border-t border-white/[0.08] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <Link
           href="/"
-          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-cyan-300 font-bold bg-cyan-950/40"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-cyan-300 font-bold"
         >
-          <LayoutDashboard className="w-4 h-4 mb-0.5 text-cyan-400" />
-          <span>Screener</span>
+          <motion.div
+            layoutId="mobile-nav-indicator"
+            className="absolute inset-0 bg-cyan-950/60 border border-cyan-800/40 rounded-lg shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          />
+          <LayoutDashboard className="w-4 h-4 mb-0.5 text-cyan-400 relative z-10" />
+          <span className="relative z-10">Screener</span>
         </Link>
         <Link
           href="/portfolio"
-          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
         >
           <Briefcase className="w-4 h-4 mb-0.5 text-slate-400" />
           <span>Portfolio</span>
         </Link>
         <Link
           href="/backtest"
-          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-slate-200"
         >
           <LineChart className="w-4 h-4 mb-0.5 text-slate-400" />
           <span>Backtest</span>
         </Link>
         <button
           onClick={() => milEvents.emit("mil:open-copilot", { symbol: selectedSymbol || "RELIANCE" })}
-          className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-cyan-300"
+          className="relative flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[10px] font-mono text-slate-400 hover:text-cyan-300"
         >
           <BrainCircuit className="w-4 h-4 mb-0.5 text-cyan-400" />
           <span>Copilot</span>

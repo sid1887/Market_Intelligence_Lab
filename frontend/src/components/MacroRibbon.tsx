@@ -127,10 +127,10 @@ function MacroRibbonComponent({
   const supervisorInfo = getSupervisorBadge();
 
   return (
-    <div className="h-full w-full flex items-center overflow-x-auto overflow-y-hidden thin-scrollbar px-2 font-mono text-[11px] divide-x divide-white/[0.06] select-none relative">
+    <div className="h-full w-full flex items-center overflow-hidden px-2 font-mono text-[11px] select-none relative">
       {/* Live SSE Pulse Pill */}
       <div
-        className="h-full flex items-center gap-1.5 px-3 text-slate-300 whitespace-nowrap shrink-0"
+        className="h-full flex items-center gap-1.5 px-3 text-slate-300 whitespace-nowrap shrink-0 border-r border-white/[0.06] bg-[#020306] z-10"
         title={
           mounted && effectiveIngestTime
             ? `Last Dynamic Ingestion: ${new Date(effectiveIngestTime).toLocaleString()} (Continuous feed)`
@@ -156,7 +156,10 @@ function MacroRibbonComponent({
                   <span>STALE</span>
                 </span>
               ) : (
-                <span className="text-emerald-400 font-bold">LIVE NSE</span>
+                <span className="text-emerald-400 font-bold flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  LIVE NSE
+                </span>
               )}
               <span className="text-slate-500 font-normal">· {ingestElapsed}</span>
             </>
@@ -169,77 +172,84 @@ function MacroRibbonComponent({
       </div>
 
       {/* Macro Indicators with Decaying Flash Keyframes & Tabular Numerals */}
-      {indicators.map((ind) => {
-        const hasVal = ind.value !== null && ind.value !== undefined;
-        const change = ind.change_pct;
-        const isPositive = typeof change === "number" && change > 0;
-        const isNegative = typeof change === "number" && change < 0;
-        const flashClass = flashingKeys[ind.symbol] === "tick-up"
-          ? "animate-tick-up"
-          : flashingKeys[ind.symbol] === "tick-down"
-          ? "animate-tick-down"
-          : "";
+      <div className="marquee-wrapper flex-1 overflow-x-auto overflow-y-hidden thin-scrollbar h-full flex items-center min-w-0">
+        <div className="flex items-center divide-x divide-white/[0.06] shrink-0">
+          {indicators.map((ind) => {
+            const hasVal = ind.value !== null && ind.value !== undefined;
+            const change = ind.change_pct;
+            const isPositive = typeof change === "number" && change > 0;
+            const isNegative = typeof change === "number" && change < 0;
+            const isFlashing = Boolean(flashingKeys[ind.symbol]);
+            const flashClass = flashingKeys[ind.symbol] === "tick-up"
+              ? "animate-tick-up"
+              : flashingKeys[ind.symbol] === "tick-down"
+              ? "animate-tick-down"
+              : "";
 
-        let formattedVal = "—";
-        if (hasVal) {
-          if (ind.unit === "₹") {
-            formattedVal = `₹${ind.value!.toFixed(2)}`;
-          } else if (ind.unit === "$/bbl") {
-            formattedVal = `$${ind.value!.toFixed(2)}`;
-          } else if (ind.unit === "%") {
-            formattedVal = `${ind.value!.toFixed(2)}%`;
-          } else {
-            formattedVal = `${ind.value!.toFixed(2)} ${ind.unit}`;
-          }
-        }
+            let formattedVal = "—";
+            if (hasVal) {
+              if (ind.unit === "₹") {
+                formattedVal = `₹${ind.value!.toFixed(2)}`;
+              } else if (ind.unit === "$/bbl") {
+                formattedVal = `$${ind.value!.toFixed(2)}`;
+              } else if (ind.unit === "%") {
+                formattedVal = `${ind.value!.toFixed(2)}%`;
+              } else {
+                formattedVal = `${ind.value!.toFixed(2)} ${ind.unit}`;
+              }
+            }
 
-        return (
-          <div
-            key={ind.symbol}
-            className={`h-full flex items-center gap-1.5 px-3 text-slate-300 whitespace-nowrap shrink-0 transition-colors ${flashClass}`}
-            title={`${ind.label} (${ind.source}) - ${ind.freshness_status || "LIVE"}`}
-          >
-            <span className="text-slate-500 font-medium text-[10px] uppercase tracking-wider">{ind.label}:</span>
-            <span className="font-bold text-slate-200 tabular-nums">{formattedVal}</span>
-
-            {hasVal && typeof change === "number" && (
-              <span
-                className={`flex items-center text-[10px] font-semibold tabular-nums ${
-                  isPositive
-                    ? "text-emerald-400"
-                    : isNegative
-                    ? "text-rose-400"
-                    : "text-slate-500"
-                }`}
+            return (
+              <div
+                key={ind.symbol}
+                className={`h-full flex items-center gap-1.5 px-3 text-slate-300 whitespace-nowrap shrink-0 transition-colors ${flashClass}`}
+                title={`${ind.label} (${ind.source}) - ${ind.freshness_status || "LIVE"}`}
               >
-                {isPositive ? (
-                  <TrendingUp className="w-2.5 h-2.5 mr-0.5 inline" />
-                ) : isNegative ? (
-                  <TrendingDown className="w-2.5 h-2.5 mr-0.5 inline" />
-                ) : (
-                  <Minus className="w-2.5 h-2.5 mr-0.5 inline" />
-                )}
-                {isPositive ? "+" : ""}
-                {change.toFixed(2)}%
-              </span>
-            )}
+                <span className="text-slate-500 font-medium text-[10px] uppercase tracking-wider">{ind.label}:</span>
+                <span className={`font-bold text-slate-200 tabular-nums ${isFlashing ? "animate-tick-pop" : ""}`}>{formattedVal}</span>
 
-            {!hasVal && ind.freshness_status === "NOT_CONFIGURED" && (
-              <span className="text-[9px] text-slate-500 italic">unconfigured</span>
-            )}
-          </div>
-        );
-      })}
+                {hasVal && typeof change === "number" && (
+                  <span
+                    className={`flex items-center text-[10px] font-semibold tabular-nums ${
+                      isPositive
+                        ? "text-emerald-400"
+                        : isNegative
+                        ? "text-rose-400"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {isPositive ? (
+                      <TrendingUp className="w-2.5 h-2.5 mr-0.5 inline" />
+                    ) : isNegative ? (
+                      <TrendingDown className="w-2.5 h-2.5 mr-0.5 inline" />
+                    ) : (
+                      <Minus className="w-2.5 h-2.5 mr-0.5 inline" />
+                    )}
+                    {isPositive ? "+" : ""}
+                    {change.toFixed(2)}%
+                  </span>
+                )}
+
+                {!hasVal && ind.freshness_status === "NOT_CONFIGURED" && (
+                  <span className="text-[9px] text-slate-500 italic">unconfigured</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Supervisor Health State & Observability Trigger */}
       <button
         onClick={() => milEvents.emit("mil:open-system-logs")}
-        className="h-full flex items-center gap-1.5 px-3 text-[10px] font-mono whitespace-nowrap shrink-0 ml-auto hover:bg-white/[0.04] transition-colors cursor-pointer group"
+        className="h-full flex items-center gap-1.5 px-3 text-[10px] font-mono whitespace-nowrap shrink-0 ml-auto border-l border-white/[0.06] bg-[#020306] z-10 hover:bg-white/[0.04] transition-colors cursor-pointer group"
         title={`Supervisor: ${supervisorInfo.label} | Click or press Alt+L for Live Diagnostics`}
       >
         <Terminal className="w-3 h-3 text-slate-500 group-hover:text-cyan-400 transition-colors" />
         {supervisorInfo.icon}
-        <span className={`font-bold ${supervisorInfo.badgeClass}`}>{supervisorInfo.label}</span>
+        <span className={`font-bold ${supervisorInfo.badgeClass} ${supervisorState.includes("QUARANTINE") ? "animate-pulse" : ""}`}>
+          {supervisorInfo.label}
+        </span>
         <span className="text-slate-500 hidden xl:inline">· {supervisorInfo.modelText}</span>
       </button>
     </div>

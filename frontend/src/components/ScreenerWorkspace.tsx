@@ -4,8 +4,10 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
+  SearchX,
   Table as TableIcon,
   LayoutGrid,
   Grid3X3,
@@ -250,7 +252,7 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
       </div>
 
       {/* 4. Blended Score */}
-      <div className="w-28 text-right shrink-0 flex justify-end">
+      <div className="w-28 text-right shrink-0 flex justify-end score-cell-reveal">
         {score !== null ? (
           <ScreenerScoreCell score={score} />
         ) : (
@@ -848,13 +850,22 @@ function ScreenerWorkspaceComponent({
           <button
             key={sec}
             onClick={() => setSectorFilter(sec)}
-            className={`px-2 py-0.5 rounded text-[11px] font-mono whitespace-nowrap transition-colors ${
+            className={`relative px-2.5 py-0.5 rounded text-[11px] font-mono whitespace-nowrap transition-colors ${
               sectorFilter === sec
-                ? "bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-semibold"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent"
+                ? "text-cyan-300 font-semibold"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            {sec} ({filterCounts[sec] ?? 0})
+            {sectorFilter === sec && (
+              <motion.div
+                layoutId="screener-sector-pill"
+                className="absolute inset-0 bg-cyan-950/80 border border-cyan-500/40 rounded shadow-[0_0_10px_rgba(6,182,212,0.2)]"
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              />
+            )}
+            <span className="relative z-10">
+              {sec} ({filterCounts[sec] ?? 0})
+            </span>
           </button>
         ))}
 
@@ -929,27 +940,43 @@ function ScreenerWorkspaceComponent({
       </div>
 
       {/* Main Content: Heatmap, Cards Grid, or Virtualized Table */}
-      {viewMode === "heatmap" ? (
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
-          <SectorHeatmap
-            candidates={candidates}
-            activeSymbol={selectedSymbol || ""}
-            onSelect={onSelectSymbol}
-          />
-        </div>
-      ) : viewMode === "cards" ? (
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
-          {loading && candidates.length === 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 animate-pulse">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="h-36 rounded-xl bg-white/[0.03] border border-white/[0.06]" />
-              ))}
-            </div>
-          ) : filteredCandidates.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 font-mono text-xs">
-              No equities match the selected criteria.
-            </div>
-          ) : (
+      <AnimatePresence mode="wait">
+        {viewMode === "heatmap" ? (
+          <motion.div
+            key="heatmap"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="flex-1 overflow-y-auto p-4 min-h-0"
+          >
+            <SectorHeatmap
+              candidates={candidates}
+              activeSymbol={selectedSymbol || ""}
+              onSelect={onSelectSymbol}
+            />
+          </motion.div>
+        ) : viewMode === "cards" ? (
+          <motion.div
+            key="cards"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="flex-1 overflow-y-auto p-4 min-h-0"
+          >
+            {loading && candidates.length === 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 animate-pulse">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div key={i} className="h-36 rounded-xl bg-white/[0.03] border border-white/[0.06]" />
+                ))}
+              </div>
+            ) : filteredCandidates.length === 0 ? (
+              <div className="p-12 flex flex-col items-center justify-center text-center text-slate-500 font-mono text-xs gap-3">
+                <SearchX className="w-8 h-8 text-slate-600 animate-pulse" />
+                <span>No equities match the selected criteria.</span>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredCandidates.map((cand, idx) => {
                 const isSelected = selectedSymbol === cand.symbol;
@@ -1049,9 +1076,16 @@ function ScreenerWorkspaceComponent({
               })}
             </div>
           )}
-        </div>
+        </motion.div>
       ) : (
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0 h-full">
+        <motion.div
+          key="table"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          className="flex-1 flex flex-col overflow-hidden min-h-0 h-full"
+        >
           {/* Desktop Virtual Table View (hidden on mobile, flex on md:) */}
           <div className="hidden md:flex flex-col flex-1 overflow-hidden min-h-0">
             {/* Fixed Sticky Header */}
@@ -1497,8 +1531,9 @@ function ScreenerWorkspaceComponent({
               60 FPS TanStack Virtualization
             </span>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Bottom Keyboard Navigation Hint Bar */}
       <div className="hidden md:flex shrink-0 border-t border-white/[0.04] px-3.5 py-1.5 items-center justify-between text-[10px] font-mono text-slate-500 bg-[#020406]">

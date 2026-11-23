@@ -135,12 +135,18 @@ export default function IngestionProgressBanner({
           {isRunning && (
             <div className="flex items-center gap-2.5 w-full sm:w-56">
               <div className="flex-1 h-2 bg-black/60 rounded-full overflow-hidden border border-white/[0.1] relative">
-                <div
-                  className="h-full relative overflow-hidden rounded-full transition-all duration-300 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-400"
-                  style={{ width: `${progressPct}%` }}
+                <motion.div
+                  className="h-full relative overflow-hidden rounded-full bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-400"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPct}%` }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-shimmer" />
-                </div>
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent"
+                    animate={{ x: ["-100%", "100%"] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  />
+                </motion.div>
               </div>
               <span className="text-[11px] font-bold text-slate-100 shrink-0 min-w-[36px] text-right tabular-nums">
                 {progressPct.toFixed(0)}%

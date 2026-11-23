@@ -55,6 +55,7 @@ from src.quant.rebalance_engine import RebalanceEngine
 from src.api.utils import (
     DATABASE_PATH,
     get_db_connection,
+    get_write_db_connection,
     sanitize_for_json,
     safe_float,
     safe_int
@@ -610,6 +611,7 @@ def get_screener(
         raise HTTPException(status_code=500, detail=f"Screener execution error: {str(e)}")
 
 
+@app.get("/watchlist")
 @app.get("/api/v1/watchlist")
 def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
     """
@@ -731,19 +733,31 @@ def get_watchlist(conn: sqlite3.Connection = Depends(get_db_connection)):
 
 class WatchlistAddRequest(BaseModel):
     symbol: str
+    action: Optional[str] = None  # 'add' or 'remove'
     target_price: Optional[float] = None
     stop_loss: Optional[float] = None
     notes: Optional[str] = None
 
 
+@app.post("/watchlist")
 @app.post("/api/v1/watchlist")
 def add_to_watchlist(
     payload: WatchlistAddRequest,
-    conn: sqlite3.Connection = Depends(get_db_connection)
+    conn: sqlite3.Connection = Depends(get_write_db_connection)
 ):
-    """Adds or updates an equity symbol in user_watchlists with automated securities_master metadata."""
+    """Adds, updates, or removes an equity symbol in user_watchlists with automated securities_master metadata."""
     sym = payload.symbol.strip().upper()
     try:
+        if payload.action and payload.action.lower() == "remove":
+            conn.execute("DELETE FROM user_watchlists WHERE symbol = ?", (sym,))
+            conn.commit()
+            return {
+                "status": "ok",
+                "message": f"{sym} removed from active user watchlist.",
+                "symbol": sym,
+                "is_watchlist": False
+            }
+
         # Lookup company_name & sector from securities_master
         sec = conn.execute(
             "SELECT company_name, sector FROM securities_master WHERE symbol = ?", (sym,)
@@ -773,10 +787,11 @@ def add_to_watchlist(
         raise HTTPException(status_code=500, detail=f"Failed to add to watchlist: {str(e)}")
 
 
+@app.delete("/watchlist/{symbol}")
 @app.delete("/api/v1/watchlist/{symbol}")
 def remove_from_watchlist(
     symbol: str,
-    conn: sqlite3.Connection = Depends(get_db_connection)
+    conn: sqlite3.Connection = Depends(get_write_db_connection)
 ):
     """Removes an equity symbol from user_watchlists."""
     sym = symbol.strip().upper()
@@ -924,6 +939,107 @@ def trigger_news_ingestion(symbols: Optional[List[str]] = Query(None)):
     except Exception as e:
         logger.error(f"Error ingesting news: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"News ingestion failed: {str(e)}")
+
+
+def _format_catalyst_row(row_dict: dict) -> dict:
+    item = dict(row_dict)
+    for json_field, alias in [
+        ("causal_bullets", "causal_bullets"),
+        ("pillar1_price", "pillar1"),
+        ("pillar2_macro", "pillar2"),
+        ("pillar3_corp", "pillar3"),
+        ("pillar4_news", "pillar4"),
+    ]:
+        val = item.get(json_field)
+        if isinstance(val, str):
+            try:
+                parsed = json.loads(val)
+                item[json_field] = parsed
+                if alias:
+                    item[alias] = parsed
+            except Exception:
+                pass
+        elif val and alias:
+            item[alias] = val
+    return item
+
+
+@app.post("/catalysts/scan")
+@app.post("/api/v1/catalysts/scan")
+def scan_catalysts_endpoint():
+    """Trigger intraday causal anomaly scan and push alerts."""
+    try:
+        from src.tasks.catalyst_engine import catalyst_engine
+        results = catalyst_engine.run_intraday_scan(max_push_alerts=2)
+        return {"status": "ok", "count": len(results) if isinstance(results, list) else 0, "results": results}
+    except Exception as e:
+        logger.error(f"Error scanning catalysts: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/catalysts")
+@app.get("/api/v1/catalysts")
+@app.get("/catalysts/live")
+@app.get("/api/v1/catalysts/live")
+def get_live_catalysts_endpoint(
+    limit: int = Query(20, ge=1, le=100),
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """Fetch recent market-wide causal catalysts."""
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
+                   pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
+                   causal_headline, causal_bullets, triggered_at
+            FROM market_catalysts
+            ORDER BY triggered_at DESC
+            LIMIT ?
+            """,
+            (limit,)
+        )
+        rows = [_format_catalyst_row(dict(r)) for r in cur.fetchall()]
+        return {"status": "ok", "count": len(rows), "catalysts": sanitize_for_json(rows)}
+    except Exception as e:
+        logger.error(f"Error fetching live catalysts: {e}", exc_info=True)
+        return {"status": "error", "count": 0, "catalysts": []}
+
+
+@app.get("/catalysts/symbol/{symbol}")
+@app.get("/api/v1/catalysts/symbol/{symbol}")
+def get_symbol_catalysts_endpoint(
+    symbol: str,
+    fallback: bool = Query(True),
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """Fetch catalysts for a specific symbol, optionally falling back to latest."""
+    sym = symbol.strip().upper()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
+                   pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
+                   causal_headline, causal_bullets, triggered_at
+            FROM market_catalysts
+            WHERE symbol = ?
+            ORDER BY triggered_at DESC
+            LIMIT 10
+            """,
+            (sym,)
+        )
+        rows = [_format_catalyst_row(dict(r)) for r in cur.fetchall()]
+        latest = rows[0] if rows else None
+        return {
+            "status": "ok",
+            "symbol": sym,
+            "catalysts": sanitize_for_json(rows),
+            "latest": sanitize_for_json(latest)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching catalyst for {sym}: {e}", exc_info=True)
+        return {"status": "error", "symbol": sym, "catalysts": [], "latest": None}
 
 
 @app.get("/api/v1/ml/forecast/{symbol}")

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
@@ -206,15 +207,33 @@ export default function BacktestPage() {
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
                 <span>Strategy Regime</span>
               </label>
-              <select
-                value={strategyMode}
-                onChange={(e) => setStrategyMode(e.target.value)}
-                className="w-full bg-[#050810] border border-white/[0.1] rounded-xl px-3.5 py-2.5 text-slate-100 font-mono focus:outline-none focus:border-cyan-400 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
-              >
-                <option value="BLENDED_20D_60D">Institutional Blended (62.5% Tactical + 37.5% Trend)</option>
-                <option value="TACTICAL_20D">Tactical Swing (100% 20D Champion)</option>
-                <option value="TREND_60D">Structural Trend (100% 60D Champion)</option>
-              </select>
+              <div className="flex gap-1 bg-[#050810] p-1 rounded-xl border border-white/[0.1] h-[42px] items-center">
+                {[
+                  { id: "BLENDED_20D_60D", label: "Blended 20/60" },
+                  { id: "TACTICAL_20D", label: "Tactical 20D" },
+                  { id: "TREND_60D", label: "Trend 60D" },
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setStrategyMode(mode.id)}
+                    className={`relative flex-1 py-1.5 rounded-lg text-xs font-mono transition-colors text-center ${
+                      strategyMode === mode.id
+                        ? "text-cyan-300 font-semibold"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {strategyMode === mode.id && (
+                      <motion.div
+                        layoutId="strategy-selector"
+                        className="absolute inset-0 bg-cyan-950/80 border border-cyan-500/40 rounded-lg shadow-[0_0_10px_rgba(6,182,212,0.25)]"
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10">{mode.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Top N Basket Size */}
@@ -268,23 +287,40 @@ export default function BacktestPage() {
 
             {/* Run Button */}
             <div className="flex items-end">
-              <button
+              <motion.button
                 onClick={handleRunBacktest}
                 disabled={loading}
-                className="w-full h-[42px] px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-mono text-xs font-semibold shadow-[0_0_20px_rgba(16,185,129,0.3)] border border-emerald-400/40 flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                whileHover={!loading ? { scale: 1.02, boxShadow: "0 0 20px rgba(16,185,129,0.4)" } : {}}
+                whileTap={!loading ? { scale: 0.97 } : {}}
+                layout
+                className="w-full h-[42px] px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-mono text-xs font-semibold shadow-[0_0_20px_rgba(16,185,129,0.3)] border border-emerald-400/40 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Simulating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>Run Simulation</span>
-                  </>
-                )}
-              </button>
+                <AnimatePresence mode="wait">
+                  {loading ? (
+                    <motion.span
+                      key="loading"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      className="flex items-center gap-2"
+                    >
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Simulating...</span>
+                    </motion.span>
+                  ) : (
+                    <motion.span
+                      key="idle"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      className="flex items-center gap-2"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>Run Simulation</span>
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </motion.button>
             </div>
           </div>
         </div>
@@ -298,107 +334,123 @@ export default function BacktestPage() {
         )}
 
         {/* KPI Tearsheet Grid (Standardized Bento Cards) */}
-        {metrics && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-            <BentoCard
-              title="Final Portfolio NAV"
-              value={formatINR(metrics.final_nav)}
-              delta={`${Math.abs(metrics.total_return_pct).toFixed(2)}%`}
-              isPositive={metrics.total_return_pct >= 0}
-              subLabel="Total Return"
-              icon={<PieChart className="w-4 h-4 text-cyan-400" />}
-              delay={0.05}
-            />
-            <BentoCard
-              title="Benchmark & Alpha"
-              value={`${metrics.alpha_pct >= 0 ? "+" : ""}${metrics.alpha_pct.toFixed(2)}%`}
-              delta={`Nifty: ${metrics.benchmark_return_pct.toFixed(2)}%`}
-              isPositive={metrics.alpha_pct >= 0}
-              subLabel="Alpha Spread"
-              icon={<Percent className="w-4 h-4 text-amber-400" />}
-              delay={0.1}
-            />
-            <BentoCard
-              title="Risk-Adjusted Return"
-              value={`Sharpe: ${metrics.sharpe_ratio.toFixed(2)}`}
-              badge={`Sortino ${metrics.sortino_ratio.toFixed(2)}`}
-              subLabel={`Calmar: ${metrics.calmar_ratio.toFixed(2)}`}
-              icon={<ShieldCheck className="w-4 h-4 text-emerald-400" />}
-              delay={0.15}
-            />
-            <BentoCard
-              title="Max Drawdown & Vol"
-              value={`-${metrics.max_drawdown_pct.toFixed(2)}%`}
-              delta={`Vol ${metrics.annualized_volatility_pct.toFixed(1)}%`}
-              isPositive={false}
-              subLabel={`Win ${metrics.win_rate_pct.toFixed(1)}%`}
-              icon={<ShieldAlert className="w-4 h-4 text-rose-400" />}
-              delay={0.2}
-            />
-            <BentoCard
-              title="CAGR (Ann. Return)"
-              value={`${metrics.cagr_pct.toFixed(2)}%`}
-              badge="Compounded"
-              subLabel="Annual Growth Rate"
-              icon={<TrendingUp className="w-4 h-4 text-blue-400" />}
-              delay={0.25}
-            />
-            <BentoCard
-              title="Total Friction Paid"
-              value={formatINR(metrics.total_friction_paid)}
-              badge={`Drag ${metrics.friction_drag_bps.toFixed(1)} bps`}
-              subLabel="of initial capital"
-              icon={<DollarSign className="w-4 h-4 text-indigo-400" />}
-              delay={0.3}
-            />
-            <BentoCard
-              title="Simulation Activity"
-              value={`${metrics.total_rebalances} Rebalances`}
-              badge={`${metrics.total_trades} orders`}
-              subLabel={`${metrics.trading_sessions} sessions`}
-              icon={<Clock className="w-4 h-4 text-cyan-400" />}
-              delay={0.35}
-            />
-            <BentoCard
-              title="Regime Specification"
-              value={metrics.strategy_mode}
-              badge={`Top ${metrics.top_n}`}
-              subLabel={`Cadence ${metrics.rebalance_every_n_days}d`}
-              icon={<Layers className="w-4 h-4 text-emerald-400" />}
-              delay={0.4}
-            />
-          </div>
-        )}
+        <AnimatePresence>
+          {metrics && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5"
+            >
+              <BentoCard
+                title="Final Portfolio NAV"
+                value={formatINR(metrics.final_nav)}
+                delta={`${Math.abs(metrics.total_return_pct).toFixed(2)}%`}
+                isPositive={metrics.total_return_pct >= 0}
+                subLabel="Total Return"
+                icon={<PieChart className="w-4 h-4 text-cyan-400" />}
+                delay={0.05}
+              />
+              <BentoCard
+                title="Benchmark & Alpha"
+                value={`${metrics.alpha_pct >= 0 ? "+" : ""}${metrics.alpha_pct.toFixed(2)}%`}
+                delta={`Nifty: ${metrics.benchmark_return_pct.toFixed(2)}%`}
+                isPositive={metrics.alpha_pct >= 0}
+                subLabel="Alpha Spread"
+                icon={<Percent className="w-4 h-4 text-amber-400" />}
+                delay={0.1}
+              />
+              <BentoCard
+                title="Risk-Adjusted Return"
+                value={`Sharpe: ${metrics.sharpe_ratio.toFixed(2)}`}
+                badge={`Sortino ${metrics.sortino_ratio.toFixed(2)}`}
+                subLabel={`Calmar: ${metrics.calmar_ratio.toFixed(2)}`}
+                icon={<ShieldCheck className="w-4 h-4 text-emerald-400" />}
+                delay={0.15}
+              />
+              <BentoCard
+                title="Max Drawdown & Vol"
+                value={`-${metrics.max_drawdown_pct.toFixed(2)}%`}
+                delta={`Vol ${metrics.annualized_volatility_pct.toFixed(1)}%`}
+                isPositive={false}
+                subLabel={`Win ${metrics.win_rate_pct.toFixed(1)}%`}
+                icon={<ShieldAlert className="w-4 h-4 text-rose-400" />}
+                delay={0.2}
+              />
+              <BentoCard
+                title="CAGR (Ann. Return)"
+                value={`${metrics.cagr_pct.toFixed(2)}%`}
+                badge="Compounded"
+                subLabel="Annual Growth Rate"
+                icon={<TrendingUp className="w-4 h-4 text-blue-400" />}
+                delay={0.25}
+              />
+              <BentoCard
+                title="Total Friction Paid"
+                value={formatINR(metrics.total_friction_paid)}
+                badge={`Drag ${metrics.friction_drag_bps.toFixed(1)} bps`}
+                subLabel="of initial capital"
+                icon={<DollarSign className="w-4 h-4 text-indigo-400" />}
+                delay={0.3}
+              />
+              <BentoCard
+                title="Simulation Activity"
+                value={`${metrics.total_rebalances} Rebalances`}
+                badge={`${metrics.total_trades} orders`}
+                subLabel={`${metrics.trading_sessions} sessions`}
+                icon={<Clock className="w-4 h-4 text-cyan-400" />}
+                delay={0.35}
+              />
+              <BentoCard
+                title="Regime Specification"
+                value={metrics.strategy_mode}
+                badge={`Top ${metrics.top_n}`}
+                subLabel={`Cadence ${metrics.rebalance_every_n_days}d`}
+                icon={<Layers className="w-4 h-4 text-emerald-400" />}
+                delay={0.4}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Dual Lightweight Charts (Equity Curve + Underwater Drawdown) */}
-        {result?.equity_curve && result.equity_curve.length > 0 && (
-          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-3">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-2">
-              <div className="flex items-center space-x-2.5">
-                <Activity className="w-4 h-4 text-cyan-400" />
-                <h2 className="text-sm font-semibold text-white tracking-wide">
-                  Historical Mark-to-Market Equity & Underwater Drawdown Visualizer
-                </h2>
+        <AnimatePresence>
+          {result?.equity_curve && result.equity_curve.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.35, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+              className="bg-[#080c14] border border-white/[0.08] rounded-2xl p-5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] space-y-3"
+            >
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-2">
+                <div className="flex items-center space-x-2.5">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  <h2 className="text-sm font-semibold text-white tracking-wide">
+                    Historical Mark-to-Market Equity & Underwater Drawdown Visualizer
+                  </h2>
+                </div>
+                <div className="flex items-center gap-4 text-xs font-mono">
+                  <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                    <span className="w-3 h-0.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                    Strategy NAV
+                  </span>
+                  <span className="flex items-center gap-1.5 text-slate-400">
+                    <span className="w-3 h-0.5 bg-slate-400 border-dashed rounded-full" />
+                    NIFTY 50 Benchmark
+                  </span>
+                  <span className="flex items-center gap-1.5 text-rose-400 font-medium">
+                    <span className="w-2.5 h-2.5 bg-rose-500/40 border border-rose-500 rounded-sm" />
+                    Underwater DD %
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-4 text-xs font-mono">
-                <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                  <span className="w-3 h-0.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                  Strategy NAV
-                </span>
-                <span className="flex items-center gap-1.5 text-slate-400">
-                  <span className="w-3 h-0.5 bg-slate-400 border-dashed rounded-full" />
-                  NIFTY 50 Benchmark
-                </span>
-                <span className="flex items-center gap-1.5 text-rose-400 font-medium">
-                  <span className="w-2.5 h-2.5 bg-rose-500/40 border border-rose-500 rounded-sm" />
-                  Underwater DD %
-                </span>
-              </div>
-            </div>
 
-            <BacktestChart data={result.equity_curve} initialCapital={initialCapital} />
-          </div>
-        )}
+              <BacktestChart data={result.equity_curve} initialCapital={initialCapital} />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Empty State when no run performed yet */}
         {!result && !loading && (
@@ -414,74 +466,82 @@ export default function BacktestPage() {
         )}
 
         {/* Rebalance Audit Log Table */}
-        {result?.rebalance_log && result.rebalance_log.length > 0 && (
-          <div className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]">
-            <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <Clock className="w-4 h-4 text-amber-400" />
-                <h2 className="text-sm font-semibold text-white tracking-wide">
-                  Historical Rebalance Audit Log ({result.rebalance_log.length} Rebalance Cycles)
-                </h2>
+        <AnimatePresence>
+          {result?.rebalance_log && result.rebalance_log.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.35, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+              className="bg-[#080c14] border border-white/[0.08] rounded-2xl overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.6)]"
+            >
+              <div className="p-5 border-b border-white/[0.08] flex items-center justify-between">
+                <div className="flex items-center space-x-2.5">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  <h2 className="text-sm font-semibold text-white tracking-wide">
+                    Historical Rebalance Audit Log ({result.rebalance_log.length} Rebalance Cycles)
+                  </h2>
+                </div>
+                <span className="text-xs font-mono text-slate-400">
+                  Institutional Rebalance Ledger
+                </span>
               </div>
-              <span className="text-xs font-mono text-slate-400">
-                Institutional Rebalance Ledger
-              </span>
-            </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] text-left text-xs">
-                <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-5">Cycle Date</th>
-                    <th className="py-3 px-5 text-right">NAV Before</th>
-                    <th className="py-3 px-5 text-right">NAV After</th>
-                    <th className="py-3 px-5 text-right">Turnover %</th>
-                    <th className="py-3 px-5 text-right">Orders Executed</th>
-                    <th className="py-3 px-5 text-right">Friction Paid</th>
-                    <th className="py-3 px-5">Top 5 Target Holdings</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.04] font-mono">
-                  {result.rebalance_log.map((reb, idx) => (
-                    <tr key={idx} className="hover:bg-white/[0.03] transition-colors">
-                      <td className="py-3 px-5 font-semibold text-slate-300 tabular-nums">
-                        {reb.date}
-                      </td>
-                      <td className="py-3 px-5 text-right text-slate-400 tabular-nums">
-                        {formatINR(reb.nav_before)}
-                      </td>
-                      <td className="py-3 px-5 text-right text-slate-200 font-semibold tabular-nums">
-                        {formatINR(reb.nav_after)}
-                      </td>
-                      <td className="py-3 px-5 text-right text-cyan-300 tabular-nums font-semibold">
-                        {reb.turnover_pct.toFixed(2)}%
-                      </td>
-                      <td className="py-3 px-5 text-right text-slate-300 tabular-nums">
-                        {reb.orders_count}
-                      </td>
-                      <td className="py-3 px-5 text-right text-amber-400 font-medium tabular-nums">
-                        {formatINR(reb.friction_paid)}
-                      </td>
-                      <td className="py-3 px-5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {reb.top_holdings.map((sym) => (
-                            <Link
-                              key={sym}
-                              href={`/stocks/${sym}`}
-                              className="px-2 py-0.5 rounded-md text-[10px] bg-white/[0.04] hover:bg-cyan-500/10 text-cyan-300 border border-white/[0.08] hover:border-cyan-500/40 transition-all"
-                            >
-                              {sym}
-                            </Link>
-                          ))}
-                        </div>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] text-left text-xs">
+                  <thead className="bg-[#050810]/80 border-b border-white/[0.08] font-mono text-slate-400 text-[11px] uppercase tracking-wider">
+                    <tr>
+                      <th className="py-3 px-5">Cycle Date</th>
+                      <th className="py-3 px-5 text-right">NAV Before</th>
+                      <th className="py-3 px-5 text-right">NAV After</th>
+                      <th className="py-3 px-5 text-right">Turnover %</th>
+                      <th className="py-3 px-5 text-right">Orders Executed</th>
+                      <th className="py-3 px-5 text-right">Friction Paid</th>
+                      <th className="py-3 px-5">Top 5 Target Holdings</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04] font-mono">
+                    {result.rebalance_log.map((reb, idx) => (
+                      <tr key={idx} className="hover:bg-white/[0.03] transition-colors">
+                        <td className="py-3 px-5 font-semibold text-slate-300 tabular-nums">
+                          {reb.date}
+                        </td>
+                        <td className="py-3 px-5 text-right text-slate-400 tabular-nums">
+                          {formatINR(reb.nav_before)}
+                        </td>
+                        <td className="py-3 px-5 text-right text-slate-200 font-semibold tabular-nums">
+                          {formatINR(reb.nav_after)}
+                        </td>
+                        <td className="py-3 px-5 text-right text-cyan-300 tabular-nums font-semibold">
+                          {reb.turnover_pct.toFixed(2)}%
+                        </td>
+                        <td className="py-3 px-5 text-right text-slate-300 tabular-nums">
+                          {reb.orders_count}
+                        </td>
+                        <td className="py-3 px-5 text-right text-amber-400 font-medium tabular-nums">
+                          {formatINR(reb.friction_paid)}
+                        </td>
+                        <td className="py-3 px-5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {reb.top_holdings.map((sym) => (
+                              <Link
+                                key={sym}
+                                href={`/stocks/${sym}`}
+                                className="px-2 py-0.5 rounded-md text-[10px] bg-white/[0.04] hover:bg-cyan-500/10 text-cyan-300 border border-white/[0.08] hover:border-cyan-500/40 transition-all"
+                              >
+                                {sym}
+                              </Link>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
           </>
         )}
       </main>

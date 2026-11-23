@@ -132,6 +132,21 @@ interface DeliberationState {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
 
+function ThinkingDots() {
+  return (
+    <span className="inline-flex items-center gap-1 ml-1.5">
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          className="w-1.5 h-1.5 rounded-full bg-cyan-400"
+          animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+          transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function cleanLatexToPlainText(raw: string): string {
   if (!raw) return "";
   let clean = raw;
@@ -1369,7 +1384,8 @@ export default function CopilotDrawer({
                       </div>
                       <span className="flex items-center space-x-1 text-[10px] font-mono text-cyan-400">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Streaming...</span>
+                        <span>Streaming</span>
+                        <ThinkingDots />
                       </span>
                     </div>
                     <FormattedMarkdown content={state.conversationalText} role="general" />
@@ -1378,7 +1394,12 @@ export default function CopilotDrawer({
 
                 {/* STAGE 1: BULL ANALYST */}
                 {isDebateActive && (state.bullText || state.stage === "bull_analyst" || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
-                  <div className="border border-emerald-500/20 bg-emerald-950/20 rounded-xl overflow-hidden shadow-sm">
+                  <motion.div
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 26 }}
+                    className="border border-emerald-500/20 bg-emerald-950/20 rounded-xl overflow-hidden shadow-sm"
+                  >
                     <button
                       onClick={() => toggleSection("bull")}
                       className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-emerald-950/40 transition-colors font-mono text-xs border-b border-emerald-500/10"
@@ -1387,7 +1408,7 @@ export default function CopilotDrawer({
                         {expandedSections.bull ? <ChevronDown className="w-3.5 h-3.5 text-emerald-400" /> : <ChevronRight className="w-3.5 h-3.5 text-emerald-400" />}
                         <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
                         <span className="font-bold text-emerald-300">Bull Analyst</span>
-                        <span className="text-[10px] text-slate-400">(Momentum & Growth Moats)</span>
+                        <span className="text-[10px] text-slate-400">(Momentum &amp; Growth Moats)</span>
                       </div>
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800">
                         ▼ {bullElapsed}
@@ -1398,16 +1419,23 @@ export default function CopilotDrawer({
                         {state.bullText ? (
                           <FormattedMarkdown content={state.bullText} role="bull" />
                         ) : (
-                          <span className="text-slate-500 font-mono italic animate-pulse">Deliberating growth catalysts...</span>
+                          <span className="text-slate-500 font-mono italic inline-flex items-center">
+                            Deliberating growth catalysts... <ThinkingDots />
+                          </span>
                         )}
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 )}
 
                 {/* STAGE 2: BEAR ANALYST */}
                 {isDebateActive && (state.bearText || state.stage === "bear_analyst" || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
-                  <div className="border border-rose-500/20 bg-rose-950/20 rounded-xl overflow-hidden shadow-sm">
+                  <motion.div
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 26, delay: 0.08 }}
+                    className="border border-rose-500/20 bg-rose-950/20 rounded-xl overflow-hidden shadow-sm"
+                  >
                     <button
                       onClick={() => toggleSection("bear")}
                       className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-rose-950/40 transition-colors font-mono text-xs border-b border-rose-500/10"
@@ -1416,7 +1444,7 @@ export default function CopilotDrawer({
                         {expandedSections.bear ? <ChevronDown className="w-3.5 h-3.5 text-rose-400" /> : <ChevronRight className="w-3.5 h-3.5 text-rose-400" />}
                         <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
                         <span className="font-bold text-rose-300">Bear Analyst</span>
-                        <span className="text-[10px] text-slate-400">(Downside & Multiple Trap)</span>
+                        <span className="text-[10px] text-slate-400">(Downside &amp; Multiple Trap)</span>
                       </div>
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950/80 text-rose-400 border border-rose-800">
                         ▼ {bearElapsed}
@@ -1427,16 +1455,23 @@ export default function CopilotDrawer({
                         {state.bearText ? (
                           <FormattedMarkdown content={state.bearText} role="bear" />
                         ) : (
-                          <span className="text-slate-500 font-mono italic animate-pulse">Scrutinizing leverage and tail risks...</span>
+                          <span className="text-slate-500 font-mono italic inline-flex items-center">
+                            Scrutinizing leverage and tail risks... <ThinkingDots />
+                          </span>
                         )}
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 )}
 
                 {/* STAGE 3: PORTFOLIO MANAGER JUDGE */}
                 {isDebateActive && (state.judgeText || state.stage === "judge_synthesis" || (state.stage === "complete" && !state.conversationalText)) && (
-                  <div className="border border-cyan-500/30 bg-cyan-950/20 rounded-xl overflow-hidden shadow-md">
+                  <motion.div
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 26, delay: 0.16 }}
+                    className="border border-cyan-500/30 bg-cyan-950/20 rounded-xl overflow-hidden shadow-md"
+                  >
                     <button
                       onClick={() => toggleSection("judge")}
                       className="w-full px-3.5 py-2.5 flex items-center justify-between text-left hover:bg-cyan-950/40 transition-colors font-mono text-xs border-b border-cyan-500/20"
@@ -1456,7 +1491,13 @@ export default function CopilotDrawer({
                       <div className="p-3.5 space-y-3.5">
                         {/* Quick Execution Parameters Pill Box */}
                         {state.decisionResult && state.decisionResult.target_price !== undefined && (
-                          <div className="grid grid-cols-3 gap-2 bg-slate-950/80 p-2.5 rounded-lg border border-cyan-800/40 font-mono text-center">
+                          <motion.div
+                            key={`${effectiveSymbol}-${state.decisionResult.target_price}`}
+                            initial={{ scale: 0.94, opacity: 0, y: 6 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            transition={{ type: "spring", stiffness: 350, damping: 22 }}
+                            className="grid grid-cols-3 gap-2 bg-slate-950/80 p-2.5 rounded-lg border border-cyan-800/40 font-mono text-center shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                          >
                             <div>
                               <span className="text-[10px] text-slate-500 block">ENTRY ANCHOR</span>
                               <span className="text-xs font-bold text-white">₹{(state.decisionResult.entry_price ?? activePrice ?? 0).toFixed(2)}</span>
@@ -1469,19 +1510,21 @@ export default function CopilotDrawer({
                               <span className="text-[10px] text-rose-400 block">STOP LOSS</span>
                               <span className="text-xs font-bold text-rose-300">₹{(state.decisionResult.stop_loss ?? 0).toFixed(2)}</span>
                             </div>
-                          </div>
+                          </motion.div>
                         )}
 
                         <div className="text-xs text-slate-200 font-sans leading-relaxed">
                           {state.judgeText ? (
                             <FormattedMarkdown content={state.judgeText} role="judge" />
                           ) : (
-                            <span className="text-slate-500 font-mono italic animate-pulse">Adjudicating trade parameters...</span>
+                            <span className="text-slate-500 font-mono italic inline-flex items-center">
+                              Adjudicating trade parameters... <ThinkingDots />
+                            </span>
                           )}
                         </div>
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 )}
               </div>
 
@@ -1715,9 +1758,13 @@ export default function CopilotDrawer({
                             </div>
 
                             {distillSuccessMessage && (
-                              <div className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-1 rounded-lg">
+                              <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2.5 py-1.5 rounded-lg shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                              >
                                 ✓ {distillSuccessMessage}
-                              </div>
+                              </motion.div>
                             )}
 
                             <button

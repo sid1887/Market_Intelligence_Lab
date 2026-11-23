@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Radio,
   FileText,
@@ -403,8 +403,16 @@ export default function UnifiedIntelligenceHub({
       </div>
 
       {/* 3. Tab Content */}
-      <div className="space-y-4">
-        {/* --- TAB: ALL --- */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-4"
+        >
+          {/* --- TAB: ALL --- */}
         {activeTab === "all" && (
           <div className="space-y-4">
             {/* Primary Catalyst Card if available */}
@@ -845,7 +853,8 @@ export default function UnifiedIntelligenceHub({
             />
           </div>
         )}
-      </div>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

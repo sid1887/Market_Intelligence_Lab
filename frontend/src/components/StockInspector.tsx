@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import {
   ExternalLink,
   PanelRightClose,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/api";
 import { milEvents } from "@/lib/store";
 import { AnimatedTabs, TabItem } from "./ui/AnimatedTabs";
+import { SkeletonStockInspector } from "./ui/SkeletonLoader";
 import UnifiedIntelligenceHub from "./UnifiedIntelligenceHub";
 import { FactorPentagonRadar } from "./FactorPentagonRadar";
 import { RiskRewardVectorBar } from "./RiskRewardVectorBar";
@@ -218,6 +220,14 @@ function StockInspectorComponent({
     );
   }
 
+  if (isSyncing && !activeCandidate && !memo && candles.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#040609] border-l border-white/[0.08] text-slate-100">
+        <SkeletonStockInspector />
+      </div>
+    );
+  }
+
   const currentPrice =
     activeCandidate?.close || memo?.key_metrics?.current_price || 0;
   const sma200 = activeCandidate?.sma_200 || memo?.key_metrics?.sma_200 || null;
@@ -323,21 +333,31 @@ function StockInspectorComponent({
                 {activeCandidate.sector}
               </span>
             )}
-            <span
+            <motion.span
+              key={activeVerdict}
+              initial={{ scale: 0.7, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
               className={cn(
                 "px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-wider shrink-0",
                 verdictCfg.badge
               )}
             >
               {verdictCfg.label}
-            </span>
+            </motion.span>
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0 text-right">
             <div>
-              <span className="text-xs font-mono font-semibold text-slate-100 tabular-nums">
+              <motion.span
+                key={`${symbol}-${currentPrice}`}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                className="text-xs font-mono font-semibold text-slate-100 tabular-nums"
+              >
                 ₹{currentPrice ? currentPrice.toFixed(2) : "—"}
-              </span>
+              </motion.span>
               {smaDist !== null && (
                 <span
                   className={cn(

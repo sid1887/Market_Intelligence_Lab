@@ -645,7 +645,16 @@ export async function fetchDisclosures<T = unknown>(
   symbol: string,
   options: ApiFetchOptions = {}
 ): Promise<T[]> {
-  return apiFetch<T[]>(`/stocks/${symbol.toUpperCase()}/disclosures`, options);
+  try {
+    return await apiFetch<T[]>(`/stocks/${symbol.toUpperCase()}/disclosures`, options);
+  } catch {
+    try {
+      const bundle = await fetchStockTearsheet<{ recent_disclosures?: T[] }>(symbol, options);
+      return bundle?.recent_disclosures || [];
+    } catch {
+      return [];
+    }
+  }
 }
 
 export interface StockBundleResponse {
@@ -1440,9 +1449,16 @@ export async function toggleWatchlist(
       }
       return { success: true, is_watchlist: true };
     } else {
-      await apiFetch<{ status: string; is_watchlist: boolean }>(`/watchlist/${encodeURIComponent(sym)}`, {
-        method: "DELETE",
-      });
+      try {
+        await apiFetch<{ status: string; is_watchlist: boolean }>(`/watchlist/${encodeURIComponent(sym)}`, {
+          method: "DELETE",
+        });
+      } catch {
+        await apiFetch<{ status: string; is_watchlist: boolean }>("/watchlist", {
+          method: "POST",
+          body: JSON.stringify({ symbol: sym, action: "remove" }),
+        });
+      }
       clearMemoryCache("/watchlist");
       clearMemoryCache("/screener");
       if (typeof window !== "undefined") {

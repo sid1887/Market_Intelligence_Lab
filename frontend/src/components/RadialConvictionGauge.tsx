@@ -3,6 +3,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { AnimatedNumber } from "@/lib/AnimatedNumber";
 
 interface RadialConvictionGaugeProps {
   score?: number | null;
@@ -96,9 +97,13 @@ export const RadialConvictionGauge: React.FC<RadialConvictionGaugeProps> = ({
         )}
       </svg>
 
-      <div className="absolute flex flex-col items-center justify-center text-center font-mono">
+      <div className="absolute flex flex-col items-center justify-center text-center font-mono pointer-events-none">
         <span className={cn("text-lg font-bold tabular-nums tracking-tighter drop-shadow-sm", scheme.text)}>
-          {numericScore !== null ? numericScore.toFixed(0) : "—"}
+          {numericScore !== null ? (
+            <AnimatedNumber value={numericScore} duration={800} decimals={0} />
+          ) : (
+            "—"
+          )}
         </span>
         <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider -mt-1">
           {label || (numericScore !== null ? "/100" : "N/A")}
