@@ -146,14 +146,16 @@ function matchSector(item: ScreenerCandidate, filter: string): boolean {
   return sec.includes(fLower);
 }
 
+export type ScreenerViewMode = "table" | "watchlist" | "heatmap" | "cards";
+
 interface ScreenerWorkspaceProps {
   candidates: ScreenerCandidate[];
   selectedSymbol: string | null;
   onSelectSymbol: (symbol: string) => void;
   asOfDate?: string;
   loading?: boolean;
-  viewMode?: "table" | "heatmap" | "cards";
-  onViewModeChange?: (mode: "table" | "heatmap" | "cards") => void;
+  viewMode?: ScreenerViewMode;
+  onViewModeChange?: (mode: ScreenerViewMode) => void;
 }
 
 // ─── Memoized Desktop Row Component ─────────────────────────────────────────
@@ -499,17 +501,23 @@ function ScreenerWorkspaceComponent({
   const desktopParentRef = useRef<HTMLDivElement>(null);
   const mobileParentRef = useRef<HTMLDivElement>(null);
 
-  // Instant Sector & Filter Counts across the entire candidate universe
+  // Watchlist Count across candidate universe
+  const watchlistCount = useMemo(() => {
+    return candidates.filter((c) => Boolean(c.is_watchlist)).length;
+  }, [candidates]);
+
+  // Instant Sector & Filter Counts across the active universe pool
   const filterCounts = useMemo(() => {
+    const baseList = viewMode === "watchlist" ? candidates.filter((c) => Boolean(c.is_watchlist)) : candidates;
     const counts: Record<string, number> = {
-      All: candidates.length,
+      All: baseList.length,
       aboveSma200: 0,
       rebalanceTargets: 0,
     };
     for (const sec of SECTOR_FILTERS) {
       if (sec !== "All") counts[sec] = 0;
     }
-    for (const c of candidates) {
+    for (const c of baseList) {
       for (const sec of SECTOR_FILTERS) {
         if (sec !== "All" && matchSector(c, sec)) {
           counts[sec] = (counts[sec] || 0) + 1;
@@ -519,11 +527,15 @@ function ScreenerWorkspaceComponent({
       if (c.is_rebalance_target || (c.target_allocation_pct || 0) > 0) counts.rebalanceTargets++;
     }
     return counts;
-  }, [candidates]);
+  }, [candidates, viewMode]);
 
   // Filtered and Sorted Candidates
   const filteredCandidates = useMemo(() => {
     const list = candidates.filter((item) => {
+      if (viewMode === "watchlist" && !item.is_watchlist) {
+        return false;
+      }
+
       if (search) {
         const q = search.toLowerCase();
         const matchesSym = item.symbol.toLowerCase().includes(q);
@@ -573,7 +585,7 @@ function ScreenerWorkspaceComponent({
     });
 
     return list;
-  }, [candidates, search, sectorFilter, sortField, sortAsc, minRoe, onlyAbove200Sma, onlyRebalanceTargets]);
+  }, [candidates, viewMode, search, sectorFilter, sortField, sortAsc, minRoe, onlyAbove200Sma, onlyRebalanceTargets]);
 
   // TanStack Virtualizers for continuous 60fps scrolling
   const desktopVirtualizer = useVirtualizer({
@@ -698,6 +710,37 @@ function ScreenerWorkspaceComponent({
     setOnlyRebalanceTargets(false);
   };
 
+  const renderEmptyState = (compact = false) => {
+    if (viewMode === "watchlist") {
+      return (
+        <div className={cn("flex flex-col items-center justify-center text-center font-mono text-xs gap-3 select-none", compact ? "p-6" : "p-12")}>
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+            <Star className="w-6 h-6 text-amber-400 fill-amber-400/20" />
+          </div>
+          <div className="text-slate-200 font-semibold text-sm">Your Wishlist is Empty</div>
+          <p className="text-slate-400 max-w-sm text-xs leading-relaxed">
+            Star any stock in the Screener, Cards, or Stock Inspector to track your highest-conviction ideas here.
+          </p>
+          {onViewModeChange && (
+            <button
+              onClick={() => onViewModeChange("table")}
+              className="mt-2 px-3 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 font-mono text-xs transition-colors flex items-center gap-1.5"
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>Browse All Screener Equities</span>
+            </button>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className={cn("flex flex-col items-center justify-center text-center text-slate-500 font-mono text-xs gap-3", compact ? "p-6" : "p-12")}>
+        <SearchX className="w-8 h-8 text-slate-600 animate-pulse" />
+        <span>No equities match the selected criteria.</span>
+      </div>
+    );
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#070b14] text-slate-100 select-none min-h-0">
       {/* Top Filter and Navigation Strip (2-Row Responsive Layout) */}
@@ -712,7 +755,7 @@ function ScreenerWorkspaceComponent({
                 className={cn(
                   "px-2 sm:px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
                   viewMode === "table"
-                    ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold"
+                    ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold shadow-[0_0_10px_rgba(6,182,212,0.15)]"
                     : "text-slate-400 hover:text-slate-200"
                 )}
               >
@@ -723,12 +766,40 @@ function ScreenerWorkspaceComponent({
               </button>
 
               <button
+                onClick={() => onViewModeChange("watchlist")}
+                aria-label="Wishlist view mode"
+                className={cn(
+                  "px-2 sm:px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md relative",
+                  viewMode === "watchlist"
+                    ? "bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                    : "text-slate-400 hover:text-amber-200"
+                )}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Star className={cn("w-3 h-3", viewMode === "watchlist" ? "text-amber-400 fill-amber-400" : "text-amber-400/80")} />
+                  <span className="hidden sm:inline">Wishlist</span>
+                  {watchlistCount > 0 && (
+                    <span
+                      className={cn(
+                        "text-[9px] font-mono px-1 py-0.2 rounded-full font-bold",
+                        viewMode === "watchlist"
+                          ? "bg-amber-400 text-black"
+                          : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                      )}
+                    >
+                      {watchlistCount}
+                    </span>
+                  )}
+                </span>
+              </button>
+
+              <button
                 onClick={() => onViewModeChange("heatmap")}
                 aria-label="Heatmap view mode"
                 className={cn(
                   "px-2 sm:px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
                   viewMode === "heatmap"
-                    ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold"
+                    ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold shadow-[0_0_10px_rgba(6,182,212,0.15)]"
                     : "text-slate-400 hover:text-slate-200"
                 )}
               >
@@ -744,7 +815,7 @@ function ScreenerWorkspaceComponent({
                 className={cn(
                   "px-2 sm:px-2.5 py-1 text-[11px] font-mono transition-colors rounded-md",
                   viewMode === "cards"
-                    ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold"
+                    ? "bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold shadow-[0_0_10px_rgba(6,182,212,0.15)]"
                     : "text-slate-400 hover:text-slate-200"
                 )}
               >
@@ -813,9 +884,11 @@ function ScreenerWorkspaceComponent({
               </span>
             )}
             <span className="px-2 py-1 rounded bg-slate-900 border border-white/[0.06] text-slate-400">
-              <strong className="text-cyan-400">{filteredCandidates.length}</strong>
+              <strong className={viewMode === "watchlist" ? "text-amber-400" : "text-cyan-400"}>
+                {filteredCandidates.length}
+              </strong>
               <span className="hidden sm:inline text-slate-500"> / {candidates.length}</span>
-              <span className="text-slate-400"> Equities</span>
+              <span className="text-slate-400">{viewMode === "watchlist" ? " in Wishlist" : " Equities"}</span>
             </span>
           </div>
         </div>
@@ -828,7 +901,11 @@ function ScreenerWorkspaceComponent({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search ticker, company name, sector (e.g. RELIANCE, Tata, Pharma)..."
+            placeholder={
+              viewMode === "watchlist"
+                ? "Search in your wishlist (e.g. BSE, RVNL, GAIL)..."
+                : "Search ticker, company name, sector (e.g. RELIANCE, Tata, Pharma)..."
+            }
             aria-label="Filter tickers, company names, or sectors"
             className="w-full bg-[#070b14] border border-white/[0.08] focus:border-cyan-500/60 rounded-md pl-8 pr-7 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none transition-all"
           />
@@ -972,10 +1049,7 @@ function ScreenerWorkspaceComponent({
                 ))}
               </div>
             ) : filteredCandidates.length === 0 ? (
-              <div className="p-12 flex flex-col items-center justify-center text-center text-slate-500 font-mono text-xs gap-3">
-                <SearchX className="w-8 h-8 text-slate-600 animate-pulse" />
-                <span>No equities match the selected criteria.</span>
-              </div>
+              renderEmptyState()
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredCandidates.map((cand, idx) => {
@@ -1413,9 +1487,7 @@ function ScreenerWorkspaceComponent({
                   ))}
                 </div>
               ) : filteredCandidates.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 font-mono text-xs">
-                  No equities match the selected criteria.
-                </div>
+                renderEmptyState()
               ) : (
                 <div
                   style={{
@@ -1483,9 +1555,7 @@ function ScreenerWorkspaceComponent({
                 ))}
               </div>
             ) : filteredCandidates.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 font-mono text-xs">
-                No equities match the selected criteria.
-              </div>
+              renderEmptyState(true)
             ) : (
               <div
                 style={{

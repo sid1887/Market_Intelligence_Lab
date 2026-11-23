@@ -119,8 +119,9 @@ function getStockSector(sym: string): string {
 function PortfolioContent() {
   const searchParams = useSearchParams();
   const urlSymbol = searchParams.get("symbol");
+  const urlTab = searchParams.get("tab") || searchParams.get("account");
 
-  const [activeAccount, setActiveAccount] = useState<string>("paper_alpha_2");
+  const [activeAccount, setActiveAccount] = useState<string>(() => urlTab || "real_tradebook");
   const [summary, setSummary] = useState<PortfolioSummary | null>(null);
   const [positions, setPositions] = useState<PortfolioPosition[]>([]);
   const [orders, setOrders] = useState<PortfolioOrder[]>([]);
@@ -155,7 +156,13 @@ function PortfolioContent() {
   // Universe & ML Actions
   const [sysActionLoading, setSysActionLoading] = useState(false);
 
-  // Handle URL query parameter pre-fill (?symbol=...)
+  // Handle URL query parameter pre-fill (?symbol=... or ?tab=...)
+  useEffect(() => {
+    if (urlTab && ACCOUNTS.some((a) => a.id === urlTab)) {
+      setActiveAccount(urlTab);
+    }
+  }, [urlTab]);
+
   useEffect(() => {
     if (urlSymbol) {
       const sym = urlSymbol.toUpperCase().trim();
@@ -542,6 +549,11 @@ function PortfolioContent() {
           setActiveTab={(id) => {
             setActiveAccount(id);
             loadData(id);
+            if (typeof window !== "undefined") {
+              const url = new URL(window.location.href);
+              url.searchParams.set("tab", id);
+              window.history.replaceState(null, "", url.toString());
+            }
           }}
           variant="card"
           layoutId="active-account-tab"

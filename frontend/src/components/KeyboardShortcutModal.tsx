@@ -23,7 +23,8 @@ const SHORTCUT_GROUPS = [
   {
     category: "Screener & Workspace",
     items: [
-      { keys: ["V"], desc: "Cycle View Mode (Table / Heatmap)" },
+      { keys: ["W"], desc: "Toggle Personal Wishlist View" },
+      { keys: ["V"], desc: "Cycle View Mode (Screener / Wishlist / Heatmap / Cards)" },
       { keys: ["Q"], desc: "Quick Inspect for active selected equity" },
       { keys: ["T"], desc: "Open full detailed tearsheet page" },
       { keys: ["↑", "↓"], desc: "Navigate through equities table rows" },
