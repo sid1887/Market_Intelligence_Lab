@@ -118,8 +118,13 @@ def invalidate_screener_cache() -> None:
     logger.info("In-memory screener cache invalidated.")
 
 def clear_all_api_caches() -> None:
-    """Clears all in-memory API response caches (screener, macro, forecasts)."""
+    """Clears all in-memory API response caches (screener, macro, forecasts, LRU app_cache)."""
     invalidate_screener_cache()
+    try:
+        from src.storage.cache import app_cache
+        app_cache.clear()
+    except Exception:
+        pass
     try:
         from src.client.macro_client import MacroClient
         MacroClient._cached_macro_data = None

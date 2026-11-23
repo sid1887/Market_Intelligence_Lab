@@ -275,3 +275,7 @@ class CorporateDisclosuresHandler:
             "rejected": rejected_count,
             "symbol": symbol
         }
+
+
+# Backward-compatible alias for ingestion pipelines
+CorporateDisclosuresParser = CorporateDisclosuresHandler

@@ -69,6 +69,19 @@ class FactorScreener:
         return (c_today - c_20_ago) / c_20_ago if c_20_ago > 0 else None
 
     @staticmethod
+    def winsorize_series(series: pd.Series, lower_pct: float = 0.01, upper_pct: float = 0.99) -> pd.Series:
+        """
+        Winsorizes numerical values in a pandas Series to specified percentiles (e.g. 1% and 99%).
+        Preserves NaNs for unobserved rows.
+        """
+        valid = series.dropna()
+        if len(valid) == 0:
+            return series.copy()
+        low_val = valid.quantile(lower_pct)
+        high_val = valid.quantile(upper_pct)
+        return series.clip(lower=low_val, upper=high_val)
+
+    @staticmethod
     def _percentile_rank_series(series: pd.Series, ascending: bool = True) -> pd.Series:
         """
         Computes exact normalized percentile rank between 0.0 and 100.0 strictly over valid non-null rows.
@@ -144,6 +157,85 @@ class FactorScreener:
                 pd.Series(statuses, index=df.index)
             )
         return comp_series
+
+    def calculate_pillar_scores(self, df: pd.DataFrame) -> Dict[str, pd.Series]:
+        """
+        Computes the 4 distinct factor pillar sub-scores (0.0 to 100.0) across the equity universe:
+        1. quality_score: ROE %, OPM %, inverse Debt-to-Equity
+        2. momentum_score: Trailing 20d excess return, 5d return, RSI-14
+        3. value_score: Earnings Yield (1/TTM P/E) and Book-to-Price (1/PB)
+        4. safety_score: Inverse Annualized Volatility and Inverse NIFTY Beta
+
+        Outliers are winsorized at [1%, 99%]. Missing values are preserved as NaN (P0-06).
+        """
+        if df.empty:
+            empty_s = pd.Series(dtype=float)
+            return {
+                "quality_score": empty_s,
+                "momentum_score": empty_s,
+                "value_score": empty_s,
+                "safety_score": empty_s,
+            }
+
+        # Pillar 1: Quality
+        q_ranks = []
+        if "roe_pct" in df.columns:
+            w_roe = self.winsorize_series(df["roe_pct"])
+            q_ranks.append(self._percentile_rank_series(w_roe, ascending=True))
+        if "opm_pct" in df.columns:
+            w_opm = self.winsorize_series(df["opm_pct"])
+            q_ranks.append(self._percentile_rank_series(w_opm, ascending=True))
+        if "debt_to_equity" in df.columns:
+            w_de = self.winsorize_series(df["debt_to_equity"])
+            q_ranks.append(self._percentile_rank_series(w_de, ascending=False))
+
+        quality_score = pd.concat(q_ranks, axis=1).mean(axis=1, skipna=True).round(2) if q_ranks else pd.Series(np.nan, index=df.index)
+
+        # Pillar 2: Momentum
+        m_ranks = []
+        ret_col = "excess_ret_20d" if "excess_ret_20d" in df.columns and df["excess_ret_20d"].notna().any() else "ret_20d"
+        if ret_col in df.columns:
+            w_ret20 = self.winsorize_series(df[ret_col])
+            m_ranks.append(self._percentile_rank_series(w_ret20, ascending=True))
+        if "ret_5d" in df.columns:
+            w_ret5 = self.winsorize_series(df["ret_5d"])
+            m_ranks.append(self._percentile_rank_series(w_ret5, ascending=True))
+        if "rsi_14" in df.columns:
+            m_ranks.append(self._percentile_rank_series(df["rsi_14"], ascending=True))
+
+        momentum_score = pd.concat(m_ranks, axis=1).mean(axis=1, skipna=True).round(2) if m_ranks else pd.Series(np.nan, index=df.index)
+
+        # Pillar 3: Value
+        v_ranks = []
+        if "ttm_pe" in df.columns:
+            ey = df["ttm_pe"].apply(lambda x: 1.0 / x if (pd.notna(x) and x > 0) else np.nan)
+            w_ey = self.winsorize_series(ey)
+            v_ranks.append(self._percentile_rank_series(w_ey, ascending=True))
+        if "pb_ratio" in df.columns:
+            by = df["pb_ratio"].apply(lambda x: 1.0 / x if (pd.notna(x) and x > 0) else np.nan)
+            w_by = self.winsorize_series(by)
+            v_ranks.append(self._percentile_rank_series(w_by, ascending=True))
+
+        value_score = pd.concat(v_ranks, axis=1).mean(axis=1, skipna=True).round(2) if v_ranks else pd.Series(np.nan, index=df.index)
+
+        # Pillar 4: Safety
+        s_ranks = []
+        vol_col = "volatility_annualized" if "volatility_annualized" in df.columns else "volatility_20d"
+        if vol_col in df.columns:
+            w_vol = self.winsorize_series(df[vol_col])
+            s_ranks.append(self._percentile_rank_series(w_vol, ascending=False))
+        if "beta_60d_nifty" in df.columns:
+            w_beta = self.winsorize_series(df["beta_60d_nifty"])
+            s_ranks.append(self._percentile_rank_series(w_beta, ascending=False))
+
+        safety_score = pd.concat(s_ranks, axis=1).mean(axis=1, skipna=True).round(2) if s_ranks else pd.Series(np.nan, index=df.index)
+
+        return {
+            "quality_score": quality_score,
+            "momentum_score": momentum_score,
+            "value_score": value_score,
+            "safety_score": safety_score,
+        }
 
     def screen(
         self,
@@ -410,6 +502,11 @@ class FactorScreener:
         df["composite_score"] = comp_scores
         df["data_completeness_score"] = completeness
         df["score_status"] = statuses
+
+        # Compute 4-Pillar Sub-Scores
+        pillars = self.calculate_pillar_scores(df)
+        for pillar_name, p_series in pillars.items():
+            df[pillar_name] = p_series
 
         # Attach tournament-calibrated multi-horizon blended scores if rebalance engine is available
         try:

@@ -53,7 +53,8 @@ class CorporateActionsManager:
     def seed_verified_corporate_actions(self) -> int:
         """
         Populates corporate_action_adjustments with verified historical splits and bonuses (2020-2026).
-        Returns number of seeded actions.
+        Also syncs from corporate_actions table if populated.
+        Returns total number of processed actions.
         """
         seeded = 0
         for act in VERIFIED_HISTORICAL_CORPORATE_ACTIONS:
@@ -67,8 +68,52 @@ class CorporateActionsManager:
                 source="NSE_EXCHANGE_DISCLOSURES"
             )
             seeded += 1
-        logger.info(f"Seeded {seeded} verified corporate actions into corporate_action_adjustments.")
-        return seeded
+        
+        synced = self.sync_from_corporate_actions_table()
+        logger.info(f"Seeded {seeded} verified corporate actions and synced {synced} table actions into corporate_action_adjustments.")
+        return seeded + synced
+
+    def sync_from_corporate_actions_table(self) -> int:
+        """
+        Synchronizes raw exchange actions from corporate_actions table into corporate_action_adjustments ledger.
+        Extracts SPLIT, BONUS, and RIGHTS ratios, computes compounding multipliers, and persists them idempotently.
+        """
+        synced = 0
+        try:
+            with self.db.get_connection() as conn:
+                cur = conn.execute("""
+                    SELECT symbol, ex_date, record_date, action_type, adjustment_factor, adjustment_ratio, purpose, source
+                    FROM corporate_actions
+                    WHERE action_type IN ('SPLIT', 'BONUS', 'RIGHTS')
+                      AND ex_date IS NOT NULL AND ex_date != ''
+                    ORDER BY ex_date ASC
+                """)
+                rows = cur.fetchall()
+                for r in rows:
+                    sym = r["symbol"].strip().upper()
+                    ex_dt = r["ex_date"].strip()
+                    rec_dt = r["record_date"].strip() if r["record_date"] else None
+                    act_type = r["action_type"].strip().upper()
+                    adj_factor = float(r["adjustment_factor"] or r["adjustment_ratio"] or 1.0)
+                    purpose = r["purpose"] or ""
+                    source = r["source"] or "NSE_EXCHANGE_DISCLOSURES"
+
+                    if 0 < adj_factor < 1.0:
+                        # ratio_to = adj_factor, ratio_from = 1.0 => split_multiplier = adj_factor
+                        self.record_action(
+                            symbol=sym,
+                            ex_date=ex_dt,
+                            action_type=act_type,
+                            ratio_from=1.0,
+                            ratio_to=round(adj_factor, 6),
+                            record_date=rec_dt,
+                            source=source
+                        )
+                        synced += 1
+            logger.info(f"Synchronized {synced} corporate actions from corporate_actions table into adjustments ledger.")
+        except Exception as e:
+            logger.warning(f"Error syncing from corporate_actions table: {e}")
+        return synced
 
     def record_action(
         self,

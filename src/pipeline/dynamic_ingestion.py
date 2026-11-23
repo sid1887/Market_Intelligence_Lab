@@ -362,8 +362,8 @@ class DynamicIngestionManager:
             live_disclosures = []
 
         if live_disclosures:
-            from src.quant.disclosures import CorporateDisclosuresParser
-            parser = CorporateDisclosuresParser()
+            from src.quant.disclosures import CorporateDisclosuresHandler
+            parser = CorporateDisclosuresHandler()
             res = parser.ingest_disclosures(self.db, symbol, live_disclosures, raw_path)
             logger.info(f"Synced {res.get('accepted', 0)} official disclosures for {symbol} (raw: {raw_path})")
         else:

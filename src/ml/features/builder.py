@@ -43,6 +43,48 @@ def compute_features_hash(features_dict: Dict[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def purge_and_embargo(
+    df: pd.DataFrame,
+    test_start_date: str,
+    test_end_date: str,
+    calendar: Optional[List[str]] = None,
+    horizon_sessions: int = 20,
+    embargo_sessions: int = 5
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Purges overlapping forward return labels from training sets and embargos post-test observations
+    to eliminate cross-contamination and autocorrelation leakage (Advances in Financial Machine Learning).
+    
+    1. Purge: Drops train samples whose forward evaluation window [t, t + horizon] extends into test_start_date.
+    2. Embargo: Prevents samples within embargo_sessions immediately following test_end_date from entering train.
+    """
+    if df.empty or "trading_date" not in df.columns:
+        return df.copy(), pd.DataFrame()
+
+    # Split into test and non-test
+    test_mask = (df["trading_date"] >= test_start_date) & (df["trading_date"] <= test_end_date)
+    test_df = df[test_mask].copy()
+
+    # Training candidates: strictly before test_start_date (expanding window)
+    train_candidate_mask = df["trading_date"] < test_start_date
+    train_df = df[train_candidate_mask].copy()
+
+    if calendar and horizon_sessions > 0:
+        date_to_idx = {d: i for i, d in enumerate(calendar)}
+        if test_start_date in date_to_idx:
+            test_start_idx = date_to_idx[test_start_date]
+            # Drop any train date where idx + horizon_sessions >= test_start_idx
+            valid_train_dates = set()
+            for d in train_df["trading_date"].unique():
+                if d in date_to_idx:
+                    d_idx = date_to_idx[d]
+                    if (d_idx + horizon_sessions) < test_start_idx:
+                        valid_train_dates.add(d)
+            train_df = train_df[train_df["trading_date"].isin(valid_train_dates)].copy()
+
+    return train_df, test_df
+
+
 class PITFeatureExtractor:
     """Extracts strictly point-in-time technical and fundamental features as of session T."""
 

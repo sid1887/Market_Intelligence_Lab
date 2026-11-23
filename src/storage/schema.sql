@@ -186,3 +186,8 @@ CREATE TABLE IF NOT EXISTS fundamental_factors_daily (
 
 CREATE INDEX IF NOT EXISTS idx_ffd_date_sector 
 ON fundamental_factors_daily(trading_date, sector);
+
+-- High-Performance Composite Covering Indexes (P0-08, Milestone Phase 1)
+CREATE INDEX IF NOT EXISTS idx_ohlcv_sym_date_desc ON ohlcv_daily(symbol, trading_date DESC);
+CREATE INDEX IF NOT EXISTS idx_ffd_sym_date_desc ON fundamental_factors_daily(symbol, trading_date DESC, is_sector_imputed);
+CREATE INDEX IF NOT EXISTS idx_cfs_sym_ped_desc ON company_financial_statements(symbol, period_end_date DESC);

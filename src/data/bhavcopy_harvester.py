@@ -271,6 +271,9 @@ class Bhavcopy10YHarvester:
                         r["low"],
                         r["close"],
                         r.get("volume", 0),
+                        r.get("turnover"),
+                        r.get("delivery_qty"),
+                        r.get("prev_close"),
                         r.get("source", "NSE_BHAVCOPY_ARCHIVE"),
                         r.get("provenance_class", "EXCHANGE_OFFICIAL"),
                         0,  # is_synthetic
@@ -285,15 +288,19 @@ class Bhavcopy10YHarvester:
                     conn.executemany("""
                         INSERT INTO ohlcv_daily (
                             symbol, trading_date, series, open, high, low, close, volume,
+                            turnover, delivery_qty, prev_close,
                             source, provenance_class, is_synthetic, is_eligible_for_live_analytics,
                             is_eligible_for_backtest, is_eligible_for_training, retrieval_timestamp
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(symbol, trading_date, series) DO UPDATE SET
                             open = excluded.open,
                             high = excluded.high,
                             low = excluded.low,
                             close = excluded.close,
                             volume = excluded.volume,
+                            turnover = COALESCE(excluded.turnover, ohlcv_daily.turnover),
+                            delivery_qty = COALESCE(excluded.delivery_qty, ohlcv_daily.delivery_qty),
+                            prev_close = COALESCE(excluded.prev_close, ohlcv_daily.prev_close),
                             source = excluded.source,
                             provenance_class = CASE 
                                 WHEN ohlcv_daily.provenance_class = 'EXCHANGE_OFFICIAL' THEN 'EXCHANGE_OFFICIAL' 

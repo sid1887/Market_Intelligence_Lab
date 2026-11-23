@@ -20,6 +20,21 @@ from src.client.corporate_client import CorporateClient
 
 logger = logging.getLogger(__name__)
 
+DEMERGER_AND_REBRANDING_ALIASES: Dict[str, str] = {
+    "TATAMOTORS": "TMPV",
+    "ZOMATO": "ETERNAL",
+    "L&TFH": "LTF",
+    "AMARAJABAT": "ARE&M",
+    "MOTHERSUMI": "MOTHERSON",
+    "CADILAHC": "ZYDUSLIFE",
+    "INDMART": "INDIAMART",
+    "TVSHMOTOR": "TVSMOTOR",
+    "CENTURYTEX": "CENTURYPLY",
+    "LTI": "LTIM",
+    "MINDTREE": "LTIM",
+    "HDFC": "HDFCBANK",
+}
+
 # Authoritative reference catalog of active NSE cash equities for offline/deterministic resolution
 KNOWN_NSE_EQUITIES: Dict[str, Dict[str, str]] = {
     "TATAPOWER": {
@@ -223,6 +238,38 @@ class SymbolResolver:
         self.db = db_manager or DatabaseManager()
         self.corp_client = corporate_client or CorporateClient()
 
+    def resolve_alias(self, symbol: str) -> str:
+        """Resolves corporate restructuring, rebranding, or demerger aliases."""
+        sym = symbol.strip().upper()
+        return DEMERGER_AND_REBRANDING_ALIASES.get(sym, sym)
+
+    def resolve_by_isin(self, isin: str) -> Optional[Dict[str, Any]]:
+        """Resolves security metadata directly by official ISIN."""
+        clean_isin = isin.strip().upper()
+        with self.db.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT symbol, company_name, isin, industry, sector, macro_sector, is_active, is_nifty50
+                FROM securities_master 
+                WHERE isin = ?
+                """,
+                (clean_isin,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "symbol": row["symbol"],
+                    "company_name": row["company_name"],
+                    "isin": row["isin"],
+                    "industry": row["industry"],
+                    "sector": row["sector"],
+                    "macro_sector": row["macro_sector"],
+                    "is_active": row["is_active"],
+                    "is_nifty50": row["is_nifty50"] if "is_nifty50" in row.keys() else 0,
+                    "source": "securities_master_isin"
+                }
+        return None
+
     def resolve_symbol(self, symbol: str) -> Dict[str, Any]:
         """
         Resolves symbol metadata. If present in securities_master or user_watchlists,
@@ -235,7 +282,17 @@ class SymbolResolver:
         if not symbol or not isinstance(symbol, str):
             raise ValueError(f"Invalid symbol parameter: '{symbol}'")
 
-        sym = symbol.strip().upper()
+        raw_sym = symbol.strip().upper()
+        
+        # 0. Check if input is an ISIN (starts with INE and length == 12)
+        if raw_sym.startswith("INE") and len(raw_sym) == 12:
+            isin_res = self.resolve_by_isin(raw_sym)
+            if isin_res:
+                return isin_res
+
+        # 0b. Resolve demerger / rebranding alias if applicable
+        sym = self.resolve_alias(raw_sym)
+
         if not re.match(r"^[A-Z0-9&_\-]{1,20}$", sym):
             raise ValueError(f"Invalid NSE symbol format: '{sym}'. Symbol must be 1-20 alphanumeric characters.")
 
@@ -395,19 +452,59 @@ class SymbolResolver:
 
     @staticmethod
     def _infer_macro_sector(sector: str, industry: str) -> str:
-        sec_lower = (sector + " " + industry).lower()
-        if any(w in sec_lower for w in ["bank", "finan", "insurance", "nbfc", "capital"]):
-            return "Financials"
-        if any(w in sec_lower for w in ["tech", "software", "it ", "telecom"]):
+        sec_lower = (f"{sector or ''} {industry or ''}").lower()
+        if any(w in sec_lower for w in ["bank", "finan", "insurance", "nbfc", "capital market", "broker", "housing"]):
+            return "Financial Services"
+        if any(w in sec_lower for w in ["tech", "software", "it ", "telecom", "communication", "fintech", "electronics"]):
             return "Technology & Telecom"
-        if any(w in sec_lower for w in ["pharma", "health", "biotech", "hospital"]):
+        if any(w in sec_lower for w in ["pharma", "health", "biotech", "hospital", "diagnostics", "drug"]):
             return "Healthcare"
-        if any(w in sec_lower for w in ["power", "energy", "oil", "gas", "utilities"]):
+        if any(w in sec_lower for w in ["power", "energy", "oil", "gas", "utilities", "renewable", "solar", "fuel", "petro"]):
             return "Energy & Utilities"
-        if any(w in sec_lower for w in ["auto", "motor", "fmcg", "consumer", "retail", "textil"]):
-            return "Consumer & Retail"
-        if any(w in sec_lower for w in ["metal", "steel", "mining", "chemical", "cement"]):
-            return "Basic Materials"
-        if any(w in sec_lower for w in ["defense", "aero", "infra", "construct", "engineer"]):
-            return "Capital Goods"
+        if any(w in sec_lower for w in ["fmcg", "staple", "food", "beverage", "dairy", "tobacco", "sugar", "confection", "brew"]):
+            return "Consumer Staples"
+        if any(w in sec_lower for w in ["auto", "motor", "durable", "apparel", "garment", "retail", "textil", "footwear", "hotel", "jewel", "media", "entertainment"]):
+            return "Consumer Discretionary"
+        if any(w in sec_lower for w in ["metal", "steel", "mining", "chemical", "cement", "fertiliz", "paper", "packaging", "basic material"]):
+            return "Basic Materials & Chemicals"
+        if any(w in sec_lower for w in ["realty", "real estate"]):
+            return "Real Estate"
+        if any(w in sec_lower for w in ["defense", "aero", "infra", "construct", "engineer", "capital good", "machin", "electrical equip", "pipe", "cable"]):
+            return "Capital Goods & Industrials"
+        if any(w in sec_lower for w in ["logistics", "transport", "shipping", "port", "aviation", "supply chain"]):
+            return "Services & Logistics"
         return "Industrials"
+
+    def normalize_all_securities_taxonomy(self) -> int:
+        """
+        Normalizes any unclassified or generic macro_sectors across securities_master
+        into standardized economic macro-sectors.
+        """
+        updated = 0
+        now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self.db.get_connection() as conn:
+            cur = conn.execute("SELECT symbol, sector, industry, macro_sector FROM securities_master")
+            rows = cur.fetchall()
+            updates = []
+            for r in rows:
+                sym = r["symbol"]
+                sec = r["sector"] or ""
+                ind = r["industry"] or ""
+                curr_macro = r["macro_sector"] or ""
+
+                # Target unclassified, generic, or refine existing
+                if curr_macro in ("Equities", "General", "None", "", "Consumer & Retail", "Industrials"):
+                    target_macro = self._infer_macro_sector(sec, ind)
+                    if target_macro != curr_macro:
+                        updates.append((target_macro, now_ts, sym))
+
+            if updates:
+                conn.executemany(
+                    "UPDATE securities_master SET macro_sector = ?, updated_at = ? WHERE symbol = ?",
+                    updates
+                )
+                conn.commit()
+                updated = len(updates)
+
+        logger.info(f"Normalized macro sector taxonomy for {updated} securities.")
+        return updated

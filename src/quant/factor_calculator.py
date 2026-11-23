@@ -22,7 +22,7 @@ logger = logging.getLogger("MIL.FactorCalculator")
 
 
 def compute_rsi_series(prices: pd.Series, period: int = 14) -> pd.Series:
-    """Vectorized calculation of Relative Strength Index (RSI)."""
+    """Vectorized calculation of Relative Strength Index (RSI) with zero warm-up fabrication."""
     delta = prices.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -31,7 +31,95 @@ def compute_rsi_series(prices: pd.Series, period: int = 14) -> pd.Series:
 
     rs = avg_gain / np.maximum(avg_loss, 1e-9)
     rsi = 100.0 - (100.0 / (1.0 + rs))
-    return rsi.fillna(50.0)
+    return rsi
+
+
+def compute_atr_series(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    """Vectorized calculation of Average True Range (ATR)."""
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=period, min_periods=period).mean()
+    return atr
+
+
+def compute_macd_series(prices: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """Vectorized MACD (12, 26, 9) line, signal, and histogram."""
+    ema_12 = prices.ewm(span=12, adjust=False).mean()
+    ema_26 = prices.ewm(span=26, adjust=False).mean()
+    macd_line = ema_12 - ema_26
+    macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+    macd_hist = macd_line - macd_signal
+    return macd_line, macd_signal, macd_hist
+
+
+def compute_bollinger_bands(prices: pd.Series, period: int = 20, num_std: float = 2.0) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Vectorized Bollinger Bands: upper, lower, %B, and bandwidth."""
+    sma = prices.rolling(window=period, min_periods=period).mean()
+    std = prices.rolling(window=period, min_periods=period).std()
+    upper = sma + num_std * std
+    lower = sma - num_std * std
+    pct_b = (prices - lower) / np.maximum(upper - lower, 1e-9)
+    bandwidth = (upper - lower) / np.maximum(sma, 1e-9)
+    return upper, lower, pct_b, bandwidth
+
+
+def compute_all_vectorized_factors(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Computes complete 24-factor vectorized quantitative matrix for an equity OHLCV series.
+    Strictly preserves NaN during initial warm-up periods (zero lookahead / zero fabrication).
+    """
+    out = df.copy()
+    close = out["close"].astype(float)
+    high = out["high"].astype(float)
+    low = out["low"].astype(float)
+    volume = out["volume"].astype(float)
+
+    # Multi-horizon returns
+    out["ret_1d"] = close.pct_change(1)
+    out["ret_5d"] = close.pct_change(5)
+    out["ret_20d"] = close.pct_change(20)
+    out["ret_60d"] = close.pct_change(60)
+    out["ret_120d"] = close.pct_change(120)
+    out["ret_252d"] = close.pct_change(252)
+
+    # Trend moving averages
+    out["sma_20"] = close.rolling(20, min_periods=20).mean()
+    out["sma_50"] = close.rolling(50, min_periods=50).mean()
+    out["sma_100"] = close.rolling(100, min_periods=100).mean()
+    out["sma_200"] = close.rolling(200, min_periods=200).mean()
+    out["ema_9"] = close.ewm(span=9, adjust=False).mean()
+    out["ema_21"] = close.ewm(span=21, adjust=False).mean()
+
+    # Momentum oscillators & volatility
+    out["rsi_14"] = compute_rsi_series(close, 14)
+    macd_l, macd_s, macd_h = compute_macd_series(close)
+    out["macd_line"] = macd_l
+    out["macd_signal"] = macd_s
+    out["macd_hist"] = macd_h
+
+    # Bollinger Bands & ATR
+    bb_u, bb_l, bb_pct, bb_bw = compute_bollinger_bands(close, 20, 2.0)
+    out["bb_upper"] = bb_u
+    out["bb_lower"] = bb_l
+    out["bb_pct_b"] = bb_pct
+    out["bb_bandwidth"] = bb_bw
+    out["atr_14"] = compute_atr_series(high, low, close, 14)
+
+    # Realized Volatility
+    out["vol_20d_annualized"] = out["ret_1d"].rolling(20, min_periods=20).std() * math.sqrt(252.0)
+    out["vol_60d_annualized"] = out["ret_1d"].rolling(60, min_periods=60).std() * math.sqrt(252.0)
+
+    # Volume dynamics
+    vol_mean_20 = volume.rolling(20, min_periods=20).mean()
+    out["volume_ratio_20d"] = volume / np.maximum(vol_mean_20, 1.0)
+    vol_mean_50 = volume.rolling(50, min_periods=50).mean()
+    vol_std_50 = volume.rolling(50, min_periods=50).std()
+    out["volume_zscore_50d"] = (volume - vol_mean_50) / np.maximum(vol_std_50, 1.0)
+
+    return out
 
 
 def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) -> Tuple[List[tuple], List[tuple], List[str]]:
@@ -76,19 +164,19 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
                 continue
 
             # Vectorized returns
-            df["ret_1d"] = df["close"].pct_change().fillna(0.0)
+            df["ret_1d"] = df["close"].pct_change()
             df["ret_5d"] = df["close"].pct_change(5)
             df["ret_20d"] = df["close"].pct_change(20)
             df["ret_60d"] = df["close"].pct_change(60)
-            df["momentum_1y"] = df["close"].pct_change(252).fillna(0.10)
+            df["momentum_1y"] = df["close"].pct_change(252)
 
             # Vectorized Moving Averages
-            df["sma_20"] = df["close"].rolling(20, min_periods=5).mean()
-            df["sma_50"] = df["close"].rolling(50, min_periods=10).mean()
-            df["sma_200"] = df["close"].rolling(200, min_periods=20).mean()
+            df["sma_20"] = df["close"].rolling(20, min_periods=20).mean()
+            df["sma_50"] = df["close"].rolling(50, min_periods=50).mean()
+            df["sma_200"] = df["close"].rolling(200, min_periods=200).mean()
 
             # Vectorized 20-day Annualized Volatility
-            df["volatility_20d"] = (df["ret_1d"].rolling(20, min_periods=5).std() * math.sqrt(252)).fillna(0.20)
+            df["volatility_20d"] = df["ret_1d"].rolling(20, min_periods=20).std() * math.sqrt(252.0)
 
             # Vectorized RSI-14
             df["rsi_14"] = compute_rsi_series(df["close"], 14)
@@ -115,7 +203,7 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
                 s200 = sma_200s[i]
                 sma_200_val = round(float(s200), 2) if (s200 is not None and not pd.isna(s200)) else None
                 trend_regime = "BULLISH" if sma_200_val and c_val > sma_200_val else "BEARISH"
-                vol_ann = round(float(vol_anns[i]), 4) if not pd.isna(vol_anns[i]) else 0.20
+                vol_ann = round(float(vol_anns[i]), 4) if (vol_anns[i] is not None and not pd.isna(vol_anns[i])) else None
 
                 r1 = ret_1ds[i]
                 ret_1d = round(float(r1), 4) if (r1 is not None and not pd.isna(r1)) else None
@@ -129,8 +217,10 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
                 s50 = sma_50s[i]
                 sma_50 = round(float(s50), 2) if (s50 is not None and not pd.isna(s50)) else None
 
-                rsi_val = round(float(rsi_14s[i]), 2) if not pd.isna(rsi_14s[i]) else 50.0
-                mom_val = round(float(mom_1ys[i]), 4) if not pd.isna(mom_1ys[i]) else 0.10
+                r14 = rsi_14s[i]
+                rsi_val = round(float(r14), 2) if (r14 is not None and not pd.isna(r14)) else None
+                m1y = mom_1ys[i]
+                mom_val = round(float(m1y), 4) if (m1y is not None and not pd.isna(m1y)) else None
 
                 records_factors.append((
                     symbol, t_date, c_val, c_val, vol_val, vol_val,
@@ -180,19 +270,19 @@ class VectorizedFactorCalculator:
             return 0
 
         # Vectorized returns
-        df["ret_1d"] = df["close"].pct_change().fillna(0.0)
+        df["ret_1d"] = df["close"].pct_change()
         df["ret_5d"] = df["close"].pct_change(5)
         df["ret_20d"] = df["close"].pct_change(20)
         df["ret_60d"] = df["close"].pct_change(60)
-        df["momentum_1y"] = df["close"].pct_change(252).fillna(0.10)
+        df["momentum_1y"] = df["close"].pct_change(252)
 
         # Vectorized Moving Averages
-        df["sma_20"] = df["close"].rolling(20, min_periods=5).mean()
-        df["sma_50"] = df["close"].rolling(50, min_periods=10).mean()
-        df["sma_200"] = df["close"].rolling(200, min_periods=20).mean()
+        df["sma_20"] = df["close"].rolling(20, min_periods=20).mean()
+        df["sma_50"] = df["close"].rolling(50, min_periods=50).mean()
+        df["sma_200"] = df["close"].rolling(200, min_periods=200).mean()
 
         # Vectorized 20-day Annualized Volatility
-        df["volatility_20d"] = (df["ret_1d"].rolling(20, min_periods=5).std() * math.sqrt(252)).fillna(0.20)
+        df["volatility_20d"] = df["ret_1d"].rolling(20, min_periods=20).std() * math.sqrt(252.0)
 
         # Vectorized RSI-14
         df["rsi_14"] = compute_rsi_series(df["close"], 14)
@@ -209,13 +299,15 @@ class VectorizedFactorCalculator:
             burn_in = 1 if i >= 200 else 0
             sma_200_val = round(float(r["sma_200"]), 2) if pd.notna(r["sma_200"]) else None
             trend_regime = "BULLISH" if sma_200_val and c_val > sma_200_val else "BEARISH"
-            vol_ann = round(float(r["volatility_20d"]), 4)
+            vol_ann = round(float(r["volatility_20d"]), 4) if pd.notna(r["volatility_20d"]) else None
 
             ret_1d = round(float(r["ret_1d"]), 4) if pd.notna(r["ret_1d"]) else None
             ret_5d = round(float(r["ret_5d"]), 4) if pd.notna(r["ret_5d"]) else None
             ret_20d = round(float(r["ret_20d"]), 4) if pd.notna(r["ret_20d"]) else None
             sma_20 = round(float(r["sma_20"]), 2) if pd.notna(r["sma_20"]) else None
             sma_50 = round(float(r["sma_50"]), 2) if pd.notna(r["sma_50"]) else None
+            rsi_val = round(float(r["rsi_14"]), 2) if pd.notna(r["rsi_14"]) else None
+            mom_val = round(float(r["momentum_1y"]), 4) if pd.notna(r["momentum_1y"]) else None
 
             # factors_daily record
             records_factors.append((
@@ -236,8 +328,8 @@ class VectorizedFactorCalculator:
                 sma_200_val,
                 vol_ann,
                 vol_ann,
-                round(float(r["rsi_14"]), 2),
-                round(float(r["momentum_1y"]), 4),
+                rsi_val,
+                mom_val,
                 trend_regime,
                 now_iso
             ))

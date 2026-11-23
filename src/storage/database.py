@@ -7,6 +7,8 @@ import uuid
 import hashlib
 import datetime
 import logging
+import threading
+from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -15,6 +17,7 @@ class DatabaseManager:
     """Manages SQLite database connections, additive schema migrations, and transactional persistence."""
 
     _initialized_paths: set = set()
+    _write_lock: threading.RLock = threading.RLock()
 
     def __init__(self, db_path: str = "data/market_lab.db", skip_init: bool = False):
         self.db_path = db_path
@@ -37,13 +40,21 @@ class DatabaseManager:
             return self._mem_conn
         conn = sqlite3.connect(self.db_path, timeout=60.0)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA busy_timeout = 60000;")
+        conn.execute("PRAGMA foreign_keys = ON;")
+        try:
+            conn.execute("PRAGMA journal_mode = WAL;")
+        except Exception:
+            pass
         conn.execute("PRAGMA synchronous = NORMAL;")
         conn.execute("PRAGMA cache_size = -64000;")
         conn.execute("PRAGMA temp_store = MEMORY;")
-        conn.execute("PRAGMA mmap_size = 268435456;")
+        try:
+            conn.execute("PRAGMA mmap_size = 268435456;")
+            conn.execute("PRAGMA wal_autocheckpoint = 1000;")
+            conn.execute("PRAGMA threads = 4;")
+        except Exception:
+            pass
         return conn
 
     def get_readonly_connection(self) -> sqlite3.Connection:
@@ -58,7 +69,25 @@ class DatabaseManager:
         conn.execute("PRAGMA cache_size = -64000;")
         conn.execute("PRAGMA mmap_size = 268435456;")
         conn.execute("PRAGMA query_only = ON;")
+        try:
+            conn.execute("PRAGMA threads = 4;")
+        except Exception:
+            pass
         return conn
+
+    @contextmanager
+    def write_transaction(self):
+        """Thread-safe write transaction block acquiring global single-writer lock."""
+        with DatabaseManager._write_lock:
+            conn = self.get_connection()
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def wal_checkpoint(self, mode: str = "PASSIVE") -> Tuple[int, int, int]:
         """
@@ -342,6 +371,13 @@ class DatabaseManager:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_delivery ON ohlcv_daily(symbol, trading_date DESC) WHERE delivery_qty > 0 AND volume > 0;")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_news_sym_pub ON equity_news_feed(symbol, published_at DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_market_catalysts_sym_date ON market_catalysts(symbol, triggered_at DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_sym_date_desc ON ohlcv_daily(symbol, trading_date DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_qf_sym_date_desc ON quant_factors_daily(symbol, trading_date DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ffd_sym_date_desc ON fundamental_factors_daily(symbol, trading_date DESC, is_sector_imputed);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_fsq_sym_ped_desc ON financial_statements_quarterly(symbol, period_end_date DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_cfs_sym_ped_desc ON company_financial_statements(symbol, period_end_date DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_cd_sym_broadcast_desc ON corporate_disclosures(symbol, broadcast_timestamp DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_active_sym ON securities_master(is_active, symbol);")
                 conn.commit()
             except Exception as idx_e:
                 logger.debug(f"Covering index creation note: {idx_e}")

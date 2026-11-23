@@ -148,3 +148,41 @@ def test_05_format_selection_by_cutover_date(test_fetcher):
     assert is_udiff
     assert "BhavCopy_NSE_CM_0_0_0_20240708_F_0000.csv.zip" in fn_udiff
     assert "nsearchives.nseindia.com/content/cm/" in url_udiff
+
+
+def test_06_enriched_fields_and_sec_bhavdata_csv(test_fetcher, tmp_path):
+    """
+    Test 6: Direct parsing of sec_bhavdata_full CSV format with delivery, turnover and trades.
+    """
+    sec_csv_content = (
+        "SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, NO_OF_TRADES, DELIV_QTY, DELIV_PER\n"
+        "INFY, EQ, 15-Jan-2024, 1500.0, 1510.0, 1530.0, 1505.0, 1525.0, 1524.0, 1520.0, 4000000, 60800.0, 120000, 2400000, 60.00\n"
+        "WIPRO, EQ, 15-Jan-2024, 450.0, 452.0, 460.0, 448.0, 455.0, 456.0, 454.0, 1000000, 4540.0, 35000, 500000, 50.00\n"
+    )
+    csv_file = tmp_path / "sec_bhavdata_full_15012024.csv"
+    csv_file.write_text(sec_csv_content)
+
+    records = test_fetcher.parse_bhavcopy(csv_file)
+    assert len(records) == 2
+
+    infy = [r for r in records if r["symbol"] == "INFY"][0]
+    assert infy["trading_date"] == "2024-01-15"
+    assert infy["close"] == 1524.0
+    assert infy["open"] == 1510.0
+    assert infy["volume"] == 4000000
+    assert infy["turnover"] == 60800.0 * 100000.0
+    assert infy["prev_close"] == 1500.0
+    assert infy["total_trades"] == 120000
+    assert infy["delivery_qty"] == 2400000
+    assert infy["delivery_pct"] == 60.00
+
+
+def test_07_candidate_sources_fallback_matrix(test_fetcher):
+    """
+    Test 7: Candidate fallback matrix contains NSE primary, secondary and BSE mirrors.
+    """
+    candidates = test_fetcher.get_candidate_sources(date(2024, 1, 15))
+    source_ids = [c["source_id"] for c in candidates]
+    assert "NSE_PRIMARY" in source_ids
+    assert "NSE_SEC_BHAVDATA_MODERN" in source_ids
+    assert "BSE_MIRROR" in source_ids

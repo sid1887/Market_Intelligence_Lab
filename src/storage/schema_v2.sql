@@ -133,3 +133,7 @@ CREATE TABLE IF NOT EXISTS event_study_results (
     calculated_at TEXT NOT NULL,
     FOREIGN KEY (disclosure_id) REFERENCES corporate_disclosures(disclosure_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_qf_sym_date_desc ON quant_factors_daily(symbol, trading_date DESC);
+CREATE INDEX IF NOT EXISTS idx_cd_sym_broadcast_desc ON corporate_disclosures(symbol, broadcast_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_sm_active_sym ON securities_master(is_active, symbol);

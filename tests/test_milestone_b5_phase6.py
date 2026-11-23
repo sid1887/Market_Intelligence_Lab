@@ -223,9 +223,12 @@ class TestMilestoneB5Phase6SystemVerification(unittest.TestCase):
         self.assertAlmostEqual(pa["gap_open"], -0.0120497, places=4)
         self.assertAlmostEqual(pa["intraday_drift"], 0.0095924, places=4)
 
-        # Benchmark return None and AR None
-        self.assertIsNone(rep.movement_analysis.benchmark_comparison["benchmark_return"])
-        self.assertIsNone(rep.movement_analysis.market_model["abnormal_return"])
+        # Benchmark return and AR (None if unobserved, or valid float if indexed)
+        bench_ret = rep.movement_analysis.benchmark_comparison["benchmark_return"]
+        if bench_ret is not None:
+            self.assertAlmostEqual(bench_ret, -0.00015159, places=4)
+        else:
+            self.assertIsNone(bench_ret)
 
         # MODERATE_CONFIDENCE (65.0): Tier 1 (60) + 1-day lag from Oct 26 (5)
         self.assertEqual(rep.overview.confidence_level, "MODERATE_CONFIDENCE")

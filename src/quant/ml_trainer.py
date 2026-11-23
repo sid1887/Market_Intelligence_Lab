@@ -532,6 +532,11 @@ class WalkForwardMLTrainer:
                     except Exception as ex:
                         logger.warning(f"Could not update champion in ml_training_runs: {ex}")
                         break
+            elif all_results:
+                # Top candidate recorded for tournament summary reporting while leaving is_champion = 0
+                h_any = [r for r in all_results if r["horizon_days"] == h and r.get("oos_rank_ic_mean") is not None]
+                if h_any:
+                    champions[h] = max(h_any, key=lambda x: x["oos_rank_ic_mean"])
 
         # Write tournament summary file
         if champions:

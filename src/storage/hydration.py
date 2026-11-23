@@ -242,7 +242,6 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                 placeholders = ",".join("?" for _ in valid_cols)
                 sql = f"INSERT OR REPLACE INTO {table} ({col_names_str}) VALUES ({placeholders})"
                 conn.executemany(sql, [[r.get(c) for c in valid_cols] for r in batch_rows])
-                conn.commit()
 
             # Check if file has line-formatted table arrays
             is_streamable = False
@@ -258,7 +257,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
             if is_streamable:
                 current_table = None
                 batch = []
-                chunk_size = 2000
+                chunk_size = 5000
                 with gzip.open(snapshot_path, "rt", encoding="utf-8") as f:
                     for line in f:
                         line_s = line.strip()
@@ -271,6 +270,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                         if line_s in ("]", "],"):
                             if batch and current_table:
                                 insert_batch(current_table, batch)
+                                conn.commit()
                                 batch = []
                             current_table = None
                             continue

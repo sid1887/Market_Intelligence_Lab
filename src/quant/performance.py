@@ -93,6 +93,10 @@ class PerformanceMetricsCalculator:
         b_drawdowns = (b_series - b_cummax) / b_cummax
         b_max_drawdown = float(b_drawdowns.min())
 
+        # Calmar Ratio = CAGR / |Max Drawdown|
+        p_calmar = (cagr / abs(max_drawdown)) if abs(max_drawdown) > 1e-6 else 0.0
+        b_calmar = (b_cagr / abs(b_max_drawdown)) if abs(b_max_drawdown) > 1e-6 else 0.0
+
         # Drawdown duration (max calendar days in continuous underwater state)
         mdd_duration_days = 0
         current_dd_start = None
@@ -159,6 +163,7 @@ class PerformanceMetricsCalculator:
                 "annualized_volatility_pct": round(p_vol * 100.0, 2),
                 "sharpe_ratio": round(p_sharpe, 2),
                 "sortino_ratio": round(p_sortino, 2),
+                "calmar_ratio": round(p_calmar, 2),
                 "max_drawdown_pct": round(abs(max_drawdown) * 100.0, 2),
                 "mdd_duration_days": int(mdd_duration_days),
                 "alpha_pct": round(alpha_ann * 100.0, 2),
@@ -179,6 +184,7 @@ class PerformanceMetricsCalculator:
                 "annualized_volatility_pct": round(b_vol * 100.0, 2),
                 "sharpe_ratio": round(b_sharpe, 2),
                 "sortino_ratio": round(b_sortino, 2),
+                "calmar_ratio": round(b_calmar, 2),
                 "max_drawdown_pct": round(abs(b_max_drawdown) * 100.0, 2),
             },
             "simulation": {
@@ -201,6 +207,7 @@ class PerformanceMetricsCalculator:
                 "annualized_volatility_pct": 0.0,
                 "sharpe_ratio": 0.0,
                 "sortino_ratio": 0.0,
+                "calmar_ratio": 0.0,
                 "max_drawdown_pct": 0.0,
                 "mdd_duration_days": 0,
                 "alpha_pct": 0.0,
@@ -221,6 +228,7 @@ class PerformanceMetricsCalculator:
                 "annualized_volatility_pct": 0.0,
                 "sharpe_ratio": 0.0,
                 "sortino_ratio": 0.0,
+                "calmar_ratio": 0.0,
                 "max_drawdown_pct": 0.0,
             },
             "simulation": {

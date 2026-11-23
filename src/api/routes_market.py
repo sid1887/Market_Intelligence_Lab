@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Query, Body, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.storage.database import DatabaseManager
 from src.client.symbol_resolver import SymbolResolver
@@ -313,6 +313,84 @@ def get_stock_status(
         "step": "NOT_STARTED",
         "detail": f"Symbol '{sym}' is not queued for ingestion."
     })
+
+
+@router.get("/stocks/{symbol}/stream")
+@router.get("/api/v1/stocks/{symbol}/stream")
+async def stream_stock_ingestion_status(
+    symbol: str,
+    conn: sqlite3.Connection = Depends(get_db_connection)
+):
+    """
+    Streams Server-Sent Events (SSE) for on-demand ticker ingestion progress.
+    Allows frontend clients to establish a reactive EventSource stream rather than aggressive polling.
+    """
+    import asyncio
+    sym = symbol.upper().strip()
+
+    async def event_generator():
+        max_duration_sec = 60
+        elapsed = 0
+        last_step = None
+        last_pct = -1
+
+        while elapsed < max_duration_sec:
+            active_jobs = getattr(DynamicIngestionManager, "_active_jobs", _INGESTION_STATE)
+            if sym in active_jobs:
+                job = active_jobs[sym]
+                st = job.get("status")
+                step = job.get("step")
+                pct = job.get("progress_pct", 0)
+
+                if step != last_step or pct != last_pct or elapsed % 5 == 0:
+                    last_step = step
+                    last_pct = pct
+                    yield f"event: status\ndata: {json.dumps(job)}\n\n"
+
+                if st in ("READY", "FAILED"):
+                    break
+            else:
+                cur = conn.cursor()
+                cur.execute("SELECT 1 FROM securities_master WHERE symbol = ?", (sym,))
+                in_sec = cur.fetchone() is not None
+                cur.execute("SELECT COUNT(*) FROM ohlcv_daily WHERE symbol = ?", (sym,))
+                bars = cur.fetchone()[0]
+                if in_sec and bars > 0:
+                    ready_payload = {
+                        "status": "READY",
+                        "symbol": sym,
+                        "progress_pct": 100,
+                        "step": "READY",
+                        "detail": f"Data fully populated ({bars} bars)."
+                    }
+                    yield f"event: status\ndata: {json.dumps(ready_payload)}\n\n"
+                    break
+                else:
+                    idle_payload = {
+                        "status": "NOT_STARTED",
+                        "symbol": sym,
+                        "progress_pct": 0,
+                        "step": "NOT_STARTED",
+                        "detail": "Awaiting ingestion trigger."
+                    }
+                    yield f"event: status\ndata: {json.dumps(idle_payload)}\n\n"
+                    if elapsed >= 3:
+                        break
+
+            await asyncio.sleep(1.0)
+            elapsed += 1
+
+        yield "event: close\ndata: {}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 def _sanitize_price_continuity(candles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -712,6 +790,29 @@ def get_stock_tearsheet(
             if r2 and r2[0] is not None:
                 opm_pct = safe_float(r2[0], 2)
 
+    # Coalesce fundamental ratios from audited financial_statements_annual if still None
+    if debt_to_equity is None or opm_pct is None or roe_pct is None:
+        try:
+            cur.execute(
+                """
+                SELECT total_debt, total_equity, ebitda, revenue, net_profit
+                FROM financial_statements_annual
+                WHERE symbol = ? AND total_equity IS NOT NULL AND total_equity > 0
+                ORDER BY period_end_date DESC LIMIT 1
+                """,
+                (sym,)
+            )
+            fa_row = cur.fetchone()
+            if fa_row:
+                if debt_to_equity is None and fa_row["total_debt"] is not None and fa_row["total_equity"]:
+                    debt_to_equity = round(float(fa_row["total_debt"]) / float(fa_row["total_equity"]), 4)
+                if opm_pct is None and fa_row["ebitda"] is not None and fa_row["revenue"] and float(fa_row["revenue"]) > 0:
+                    opm_pct = round(float(fa_row["ebitda"]) / float(fa_row["revenue"]) * 100.0, 2)
+                if roe_pct is None and fa_row["net_profit"] is not None and fa_row["total_equity"] and float(fa_row["total_equity"]) > 0:
+                    roe_pct = round(float(fa_row["net_profit"]) / float(fa_row["total_equity"]) * 100.0, 2)
+        except Exception:
+            pass
+
     # ── Robust Coalescing for Technical Volatility & Beta ──
     volatility_annualized = safe_float(factors_row["volatility_annualized"], 4) if factors_row and factors_row["volatility_annualized"] is not None else None
     beta_60d_nifty = safe_float(factors_row["beta_60d_nifty"], 2) if factors_row and factors_row["beta_60d_nifty"] is not None else None
@@ -852,7 +953,8 @@ def get_stock_tearsheet(
     dist_52w_h = safe_float(factors_row["distance_52w_high"], 4) if factors_row and "distance_52w_high" in factors_row.keys() else None
     dist_52w_l = safe_float(factors_row["distance_52w_low"], 4) if factors_row and "distance_52w_low" in factors_row.keys() else None
     if dist_52w_h is not None:
-        pct_from_52w_h = max(-100.0, min(0.0, round(dist_52w_h, 2)))
+        val = dist_52w_h * 100.0 if abs(dist_52w_h) <= 1.0 else dist_52w_h
+        pct_from_52w_h = max(-100.0, min(0.0, round(val, 2)))
     elif latest_close is not None:
         try:
             cur.execute(

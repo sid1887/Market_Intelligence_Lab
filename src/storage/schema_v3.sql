@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS financial_statements_quarterly (
 CREATE INDEX IF NOT EXISTS idx_fsq_symbol_period 
 ON financial_statements_quarterly(symbol, period_end_date);
 
+CREATE INDEX IF NOT EXISTS idx_fsq_sym_ped_desc 
+ON financial_statements_quarterly(symbol, period_end_date DESC);
+
 -- 4. Structured Financial Statements (Annual)
 CREATE TABLE IF NOT EXISTS financial_statements_annual (
     symbol TEXT NOT NULL,

@@ -401,3 +401,32 @@ def test_07_verified_corporate_actions_seeded(hermetic_db):
         assert irctc[0] == "SPLIT"
         assert irctc[1] == pytest.approx(0.2, rel=1e-5)
         assert irctc[2] == 1
+
+
+def test_08_sync_from_corporate_actions_table(hermetic_db):
+    """
+    Test 8: Verifies dynamic synchronization from corporate_actions table into corporate_action_adjustments ledger.
+    """
+    ca_manager = CorporateActionsManager(hermetic_db)
+    
+    # Insert raw corporate action event into corporate_actions table
+    with hermetic_db.get_connection() as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO corporate_actions (
+                id, symbol, action_type, ex_date, record_date, purpose,
+                adjustment_factor, adjustment_ratio, source, retrieval_timestamp
+            ) VALUES (
+                'test_split_tatamotors', 'TATAMOTORS', 'SPLIT', '2023-05-10', '2023-05-11',
+                'Sub-division from Rs 10 to Rs 2', 0.2, 0.2, 'NSE_TEST', '2023-05-10T10:00:00Z'
+            );
+        """)
+        conn.commit()
+
+    synced_count = ca_manager.sync_from_corporate_actions_table()
+    assert synced_count >= 1
+
+    actions = ca_manager.get_actions_for_symbol("TATAMOTORS")
+    assert len(actions) == 1
+    assert actions[0]["action_type"] == "SPLIT"
+    assert actions[0]["ex_date"] == "2023-05-10"
+    assert actions[0]["split_multiplier"] == pytest.approx(0.2, rel=1e-5)

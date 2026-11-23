@@ -254,6 +254,9 @@ class PointInTimeTTMBuilder:
                 status="NOT_APPLICABLE" if is_financial else "MISSING",
                 reason_code="FINANCIAL_SECTOR" if is_financial else "NO_PIT_STATEMENTS"
             ),
+            "pb_ratio": MetricResult(value=None, unit="x", status="MISSING", reason_code="NO_PIT_STATEMENTS"),
+            "ev_ebitda": MetricResult(value=None, unit="x", status="NOT_APPLICABLE" if is_financial else "MISSING", reason_code="FINANCIAL_SECTOR" if is_financial else "NO_PIT_STATEMENTS"),
+            "roce_pct": MetricResult(value=None, unit="%", status="NOT_APPLICABLE" if is_financial else "MISSING", reason_code="FINANCIAL_SECTOR" if is_financial else "NO_PIT_STATEMENTS"),
         }
 
     @classmethod
@@ -282,7 +285,10 @@ class PointInTimeTTMBuilder:
         elif (ttm_pat is not None and ttm_pat <= 0) or (ttm_eps is not None and ttm_eps <= 0):
             pe_res = MetricResult(value=None, unit="x", status="NOT_MEANINGFUL", reason_code="NON_POSITIVE_EARNINGS")
         elif shares_outstanding and shares_outstanding > 0 and ttm_pat is not None:
-            eps = (ttm_pat * 1e7) / shares_outstanding if ttm_pat < 1e5 else ttm_pat / shares_outstanding
+            if shares_outstanding >= 1e5 and ttm_pat < 1e5:
+                eps = (ttm_pat * 1e7) / shares_outstanding
+            else:
+                eps = ttm_pat / shares_outstanding
             pe_val = round(close_price / eps, 2) if eps > 0 else None
             pe_res = MetricResult(value=pe_val, unit="x", status="VALID" if pe_val else "NOT_MEANINGFUL", period_end=period_end, accounting_basis=basis)
         elif ttm_eps is not None and ttm_eps > 0:
@@ -324,9 +330,58 @@ class PointInTimeTTMBuilder:
             opm_val = round((ttm_ebitda / ttm_revenue) * 100.0, 2)
             opm_res = MetricResult(value=opm_val, unit="%", status="VALID", period_end=period_end, accounting_basis=basis)
 
+        # 5. Price-to-Book (P/B) Ratio
+        if close_price is None or latest_equity is None:
+            pb_res = MetricResult(value=None, unit="x", status="MISSING", reason_code="MISSING_PRICE_OR_EQUITY")
+        elif latest_equity <= 0:
+            pb_res = MetricResult(value=None, unit="x", status="NOT_MEANINGFUL", reason_code="NEGATIVE_EQUITY")
+        elif shares_outstanding and shares_outstanding > 0:
+            if shares_outstanding >= 1e5 and latest_equity < 1e5:
+                bvps = (latest_equity * 1e7) / shares_outstanding
+            else:
+                bvps = latest_equity / shares_outstanding
+            pb_val = round(close_price / bvps, 2) if bvps > 0 else None
+            pb_res = MetricResult(value=pb_val, unit="x", status="VALID" if pb_val else "NOT_MEANINGFUL", period_end=period_end, accounting_basis=basis)
+        else:
+            pb_res = MetricResult(value=None, unit="x", status="MISSING", reason_code="SHARES_OUTSTANDING_MISSING")
+
+        # 6. Enterprise Value to EBITDA (EV/EBITDA)
+        if is_financial:
+            ev_ebitda_res = MetricResult(value=None, unit="x", status="NOT_APPLICABLE", reason_code="FINANCIAL_SECTOR")
+        elif ttm_ebitda is None or close_price is None or not shares_outstanding or shares_outstanding <= 0:
+            ev_ebitda_res = MetricResult(value=None, unit="x", status="MISSING", reason_code="MISSING_EBITDA_OR_MARKET_CAP")
+        elif ttm_ebitda <= 0:
+            ev_ebitda_res = MetricResult(value=None, unit="x", status="NOT_MEANINGFUL", reason_code="NON_POSITIVE_EBITDA")
+        else:
+            if shares_outstanding >= 1e5 and latest_equity and latest_equity < 1e5:
+                mkt_cap = (shares_outstanding * close_price) / 1e7
+            else:
+                mkt_cap = shares_outstanding * close_price
+            net_debt = float(latest_debt or 0.0)
+            ev = mkt_cap + net_debt
+            ev_ebitda_val = round(ev / ttm_ebitda, 2)
+            ev_ebitda_res = MetricResult(value=ev_ebitda_val, unit="x", status="VALID" if ev_ebitda_val > 0 else "NOT_MEANINGFUL", period_end=period_end, accounting_basis=basis)
+
+        # 7. Return on Capital Employed (ROCE %)
+        capital_employed = (latest_equity or 0.0) + (latest_debt or 0.0)
+        if is_financial:
+            roce_res = MetricResult(value=None, unit="%", status="NOT_APPLICABLE", reason_code="FINANCIAL_SECTOR")
+        elif ttm_ebitda is None or latest_equity is None:
+            roce_res = MetricResult(value=None, unit="%", status="MISSING", reason_code="MISSING_EBITDA_OR_CAPITAL")
+        elif capital_employed <= 0:
+            roce_res = MetricResult(value=None, unit="%", status="NOT_MEANINGFUL", reason_code="NON_POSITIVE_CAPITAL_EMPLOYED")
+        else:
+            # Conservative proxy: EBIT ~ EBITDA * 0.85
+            ebit = ttm_ebitda * 0.85
+            roce_val = round((ebit / capital_employed) * 100.0, 2)
+            roce_res = MetricResult(value=roce_val, unit="%", status="VALID", period_end=period_end, accounting_basis=basis)
+
         return {
             "ttm_pe": pe_res,
             "roe_pct": roe_res,
             "debt_to_equity": de_res,
             "opm_pct": opm_res,
+            "pb_ratio": pb_res,
+            "ev_ebitda": ev_ebitda_res,
+            "roce_pct": roce_res,
         }

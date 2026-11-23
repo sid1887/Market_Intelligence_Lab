@@ -78,8 +78,8 @@ class TestMilestoneB5Phase3(unittest.TestCase):
         Requirement 2: If available observations in estimation window < 126,
         do NOT manufacture alpha, beta, AR, or t-statistic.
         """
-        # 2024-11-05 is early in the 24-month database (< 15 historical sessions)
-        res_early = self.analyzer.analyze_session_movement("INFY", "2024-11-05")
+        # Earliest session in historical database (< 15 historical sessions)
+        res_early = self.analyzer.analyze_session_movement("INFY", "2011-01-14")
         self.assertEqual(res_early.model_status, "INSUFFICIENT_HISTORY")
         self.assertIsNone(res_early.alpha)
         self.assertIsNone(res_early.beta)
