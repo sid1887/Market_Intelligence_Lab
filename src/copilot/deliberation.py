@@ -29,6 +29,8 @@ from src.copilot.distiller import CopilotKnowledgeDistiller, store_teacher_trace
 from src.copilot.mcp_bridge import QuantMCPBridge
 from src.copilot.trader_dna import TraderDNAEngine
 from src.copilot.memory_store import CopilotMemoryStore
+from src.copilot.regime_analogs import PITMarketRegimeAnalogEngine
+from src.portfolio.position_sizer import FrictionAwarePositionSizer
 from src.copilot.live_tools import fetch_live_intraday_quote, search_live_web_catalysts
 from src.storage.database import DatabaseManager
 from src.api.utils import DATABASE_PATH
@@ -75,6 +77,8 @@ class MultiAgentDeliberationEngine:
             self.db = getattr(self.bridge, "db", None) or DatabaseManager()
         self.trader_dna = TraderDNAEngine(self.db)
         self.memory_store = CopilotMemoryStore(self.db)
+        self.position_sizer = FrictionAwarePositionSizer(db=self.db)
+        self.regime_analogs = PITMarketRegimeAnalogEngine(db=self.db)
 
     def _get_active_alias_map(self) -> Dict[str, str]:
         """Returns the base ALIAS_MAP merged with dynamic aliases from securities_master."""
@@ -1202,18 +1206,72 @@ class MultiAgentDeliberationEngine:
         elif "HOLD" in upper_c:
             verdict = "HOLD"
             conviction = 55
-        elif "AVOID" in upper_c:
-            verdict = "AVOID"
+        elif "AVOID" in upper_c or "ABSTAIN" in upper_c or "NO_TRADE" in upper_c:
+            verdict = "ABSTAIN"
             conviction = 35
         else:
             verdict = "INSUFFICIENT_EVIDENCE"
             conviction = 45
 
+        # Hard Veto Safety Evaluation Override:
+        # Enforce that LLM narrative CANNOT override deterministic friction, cooldown, or PIT data gates!
+        hard_vetoes: List[str] = []
+        f = context.get("fundamentals", {})
+        if f.get("data_status") == "SECTOR_ESTIMATE" or f.get("data_tier") == "STALE":
+            hard_vetoes.append("STALE_OR_FABRICATED_FUNDAMENTALS: Lacks verified point-in-time financial statements.")
+
+        sizer_res = None
+        eval_res = {}
+        try:
+            profile = self.trader_dna.get_live_execution_profile()
+            open_holdings = profile.get("open_positions", [])
+            avail_cap = float(profile.get("total_capital") or 5000.0)
+            if avail_cap <= 0:
+                avail_cap = 5000.0
+
+            sizer_res = self.position_sizer.solve_position_size(
+                capital=avail_cap,
+                entry_price=price,
+                stop_loss=stop,
+                target_price=target,
+                meta_prob=0.60,
+                candidate_symbol=sym,
+                open_positions=open_holdings,
+                custom_size_multiplier=profile.get("size_multiplier", 1.0)
+            )
+            if not sizer_res.can_trade:
+                hard_vetoes.extend(sizer_res.veto_reasons)
+
+            eval_res = self.trader_dna.evaluate_proposed_trade(
+                symbol=sym, entry_price=price, target_price=target, stop_price=stop,
+                budget=sizer_res.allocated_capital if sizer_res.can_trade else min(1500.0, avail_cap),
+                holding_horizon_days=20
+            )
+            if eval_res.get("coaching_status") == "COOLDOWN_ACTIVE":
+                hard_vetoes.append(f"COOLDOWN_ACTIVE: {eval_res.get('advice')}")
+            elif not eval_res.get("can_trade") and eval_res.get("violations"):
+                hard_vetoes.extend(eval_res.get("violations"))
+        except Exception as gate_err:
+            logger.debug(f"[LLM_JUDGE] Hard veto evaluation non-fatal error: {gate_err}")
+
+        if hard_vetoes:
+            verdict = "ABSTAIN"
+            conviction = min(conviction, 25)
+            content += (
+                f"\n\n---\n### ⚠️ Deterministic Hard Veto Override\n"
+                f"**Consensus Status:** `ABSTAIN / NO_TRADE`  \n"
+                f"Despite qualitative discussion, execution is blocked by deterministic risk gates:\n" +
+                "\n".join(f"- `{v}`" for v in hard_vetoes)
+            )
+
         return content, {
             "verdict": verdict,
             "conviction_score": conviction,
             "target_price": target,
-            "stop_loss": stop
+            "stop_loss": stop,
+            "hard_vetoes": hard_vetoes,
+            "position_sizing": sizer_res.__dict__ if sizer_res else None,
+            "coaching": eval_res
         }
 
     def _generate_deterministic_bull(self, ctx: Dict[str, Any]) -> str:
@@ -1326,8 +1384,27 @@ class MultiAgentDeliberationEngine:
         risk = ((price - stop) / price) * 100 if price > 0 else 6.0
         rr_ratio = round(upside / max(0.1, risk), 2)
 
+        # ─────────────────────────────────────────────────────────────────────────
+        # PERSONA 1: FUNDAMENTAL & PIT QUALITY ANALYST
+        # ─────────────────────────────────────────────────────────────────────────
+        pit_stale = False
+        fund_notes = []
+        if f.get("roe_pct") is None and f.get("debt_to_equity") is None:
+            fund_notes.append("No verified financial statements available in PIT database.")
+            pit_stale = True
+        if f.get("data_status") == "SECTOR_ESTIMATE":
+            fund_notes.append("Financial statement is an imputed SECTOR_ESTIMATE (unverified).")
+            pit_stale = True
+        if f.get("data_tier") == "STALE":
+            fund_notes.append("Financial statement filings exceed SEBI statutory freshness threshold.")
+            pit_stale = True
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # PERSONA 2: MICROSTRUCTURE & META-LABEL STRATEGIST
+        # ─────────────────────────────────────────────────────────────────────────
         ml_snippet = ""
         ml_boost = 0
+        meta_prob = 0.60
         if ml and not ml.get("error"):
             champ_model = ml.get("champion_model", "HistGradientBoosting")
             overall_rank_ic = ml.get("overall_rank_ic", 0.035)
@@ -1337,23 +1414,99 @@ class MultiAgentDeliberationEngine:
             fc_60 = ml.get("forecasts", {}).get("60D", {})
             pred_20d_pct = fc_20.get("expected_return_pct", 0.0)
             pred_60d_pct = fc_60.get("expected_return_pct", 0.0)
-            
+            meta_prob = round(float(ml_conviction) / 100.0, 3)
+
             if ml_conviction >= 80:
                 ml_boost = 6
             elif ml_conviction <= 35:
                 ml_boost = -8
 
             ml_snippet = (
-                f"\n\n### Machine Learning Committee Telemetry\n"
+                f"\n\n### Machine Learning & Meta-Label Committee\n"
                 f"- **Tournament Champion:** `{champ_model}` (Purged Out-of-Sample Rank IC: `+{overall_rank_ic:.4f}`)\n"
                 f"- **20D / 60D Model Alpha:** `{pred_20d_pct:+.2f}%` / `{pred_60d_pct:+.2f}%` systematic excess return forecast\n"
+                f"- **Calibrated Meta-Probability:** `{meta_prob:.2f}` (Execution Hurdle: `>= 0.55`)\n"
                 f"- **Algorithm Conviction:** `{conviction_tier}` (`{ml_conviction}/100` score weight)"
             )
 
-        if f.get("roe_pct") is None and f.get("debt_to_equity") is None:
-            verdict = "INSUFFICIENT_EVIDENCE"
-            conviction = 45
-        elif is_above_sma and rr_ratio >= 1.5:
+        # PIT Market Regime Analogs
+        regime_report = None
+        regime_snippet = ""
+        try:
+            latest_dt = str(ctx.get("as_of_date") or ctx.get("latest_date") or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+            regime_report = self.regime_analogs.find_analogs(as_of_date=latest_dt)
+            if regime_report and regime_report.matches:
+                regime_snippet = (
+                    f"\n\n### PIT Market Regime Analogs ({regime_report.regime_bias})\n"
+                    f"- **Historical Analog Set:** Top {len(regime_report.matches)} matching sessions (Zero Future Leakage Enforced)\n"
+                    f"- **Empirical 20D Nifty Outcome:** Mean return `{regime_report.mean_forward_20d_return_pct:+.2f}%` | Win Rate `{regime_report.win_rate_20d_pct:.0f}%` | Worst Drawdown `{regime_report.worst_forward_drawdown_pct:.2f}%`"
+                )
+        except Exception as re_err:
+            logger.debug(f"[DELIBERATION] Regime analog evaluation notice: {re_err}")
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # PERSONA 3: RISK & TRADER DNA COACH (Position Sizer + Execution Coach)
+        # ─────────────────────────────────────────────────────────────────────────
+        profile = self.trader_dna.get_live_execution_profile()
+        open_holdings = profile.get("open_positions", [])
+        avail_cap = float(profile.get("total_capital") or 5000.0)
+        if avail_cap <= 0:
+            avail_cap = 5000.0
+
+        sizer_res = self.position_sizer.solve_position_size(
+            capital=avail_cap,
+            entry_price=price,
+            stop_loss=stop,
+            target_price=target,
+            meta_prob=meta_prob,
+            candidate_symbol=sym,
+            open_positions=open_holdings,
+            custom_size_multiplier=profile.get("size_multiplier", 1.0)
+        )
+
+        eval_res: Dict[str, Any] = {}
+        try:
+            eval_res = self.trader_dna.evaluate_proposed_trade(
+                symbol=sym,
+                entry_price=price,
+                target_price=target,
+                stop_price=stop,
+                budget=sizer_res.allocated_capital if sizer_res.can_trade else min(1500.0, avail_cap),
+                holding_horizon_days=20
+            )
+        except Exception as ee:
+            logger.debug(f"[COPILOT] Trade evaluation failed: {ee}")
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # HARD VETO OVERRIDE EVALUATION
+        # ─────────────────────────────────────────────────────────────────────────
+        hard_veto_reasons: List[str] = []
+        if pit_stale:
+            hard_veto_reasons.append("STALE_OR_FABRICATED_FUNDAMENTALS: Lacks verified point-in-time financial statements.")
+        if not sizer_res.can_trade:
+            hard_veto_reasons.extend(sizer_res.veto_reasons)
+        if eval_res.get("coaching_status") == "COOLDOWN_ACTIVE":
+            hard_veto_reasons.append(f"COOLDOWN_ACTIVE: {eval_res.get('advice')}")
+        elif not eval_res.get("can_trade") and eval_res.get("violations"):
+            hard_veto_reasons.extend(eval_res.get("violations"))
+
+        coaching_snippet = ""
+        if eval_res:
+            coaching_snippet = (
+                f"\n\n### Micro-Capital Execution & Trader DNA Coach\n"
+                f"- **Coaching Guard:** `{eval_res.get('coaching_status')}`\n"
+                f"- **Actionable Guidance:** {eval_res.get('advice')}\n"
+                f"- **Allocation Cap:** `₹{sizer_res.allocated_capital:,.2f}` (`{sizer_res.shares} shares`)\n"
+                f"- **Fee Drag Breakeven:** `₹{eval_res.get('breakeven_price', price):.2f}` (`+{sizer_res.fee_drag_pct:.2f}%` gross required to cover ₹23.60 DP + statutory taxes)\n"
+                f"- **Post-Cost Net R:R:** `{sizer_res.net_rr:.2f}x` (Gross: `{sizer_res.gross_rr:.2f}x` | Hurdle: `>= 1.6x`)\n"
+                f"- **Net Upside after Friction:** `₹{sizer_res.net_reward:.2f}` · **Net Risk:** `₹{sizer_res.net_risk:.2f}`"
+            )
+
+        # Final Consensus Synthesis Enforcing Hard Veto
+        if hard_veto_reasons:
+            verdict = "ABSTAIN"
+            conviction = min(25, 45 + ml_boost)
+        elif is_above_sma and rr_ratio >= 1.5 and sizer_res.net_rr >= 1.6:
             verdict = "STRONG_BUY"
             conviction = min(96, 84 + ml_boost)
         elif is_above_sma or rr_ratio >= 1.0:
@@ -1363,40 +1516,28 @@ class MultiAgentDeliberationEngine:
             verdict = "HOLD"
             conviction = min(85, max(30, 55 + ml_boost))
 
-        # Micro-Capital Execution & Trader DNA Coaching Evaluation
-        eval_res: Dict[str, Any] = {}
-        try:
-            eval_res = self.trader_dna.evaluate_proposed_trade(sym, price, target, stop)
-        except Exception as ee:
-            logger.debug(f"[COPILOT] Trade evaluation failed: {ee}")
-
-        coaching_snippet = ""
-        if eval_res:
-            coaching_snippet = (
-                f"\n\n### Micro-Capital Execution & Trader DNA Coach\n"
-                f"- **Coaching Guard:** `{eval_res.get('coaching_status')}`\n"
-                f"- **Actionable Guidance:** {eval_res.get('advice')}\n"
-                f"- **Allocation Cap:** `₹{eval_res.get('max_capital_allowed', 0):,.2f}` (`{eval_res.get('recommended_shares', 0)} shares`)\n"
-                f"- **Fee Drag Breakeven:** `₹{eval_res.get('breakeven_price', price):.2f}` (`+{eval_res.get('fee_drag_pct', 0):.2f}%` gross required to cover ₹23.60 DP + statutory taxes)\n"
-                f"- **Net Upside after Friction:** `{eval_res.get('net_upside_pct', 0):+.2f}%` · **Net Risk:** `{eval_res.get('net_risk_pct', 0):.2f}%`"
+        veto_block = ""
+        if hard_veto_reasons:
+            veto_block = (
+                f"\n\n### ⚠️ Deterministic Hard Veto Override Active\n"
+                f"**Consensus Status:** `ABSTAIN / NO_TRADE`  \n"
+                f"Execution is strictly blocked by quantitative and personal risk gates:\n" +
+                "\n".join(f"- `{v}`" for v in hard_veto_reasons)
             )
-            if not eval_res.get("can_trade") and eval_res.get("coaching_status") == "COOLDOWN_ACTIVE":
-                verdict = "COOLDOWN_PAUSE"
-                conviction = min(conviction, 35)
 
         memo = (
             f"## Portfolio Manager Judicial Decision\n\n"
             f"**Recommendation:** `{verdict}`  \n"
-            f"**Conviction Score:** `{conviction}/100` · **Risk/Reward Asymmetry:** `{rr_ratio}:1`\n\n"
+            f"**Conviction Score:** `{conviction}/100` · **Risk/Reward Asymmetry:** `{sizer_res.net_rr if sizer_res.can_trade else rr_ratio}:1`\n\n"
             f"---\n\n"
             f"### Synthesis of Arguments\n"
-            f"- **Weighing the Bull Case:** Operating capital compounding (ROE) and positive 20-day institutional momentum outweigh cyclical multiple concerns.\n"
-            f"- **Factoring the Bear Constraints:** The valuation multiple demands strict adherence to the econometric stop-loss floor to prevent structural capital erosion.{ml_snippet}\n\n"
+            f"- **Weighing the Bull Case:** Operating capital compounding (ROE: {f.get('roe_pct', 'N/A')}%) and positive 20-day institutional momentum outweigh cyclical multiple concerns.\n"
+            f"- **Factoring the Bear Constraints:** Econometric invalidation floor at ₹{stop:.2f} bounds downside capital exposure.{ml_snippet}{regime_snippet}\n\n"
             f"### Execution Parameters\n"
             f"- **Entry Anchor:** `₹{price:.2f}` (Current Settled Price)\n"
             f"- **Upside Objective (80% CI Target):** `₹{target:.2f}` (`+{upside:.1f}%`)\n"
             f"- **Invalidation Floor (Stop Loss):** `₹{stop:.2f}` (`-{risk:.1f}%`)\n"
-            f"- **Position Horizon:** `2 to 8 Weeks` · Rebalance on 200 SMA violation.{coaching_snippet}"
+            f"- **Position Horizon:** `2 to 8 Weeks` · Rebalance on 200 SMA violation.{coaching_snippet}{veto_block}"
         )
 
         return memo, {
@@ -1404,6 +1545,9 @@ class MultiAgentDeliberationEngine:
             "conviction_score": conviction,
             "target_price": target,
             "stop_loss": stop,
+            "can_trade": len(hard_veto_reasons) == 0,
+            "hard_veto_reasons": hard_veto_reasons,
+            "position_sizing": sizer_res.__dict__,
             "coaching": eval_res
         }
 

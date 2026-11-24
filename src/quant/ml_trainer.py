@@ -903,6 +903,19 @@ class TwoStageTournamentRunner:
             if feat not in df.columns:
                 df[feat] = 0.5
 
+        if "trading_date" in df.columns:
+            df = df.sort_values("trading_date").reset_index(drop=True)
+
+        if "net_return" not in df.columns:
+            df["net_return"] = df.get("forward_return", pd.Series(0.0, index=df.index))
+        if "label" not in df.columns:
+            df["label"] = np.where(df["net_return"] > 0.0025, 1, np.where(df["net_return"] < -0.0025, -1, 0))
+
+        # Memory & Speed Guard: Subsample chronologically if dataset exceeds 12,000 rows
+        if len(df) > 12000:
+            step = max(1, len(df) // 10000)
+            df = df.iloc[::step].reset_index(drop=True)
+
         # Split development and holdout
         if len(df) > self.holdout_sessions + 100:
             dev_df, holdout_df = CombinatorialPurgedCV.split_train_holdout(
@@ -1107,7 +1120,7 @@ class TwoStageTournamentRunner:
         5. Logs run into model_registry and writes tournament_summary.json.
         """
         if df is None:
-            trainer = MLTrainer(db=self.db)
+            trainer = WalkForwardMLTrainer(db=self.db)
             raw_data = trainer.extract_training_dataset(horizon_days=self.horizon_days)
         else:
             raw_data = df
