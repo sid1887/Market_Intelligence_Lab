@@ -11,10 +11,82 @@ Enforces fundamental temporal invariants across all storage layers:
 """
 
 import logging
-from typing import Dict, Any, List, Tuple
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, List, Tuple, Optional, Union
 from src.storage.database import DatabaseManager
 
 logger = logging.getLogger("MIL.TemporalGuard")
+
+# Canonical Indian Standard Time (IST) offset: UTC+05:30
+IST_TIMEZONE = timezone(timedelta(hours=5, minutes=30))
+EOD_CLOSE_TIME_IST = "15:30:00+05:30"
+PRE_MARKET_OPEN_TIME_IST = "09:00:00+05:30"
+
+
+def parse_ist_timestamp(ts: Union[str, datetime]) -> datetime:
+    """
+    Parses an ISO-8601 string or datetime object into a timezone-aware IST datetime.
+    Supports ISO formats with '+05:30', 'Z', and naive datetime strings (assumed IST).
+    """
+    if isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=IST_TIMEZONE)
+        return ts.astimezone(IST_TIMEZONE)
+
+    s = str(ts).strip()
+    if not s:
+        raise ValueError("Timestamp string cannot be empty.")
+
+    # Normalize trailing Z to UTC
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+
+    # Date-only YYYY-MM-DD
+    if len(s) == 10 and s[4] == "-" and s[7] == "-":
+        s = f"{s}T00:00:00+05:30"
+
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=IST_TIMEZONE)
+        return dt.astimezone(IST_TIMEZONE)
+    except Exception as e:
+        raise ValueError(f"Unable to parse timestamp '{ts}' to IST: {e}")
+
+
+def get_eod_close_decision_timestamp(session_date: str) -> str:
+    """Returns canonical EOD Close Decision timestamp for session t (15:30 IST)."""
+    clean_date = str(session_date).strip()[:10]
+    return f"{clean_date}T{EOD_CLOSE_TIME_IST}"
+
+
+def get_pre_market_decision_timestamp(session_date: str) -> str:
+    """Returns canonical Pre-Market Open Decision timestamp for session t+1 (09:00 IST)."""
+    clean_date = str(session_date).strip()[:10]
+    return f"{clean_date}T{PRE_MARKET_OPEN_TIME_IST}"
+
+
+def is_pit_eligible_at(
+    published_at_ist: Optional[Union[str, datetime]],
+    decision_timestamp_ist: Union[str, datetime]
+) -> bool:
+    """
+    Enforces strict point-in-time timestamp causality:
+        published_at_ist < decision_timestamp_ist
+
+    Returns True if filing/event was officially broadcast and known to the market
+    strictly BEFORE the execution decision point.
+    """
+    if not published_at_ist:
+        return False
+
+    try:
+        pub_dt = parse_ist_timestamp(published_at_ist)
+        dec_dt = parse_ist_timestamp(decision_timestamp_ist)
+        return pub_dt < dec_dt
+    except Exception as e:
+        logger.warning(f"[PIT-GUARD] Failed timestamp comparison ({published_at_ist} vs {decision_timestamp_ist}): {e}")
+        return False
 
 
 class TemporalInvariantGuard:

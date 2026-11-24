@@ -240,6 +240,11 @@ class BacktestEngine:
                     include_watchlists=True
                 )
 
+                # Phase 2: Survivorship-aware Point-in-Time universe filtering
+                active_pit_symbols = set(self.db.get_pit_active_symbols(date))
+                if active_pit_symbols and not screen_df.empty:
+                    screen_df = screen_df[screen_df["symbol"].isin(active_pit_symbols)]
+
                 # Filter top_n securities by composite score
                 if not screen_df.empty:
                     top_candidates = screen_df.head(top_n).copy()

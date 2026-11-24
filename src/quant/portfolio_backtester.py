@@ -281,6 +281,12 @@ class PortfolioBacktester:
                 deduped[s] = score
 
         final_scores = list(deduped.items())
+
+        # Phase 2: Survivorship-aware active PIT universe filtering
+        active_pit = set(self.db.get_pit_active_symbols(as_of_date))
+        if active_pit:
+            final_scores = [x for x in final_scores if x[0] in active_pit]
+
         final_scores.sort(key=lambda x: x[1], reverse=True)
         return final_scores
 

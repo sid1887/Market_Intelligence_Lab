@@ -14,6 +14,11 @@ import re
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 from src.domain.observations import MetricResult
+from src.storage.temporal_guard import (
+    is_pit_eligible_at,
+    get_eod_close_decision_timestamp,
+    get_pre_market_decision_timestamp
+)
 
 FINANCIAL_SECTORS = {
     "FINANCIAL SERVICES",
@@ -96,9 +101,25 @@ class PointInTimeTTMBuilder:
     def filter_eligible_statements(
         statements: List[Dict[str, Any]],
         as_of_date: str,
-        is_annual: bool = False
+        is_annual: bool = False,
+        decision_timestamp_ist: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Filters statements known to the market strictly on or before as_of_date."""
+        """
+        Filters statements known to the market strictly on or before as_of_date / decision_timestamp_ist.
+        Enforces:
+        1. Timestamp-exact point-in-time gating when publication/dissemination timestamps are present.
+        2. Conservative SEBI LODR statutory fallback lags (+45d quarterly, +60d annual) when timestamps are absent.
+        3. Clear provenance tagging (OBSERVED_TIMESTAMP vs STATUTORY_FALLBACK_LAG) on eligible rows.
+        """
+        # Determine whether exact timestamp comparison is active
+        has_time_component = decision_timestamp_ist is not None or ("T" in str(as_of_date) or ":" in str(as_of_date))
+        if decision_timestamp_ist:
+            eff_decision_ts = str(decision_timestamp_ist).strip()
+        elif has_time_component:
+            eff_decision_ts = str(as_of_date).strip()
+        else:
+            eff_decision_ts = get_eod_close_decision_timestamp(as_of_date)
+
         target_d = parse_date(as_of_date)
         eligible = []
 
@@ -107,16 +128,42 @@ class PointInTimeTTMBuilder:
             if not period_end:
                 continue
 
-            # Check explicit filing_date or publication_date
-            filing_date = stmt.get("filing_date") or stmt.get("publication_date") or stmt.get("available_at")
-            if filing_date:
-                avail_d = parse_date(filing_date)
-            else:
-                # Conservative regulatory lag fallback
-                avail_d = parse_date(get_conservative_availability(period_end, is_annual))
+            # Check explicit filing_date, publication_date, or timestamp
+            pub_ts = (
+                stmt.get("published_at_ist") or
+                stmt.get("publication_timestamp") or
+                stmt.get("broadcast_timestamp") or
+                stmt.get("publication_date") or
+                stmt.get("filing_date") or
+                stmt.get("available_at")
+            )
 
-            if avail_d <= target_d:
-                eligible.append(stmt)
+            is_eligible = False
+            provenance = "UNKNOWN"
+
+            if pub_ts:
+                pub_str = str(pub_ts).strip()
+                # If exact timestamp with time is available
+                if "T" in pub_str or ":" in pub_str:
+                    is_eligible = is_pit_eligible_at(pub_str, eff_decision_ts)
+                    provenance = "OBSERVED_TIMESTAMP"
+                else:
+                    # Date-only observed filing date
+                    avail_d = parse_date(pub_str)
+                    is_eligible = avail_d <= target_d
+                    provenance = "OBSERVED_DATE"
+            else:
+                # Conservative SEBI LODR regulatory lag fallback (+45d quarterly, +60d annual)
+                fallback_str = get_conservative_availability(period_end, is_annual)
+                avail_d = parse_date(fallback_str)
+                is_eligible = avail_d <= target_d
+                provenance = f"STATUTORY_FALLBACK_LAG_{'60D' if is_annual else '45D'}"
+
+            if is_eligible:
+                stmt_out = dict(stmt)
+                stmt_out["pit_provenance"] = provenance
+                stmt_out["pit_eligible"] = True
+                eligible.append(stmt_out)
 
         # Sort descending by period_end
         return sorted(

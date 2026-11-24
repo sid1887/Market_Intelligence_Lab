@@ -11,7 +11,7 @@ import os
 import re
 import datetime
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple, List
 
 import requests
 from src.config import is_network_allowed
@@ -34,6 +34,48 @@ DEMERGER_AND_REBRANDING_ALIASES: Dict[str, str] = {
     "MINDTREE": "LTIM",
     "HDFC": "HDFCBANK",
 }
+
+# Historical corporate rebranding / merger effective dates (ISO YYYY-MM-DD)
+HISTORICAL_ALIAS_MERGER_DATES: Dict[str, Tuple[str, str]] = {
+    "HDFC": ("HDFCBANK", "2023-07-13"),
+    "LTI": ("LTIM", "2022-12-05"),
+    "MINDTREE": ("LTIM", "2022-11-23"),
+    "MOTHERSUMI": ("MOTHERSON", "2022-03-28"),
+    "CADILAHC": ("ZYDUSLIFE", "2022-03-07"),
+    "AMARAJABAT": ("ARE&M", "2023-09-22"),
+    "L&TFH": ("LTF", "2024-03-28"),
+    "TATAMOTORS": ("TMPV", "2025-10-01"),
+    "ZOMATO": ("ETERNAL", "2025-06-01"),
+    "INDMART": ("INDIAMART", "2020-01-01"),
+    "TVSHMOTOR": ("TVSMOTOR", "2021-01-01"),
+    "CENTURYTEX": ("CENTURYPLY", "2020-01-01"),
+}
+
+
+def resolve_pit_symbol(symbol: str, as_of_date: str) -> str:
+    """
+    Resolves point-in-time ticker symbol as of a specific historical date.
+    - If symbol is a predecessor equity and as_of_date < merger_date: preserves historical ticker.
+    - If symbol is a predecessor equity and as_of_date >= merger_date: resolves to successor ticker.
+    - Otherwise returns the standard or current ticker.
+    """
+    sym = symbol.strip().upper()
+    dt_str = str(as_of_date).strip()[:10]
+    if sym in HISTORICAL_ALIAS_MERGER_DATES:
+        successor, eff_date = HISTORICAL_ALIAS_MERGER_DATES[sym]
+        if dt_str < eff_date:
+            return sym
+        return successor
+    return DEMERGER_AND_REBRANDING_ALIASES.get(sym, sym)
+
+
+def get_pit_active_universe(as_of_date: str, db: Optional[DatabaseManager] = None) -> List[Dict[str, Any]]:
+    """
+    Returns point-in-time active equity universe as of as_of_date.
+    Equities listed on or before as_of_date and not yet delisted/merged as of as_of_date.
+    """
+    mgr = db or DatabaseManager()
+    return mgr.get_pit_active_universe(as_of_date)
 
 # Authoritative reference catalog of active NSE cash equities for offline/deterministic resolution
 KNOWN_NSE_EQUITIES: Dict[str, Dict[str, str]] = {
@@ -242,6 +284,14 @@ class SymbolResolver:
         """Resolves corporate restructuring, rebranding, or demerger aliases."""
         sym = symbol.strip().upper()
         return DEMERGER_AND_REBRANDING_ALIASES.get(sym, sym)
+
+    def resolve_pit_symbol(self, symbol: str, as_of_date: str) -> str:
+        """Resolves point-in-time ticker symbol considering historical merger/rebranding dates."""
+        return resolve_pit_symbol(symbol, as_of_date)
+
+    def get_pit_active_universe(self, as_of_date: str) -> List[Dict[str, Any]]:
+        """Returns point-in-time active equity universe from securities_master."""
+        return self.db.get_pit_active_universe(as_of_date)
 
     def resolve_by_isin(self, isin: str) -> Optional[Dict[str, Any]]:
         """Resolves security metadata directly by official ISIN."""

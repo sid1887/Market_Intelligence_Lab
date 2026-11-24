@@ -253,6 +253,12 @@ class DatabaseManager:
             if ffd_cols and "is_sector_imputed" not in ffd_cols:
                 conn.execute("ALTER TABLE fundamental_factors_daily ADD COLUMN is_sector_imputed INTEGER DEFAULT 0;")
 
+            # 8c. Safe additive column alteration on securities_master for delisting_date (Phase 2)
+            cursor = conn.execute("PRAGMA table_info(securities_master);")
+            sm_cols = {row["name"] for row in cursor.fetchall()}
+            if sm_cols and "delisting_date" not in sm_cols:
+                conn.execute("ALTER TABLE securities_master ADD COLUMN delisting_date TEXT DEFAULT NULL;")
+
             # 9. Ensure user_watchlists table exists (Milestone B4.3)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS user_watchlists (
@@ -738,6 +744,41 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
+
+    def get_pit_active_universe(self, as_of_date: str) -> List[Dict[str, Any]]:
+        """
+        Returns all NSE equities listed on or before as_of_date and not yet delisted/merged as of as_of_date:
+            (listing_date IS NULL OR listing_date <= as_of_date)
+            AND (delisting_date IS NULL OR delisting_date > as_of_date)
+        """
+        dt_str = str(as_of_date).strip()[:10]
+        with self.get_connection() as conn:
+            cur = conn.execute("PRAGMA table_info(securities_master);")
+            cols = {r["name"] for r in cur.fetchall()}
+            if "delisting_date" in cols:
+                query = """
+                    SELECT symbol, company_name, isin, industry, sector, macro_sector, listing_date, delisting_date, is_active
+                    FROM securities_master
+                    WHERE (listing_date IS NULL OR listing_date <= ?)
+                      AND (delisting_date IS NULL OR delisting_date > ?)
+                    ORDER BY symbol ASC;
+                """
+                rows = conn.execute(query, (dt_str, dt_str)).fetchall()
+            else:
+                query = """
+                    SELECT symbol, company_name, isin, industry, sector, macro_sector, listing_date, NULL as delisting_date, is_active
+                    FROM securities_master
+                    WHERE (listing_date IS NULL OR listing_date <= ?)
+                    ORDER BY symbol ASC;
+                """
+                rows = conn.execute(query, (dt_str,)).fetchall()
+
+            return [dict(row) for row in rows]
+
+    def get_pit_active_symbols(self, as_of_date: str) -> List[str]:
+        """Convenience method returning list of active ticker symbols as of as_of_date."""
+        universe = self.get_pit_active_universe(as_of_date)
+        return [r["symbol"] for r in universe]
 
     def upsert_user_watchlist(self, watchlists: List[Dict[str, Any]]) -> int:
         """

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS securities_master (
     sector TEXT NOT NULL,
     macro_sector TEXT NOT NULL,
     listing_date TEXT DEFAULT NULL,
+    delisting_date TEXT DEFAULT NULL,
     is_active INTEGER NOT NULL DEFAULT 1,
     is_nifty50 INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
