@@ -44,11 +44,12 @@ data/raw/
 
 # Dynamic runtime telemetry & ML artifacts (generated dynamically by server)
 data/macro_telemetry.json
-data/models/
+data/models/*
 !data/models/tournament_summary.json
-!data/models/*.joblib
-!data/models/*.pkl
-!data/models/precomputed_forecasts.json
+data/models/*.joblib
+data/models/*.pkl
+*.joblib
+*.pkl
 
 # OS artifacts
 .DS_Store

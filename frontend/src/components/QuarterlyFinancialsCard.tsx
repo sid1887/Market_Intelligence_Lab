@@ -49,11 +49,12 @@ export function QuarterlyFinancialsCard({ symbol, statements = [] }: QuarterlyFi
     );
   }
 
-  // Calculate highest value for relative bar heights
-  const maxMetricVal = Math.max(
-    ...chronological.map((s) => Math.abs(s[activeMetric] || 0)),
-    1
-  );
+  // Calculate highest and lowest values for relative bar heights and zero-variance check
+  const metricValues = chronological.map((s) => s[activeMetric] ?? 0);
+  const minMetricVal = metricValues.length > 0 ? Math.min(...metricValues) : 0;
+  const maxMetricVal = metricValues.length > 0 ? Math.max(...metricValues) : 0;
+  const isZeroVariancePositive = metricValues.length > 0 && maxMetricVal === minMetricVal && maxMetricVal > 0;
+  const safeMaxVal = Math.max(...chronological.map((s) => Math.abs(s[activeMetric] || 0)), 1);
 
   const formatPeriod = (dt: string) => {
     try {
@@ -201,19 +202,22 @@ export function QuarterlyFinancialsCard({ symbol, statements = [] }: QuarterlyFi
 
         <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 pt-2 items-end h-36">
           {chronological.map((s, idx) => {
-            const val = s[activeMetric] || 0;
-            const heightPct = Math.max(8, Math.round((Math.abs(val) / maxMetricVal) * 100));
+            const rawVal = s[activeMetric];
+            const val = rawVal ?? 0;
+            const heightPct = isZeroVariancePositive
+              ? 65
+              : Math.max(8, Math.round((Math.abs(val) / safeMaxVal) * 100));
             const isPos = val >= 0;
 
             return (
               <div key={s.period_end_date || idx} className="flex flex-col items-center h-full justify-end group">
-                {/* Tooltip value */}
-                <span className="text-[9px] font-mono text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity mb-1 tabular-nums whitespace-nowrap">
-                  ₹{val.toFixed(0)}Cr
+                {/* Value label: visible above every bar */}
+                <span className="text-[9px] font-mono text-slate-300 font-medium mb-1 tabular-nums whitespace-nowrap">
+                  {rawVal !== null && rawVal !== undefined ? `₹${val.toFixed(0)}Cr` : "—"}
                 </span>
 
-                {/* Animated bar */}
-                <div className="w-full max-w-[32px] bg-white/[0.04] rounded-t-md overflow-hidden relative flex items-end">
+                {/* Animated bar inside fixed-height track */}
+                <div className="w-full max-w-[32px] h-24 bg-white/[0.04] rounded-t-md overflow-hidden relative flex items-end">
                   <motion.div
                     initial={{ height: 0 }}
                     animate={{ height: `${heightPct}%` }}

@@ -54,6 +54,60 @@ def get_conservative_availability(period_end_str: str, is_annual: bool = False) 
     return (p_end + timedelta(days=lag_days)).isoformat()
 
 
+def flag_carry_forward_duplicates(statements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Identifies consecutive quarters on the same symbol with identical
+    (revenue, pat, eps_diluted) tuples and flags subsequent duplicate quarters
+    as CARRY_FORWARD_DUPLICATE.
+    """
+    if not statements:
+        return []
+
+    # Group by symbol
+    by_sym: Dict[str, List[Dict[str, Any]]] = {}
+    for s in statements:
+        sym = str(s.get("symbol", "")).strip().upper()
+        by_sym.setdefault(sym, []).append(dict(s))
+
+    out: List[Dict[str, Any]] = []
+    for sym, sym_stmts in by_sym.items():
+        # Sort chronologically by period_end
+        chronological = sorted(
+            sym_stmts,
+            key=lambda x: parse_date(x.get("period_end_date") or x.get("period_end"))
+        )
+
+        prev_tuple: Optional[Tuple[float, float, float]] = None
+        for s in chronological:
+            rev = s.get("revenue") if s.get("revenue") is not None else s.get("total_revenue", s.get("revenue_operations"))
+            pat = s.get("net_profit") if s.get("net_profit") is not None else s.get("pat")
+            eps = (
+                s.get("diluted_eps")
+                if s.get("diluted_eps") is not None
+                else s.get("eps_diluted", s.get("eps", s.get("basic_eps")))
+            )
+
+            is_dup = False
+            if rev is not None and pat is not None and eps is not None:
+                try:
+                    curr_tuple = (round(float(rev), 2), round(float(pat), 2), round(float(eps), 4))
+                    if prev_tuple is not None and curr_tuple == prev_tuple and curr_tuple != (0.0, 0.0, 0.0):
+                        is_dup = True
+                    else:
+                        prev_tuple = curr_tuple
+                except (ValueError, TypeError):
+                    pass
+
+            if is_dup:
+                s["data_status"] = "CARRY_FORWARD_DUPLICATE"
+                s["pit_provenance"] = "CARRY_FORWARD_DUPLICATE"
+                s["is_carry_forward_duplicate"] = True
+
+            out.append(s)
+
+    return out
+
+
 class PointInTimeTTMBuilder:
     """Builds point-in-time compliant financial ratios with zero synthetic defaults."""
 
@@ -123,10 +177,16 @@ class PointInTimeTTMBuilder:
         target_d = parse_date(as_of_date)
         eligible = []
 
-        for stmt in statements:
+        # Flag consecutive quarters with identical (revenue, pat, eps_diluted)
+        processed_stmts = flag_carry_forward_duplicates(statements)
+
+        for stmt in processed_stmts:
             period_end = stmt.get("period_end_date") or stmt.get("period_end")
             if not period_end:
                 continue
+
+            # If already flagged as carry-forward duplicate, retain tag
+            is_dup = stmt.get("is_carry_forward_duplicate", False) or stmt.get("data_status") == "CARRY_FORWARD_DUPLICATE"
 
             # Check explicit filing_date, publication_date, or timestamp
             pub_ts = (
@@ -139,30 +199,35 @@ class PointInTimeTTMBuilder:
             )
 
             is_eligible = False
-            provenance = "UNKNOWN"
+            provenance = "CARRY_FORWARD_DUPLICATE" if is_dup else "UNKNOWN"
 
             if pub_ts:
                 pub_str = str(pub_ts).strip()
                 # If exact timestamp with time is available
                 if "T" in pub_str or ":" in pub_str:
                     is_eligible = is_pit_eligible_at(pub_str, eff_decision_ts)
-                    provenance = "OBSERVED_TIMESTAMP"
+                    if not is_dup:
+                        provenance = "OBSERVED_TIMESTAMP"
                 else:
                     # Date-only observed filing date
                     avail_d = parse_date(pub_str)
                     is_eligible = avail_d <= target_d
-                    provenance = "OBSERVED_DATE"
+                    if not is_dup:
+                        provenance = "OBSERVED_DATE"
             else:
                 # Conservative SEBI LODR regulatory lag fallback (+45d quarterly, +60d annual)
                 fallback_str = get_conservative_availability(period_end, is_annual)
                 avail_d = parse_date(fallback_str)
                 is_eligible = avail_d <= target_d
-                provenance = f"STATUTORY_FALLBACK_LAG_{'60D' if is_annual else '45D'}"
+                if not is_dup:
+                    provenance = f"STATUTORY_FALLBACK_LAG_{'60D' if is_annual else '45D'}"
 
             if is_eligible:
                 stmt_out = dict(stmt)
                 stmt_out["pit_provenance"] = provenance
                 stmt_out["pit_eligible"] = True
+                if is_dup:
+                    stmt_out["data_status"] = "CARRY_FORWARD_DUPLICATE"
                 eligible.append(stmt_out)
 
         # Sort descending by period_end
@@ -188,8 +253,16 @@ class PointInTimeTTMBuilder:
         is_financial = bool(sector and sector.upper() in FINANCIAL_SECTORS)
         
         # 1. Filter quarterly statements PIT
-        eligible_q = cls.filter_eligible_statements(quarterly_statements, as_of_date, is_annual=False)
+        eligible_q_raw = cls.filter_eligible_statements(quarterly_statements, as_of_date, is_annual=False)
         eligible_a = cls.filter_eligible_statements(annual_statements or [], as_of_date, is_annual=True)
+
+        # Exclude carry-forward duplicate statements from forming contiguous 4-quarter TTM flow
+        eligible_q = [
+            q for q in eligible_q_raw
+            if q.get("pit_provenance") != "CARRY_FORWARD_DUPLICATE"
+            and q.get("data_status") != "CARRY_FORWARD_DUPLICATE"
+            and not q.get("is_carry_forward_duplicate")
+        ]
 
         # Case 1: We have 4 contiguous quarters
         if len(eligible_q) >= 4:

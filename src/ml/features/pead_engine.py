@@ -116,6 +116,31 @@ def calculate_pead_features(
     fin = quarterly_fin_df.copy()
     fin["symbol"] = fin["symbol"].astype(str).str.strip().str.upper()
 
+    # Filter out carry-forward duplicate filings (provenance / status tags)
+    if "pit_provenance" in fin.columns:
+        fin = fin[fin["pit_provenance"] != "CARRY_FORWARD_DUPLICATE"].copy()
+    if "data_status" in fin.columns:
+        fin = fin[fin["data_status"] != "CARRY_FORWARD_DUPLICATE"].copy()
+    if "is_carry_forward_duplicate" in fin.columns:
+        fin = fin[~fin["is_carry_forward_duplicate"].astype(bool)].copy()
+
+    # Detect and exclude consecutive identical (revenue, pat, eps_diluted) filings per symbol
+    rev_col = next((c for c in ["revenue", "total_revenue", "revenue_operations"] if c in fin.columns), None)
+    pat_col = next((c for c in ["net_profit", "pat"] if c in fin.columns), None)
+    eps_col = next((c for c in ["eps_diluted", "diluted_eps", "eps", "basic_eps"] if c in fin.columns), None)
+
+    if rev_col and pat_col and eps_col and "period_end_date" in fin.columns:
+        fin = fin.sort_values(["symbol", "period_end_date"]).reset_index(drop=True)
+        same_sym = fin["symbol"] == fin["symbol"].shift(1)
+        r_curr = pd.to_numeric(fin[rev_col], errors="coerce").fillna(0.0).round(2)
+        r_prev = pd.to_numeric(fin[rev_col].shift(1), errors="coerce").fillna(0.0).round(2)
+        p_curr = pd.to_numeric(fin[pat_col], errors="coerce").fillna(0.0).round(2)
+        p_prev = pd.to_numeric(fin[pat_col].shift(1), errors="coerce").fillna(0.0).round(2)
+        e_curr = pd.to_numeric(fin[eps_col], errors="coerce").fillna(0.0).round(4)
+        e_prev = pd.to_numeric(fin[eps_col].shift(1), errors="coerce").fillna(0.0).round(4)
+        is_carry = same_sym & (r_curr == r_prev) & (p_curr == p_prev) & (e_curr == e_prev) & (r_curr != 0.0)
+        fin = fin[~is_carry].copy()
+
     # Identify filing timestamp column
     ts_col = None
     for cand in ["published_at_ist", "broadcast_timestamp", "filing_date", "publication_date"]:

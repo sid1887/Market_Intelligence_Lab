@@ -292,10 +292,14 @@ class AutonomousPlatformDaemon:
         state_dict = self.supervisor.get_state()
         
         with self.db.get_connection() as conn:
-            # Latest settled session
+            # Fast index-backed lookup for latest settled session
             cur = conn.execute("SELECT MAX(trading_date) FROM ohlcv_daily WHERE data_status = 'final_settled';")
             row = cur.fetchone()
-            latest_settled = row[0] if row and row[0] else "2026-11-05"
+            latest_settled = row[0] if row and row[0] else None
+            if not latest_settled:
+                cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily;")
+                r_q = cur.fetchone()
+                latest_settled = r_q[0] if r_q and r_q[0] else "2026-11-05"
 
             # Universe completeness
             cur = conn.execute("""
@@ -311,10 +315,16 @@ class AutonomousPlatformDaemon:
             with_fund = r["with_fundamentals"] if r else 0
             completeness_pct = round((with_fund / total_active) * 100, 1) if total_active > 0 else 0.0
 
-            # Latest ingestion timestamp
-            cur = conn.execute("SELECT MAX(retrieval_timestamp) FROM ohlcv_daily;")
+            # Fast metadata lookup for latest ingestion timestamp (avoids 2.9M-row table scan)
+            cur = conn.execute("SELECT MAX(created_at) FROM ingestion_audit_log;")
             row = cur.fetchone()
-            last_ingestion = row[0] if row and row[0] else datetime.now(timezone.utc).isoformat()
+            last_ingestion = row[0] if row and row[0] else None
+            if not last_ingestion:
+                cur = conn.execute("SELECT MAX(completed_at) FROM job_runs WHERE status = 'COMPLETED';")
+                row = cur.fetchone()
+                last_ingestion = row[0] if row and row[0] else None
+            if not last_ingestion:
+                last_ingestion = self.started_at or datetime.now(timezone.utc).isoformat()
 
         macro_data = self.macro_client.get_macro_telemetry()
 

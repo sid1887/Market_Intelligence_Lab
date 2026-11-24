@@ -384,6 +384,9 @@ class DatabaseManager:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_cfs_sym_ped_desc ON company_financial_statements(symbol, period_end_date DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_cd_sym_broadcast_desc ON corporate_disclosures(symbol, broadcast_timestamp DESC);")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_sm_active_sym ON securities_master(is_active, symbol);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_status_date ON ohlcv_daily(data_status, trading_date DESC);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_synthetic ON ohlcv_daily(is_synthetic, provenance_class) WHERE is_synthetic = 1;")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_ingestion_audit_created ON ingestion_audit_log(created_at DESC);")
                 conn.commit()
             except Exception as idx_e:
                 logger.debug(f"Covering index creation note: {idx_e}")
@@ -395,6 +398,63 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"FATAL: Database migration execution failed: {e}")
                 raise
+
+            # 13. Schema maintenance & idempotent deduplication pass
+            try:
+                self._migrate_schema(conn)
+            except Exception as m_err:
+                logger.debug(f"Schema maintenance note: {m_err}")
+
+    def _migrate_schema(self, conn: Optional[sqlite3.Connection] = None) -> None:
+        """
+        Idempotent schema maintenance and deduplication pass.
+        - Adds covering indexes for ohlcv_daily(data_status, trading_date) and ingestion_audit_log(created_at).
+        - Deduplicates phantom incomplete rows in real_closed_roundtrips where
+          (symbol, qty, round(avg_buy, 2), round(avg_sell, 2)) matches a complete row
+          having non-empty isin and sell_date.
+        - Marks durable state dirty if any cleanup was performed.
+        """
+        def _execute(c: sqlite3.Connection):
+            try:
+                c.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_status_date ON ohlcv_daily(data_status, trading_date DESC);")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_ohlcv_synthetic ON ohlcv_daily(is_synthetic, provenance_class) WHERE is_synthetic = 1;")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_ingestion_audit_created ON ingestion_audit_log(created_at DESC);")
+            except Exception as idx_err:
+                logger.debug(f"_migrate_schema index note: {idx_err}")
+
+            try:
+                cur = c.cursor()
+                cur.execute("""
+                    DELETE FROM real_closed_roundtrips
+                    WHERE (isin IS NULL OR isin = '' OR sell_date IS NULL OR sell_date = '')
+                      AND EXISTS (
+                          SELECT 1 FROM real_closed_roundtrips c_sub
+                          WHERE c_sub.id != real_closed_roundtrips.id
+                            AND c_sub.isin IS NOT NULL AND c_sub.isin != ''
+                            AND c_sub.sell_date IS NOT NULL AND c_sub.sell_date != ''
+                            AND c_sub.symbol = real_closed_roundtrips.symbol
+                            AND c_sub.qty = real_closed_roundtrips.qty
+                            AND round(c_sub.avg_buy_price, 2) = round(real_closed_roundtrips.avg_buy_price, 2)
+                            AND round(c_sub.avg_sell_price, 2) = round(real_closed_roundtrips.avg_sell_price, 2)
+                      );
+                """)
+                deleted = cur.rowcount
+                if deleted > 0:
+                    c.commit()
+                    logger.info(f"DatabaseManager._migrate_schema: Deduplicated {deleted} incomplete rows in real_closed_roundtrips.")
+                    try:
+                        from src.storage.durable_state import mark_state_dirty
+                        mark_state_dirty()
+                    except Exception:
+                        pass
+            except Exception as dedup_err:
+                logger.debug(f"real_closed_roundtrips dedup note: {dedup_err}")
+
+        if conn is not None:
+            _execute(conn)
+        else:
+            with self.get_connection() as c:
+                _execute(c)
 
     def _migrate_corporate_actions_pk(self, conn: sqlite3.Connection) -> None:
         """Migrates corporate_actions table so PRIMARY KEY includes purpose (symbol, action_type, ex_date, purpose)."""

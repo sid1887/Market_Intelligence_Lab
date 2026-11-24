@@ -366,6 +366,14 @@ class DurableStateManager:
         return results
 
 
+def is_state_dirty() -> bool:
+    """Convenience helper to check if durable state has uncommitted mutations."""
+    try:
+        return bool(DurableStateManager.get_instance()._is_dirty)
+    except Exception:
+        return False
+
+
 def mark_state_dirty() -> None:
     """Convenience helper to flag state mutation from API routes and background tasks."""
     try:

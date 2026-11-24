@@ -349,23 +349,24 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
         rss_mb = guard["rss_mb"]
         memory_headroom_mb = guard["memory_headroom_mb"]
 
-        # Active champion model lookup (with deterministic fallback)
+        # Active champion model lookup (derived authoritatively from tournament_summary.json)
         active_champion = "Deterministic Baseline (Momentum+LowVol+PIT)"
         try:
-            cur.execute("SELECT model_name FROM model_registry WHERE status = 'CHAMPION' ORDER BY created_at DESC LIMIT 1")
-            row = cur.fetchone()
-            if row and row[0]:
-                active_champion = row[0]
+            summary_file = Path("data/models/tournament_summary.json")
+            if summary_file.exists():
+                with open(summary_file, "r", encoding="utf-8") as sf:
+                    s_data = json.load(sf)
+                    champ = s_data.get("champion", {})
+                    p_verdict = s_data.get("promotion_verdict", champ.get("promotion_status"))
+                    if p_verdict in ("CHAMPION", "PROMOTED"):
+                        active_champion = champ.get("candidate_name", active_champion)
+                    else:
+                        active_champion = s_data.get("baseline", {}).get("name", active_champion)
             else:
-                summary_file = Path("data/models/tournament_summary.json")
-                if summary_file.exists():
-                    with open(summary_file, "r") as sf:
-                        s_data = json.load(sf)
-                        champ = s_data.get("champion", {})
-                        if champ.get("promotion_status") == "CHAMPION":
-                            active_champion = champ.get("candidate_name")
-                        else:
-                            active_champion = s_data.get("baseline", {}).get("name", active_champion)
+                cur.execute("SELECT model_name FROM model_registry WHERE status = 'CHAMPION' ORDER BY created_at DESC LIMIT 1")
+                row = cur.fetchone()
+                if row and row[0]:
+                    active_champion = row[0]
         except Exception:
             pass
 
@@ -395,11 +396,23 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
         raise HTTPException(status_code=500, detail=f"Database health check failed: {str(e)}")
 
 
+_supervisor_status_cache: Dict[str, Any] = {}
+_supervisor_status_cache_time: float = 0.0
+_SUPERVISOR_STATUS_TTL_SECONDS: float = 30.0
+
 @app.get("/supervisor/status")
 @app.get("/api/v1/supervisor/status")
-def get_supervisor_status():
-    """Returns real-time status of the autonomous supervisor, EOD daemon, and universe health."""
-    return platform_daemon.get_status()
+def get_supervisor_status(force_refresh: bool = False):
+    """Returns real-time status of the autonomous supervisor, EOD daemon, and universe health (cached with 30s TTL)."""
+    global _supervisor_status_cache, _supervisor_status_cache_time
+    now = time.monotonic()
+    if not force_refresh and _supervisor_status_cache and (now - _supervisor_status_cache_time) < _SUPERVISOR_STATUS_TTL_SECONDS:
+        return _supervisor_status_cache
+
+    status = platform_daemon.get_status()
+    _supervisor_status_cache = status
+    _supervisor_status_cache_time = now
+    return status
 
 
 @app.get("/screener")

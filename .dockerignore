@@ -40,6 +40,14 @@ frontend/node_modules/
 frontend/.next/
 frontend/out/
 
+# ML Models & Heavy binaries (keep compact tournament_summary.json)
+data/models/*
+!data/models/tournament_summary.json
+data/models/*.joblib
+data/models/*.pkl
+*.joblib
+*.pkl
+
 # Documentation & Scratch Logs
 docs/
 *.log

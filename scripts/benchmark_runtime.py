@@ -88,6 +88,7 @@ def run_workload_benchmark(concurrency: int = 3, total_requests: int = 32) -> Di
 
     endpoints = [
         ("GET", "/api/v1/health", None),
+        ("GET", "/api/v1/supervisor/status", None),
         ("GET", "/api/v1/screener?limit=50", None),
         ("GET", "/api/v1/stocks/RELIANCE/status", None),
         ("POST", "/api/v1/copilot/deliberate", {"symbol": "RELIANCE", "prompt": "Debate Bull vs Bear Thesis"})

@@ -185,6 +185,40 @@ class EncryptedTradebookEngine:
                 )
             """)
             conn.commit()
+        self.deduplicate_closed_roundtrips()
+
+    def deduplicate_closed_roundtrips(self) -> int:
+        """
+        Removes incomplete duplicate rows in real_closed_roundtrips where
+        (symbol, qty, round(avg_buy, 2), round(avg_sell, 2)) matches a complete row
+        having non-empty isin and sell_date.
+        """
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                DELETE FROM real_closed_roundtrips
+                WHERE (isin IS NULL OR isin = '' OR sell_date IS NULL OR sell_date = '')
+                  AND EXISTS (
+                      SELECT 1 FROM real_closed_roundtrips c
+                      WHERE c.id != real_closed_roundtrips.id
+                        AND c.isin IS NOT NULL AND c.isin != ''
+                        AND c.sell_date IS NOT NULL AND c.sell_date != ''
+                        AND c.symbol = real_closed_roundtrips.symbol
+                        AND c.qty = real_closed_roundtrips.qty
+                        AND round(c.avg_buy_price, 2) = round(real_closed_roundtrips.avg_buy_price, 2)
+                        AND round(c.avg_sell_price, 2) = round(real_closed_roundtrips.avg_sell_price, 2)
+                  );
+            """)
+            deleted = cur.rowcount
+            if deleted > 0:
+                conn.commit()
+                logger.info(f"EncryptedTradebookEngine: Deduplicated {deleted} incomplete rows in real_closed_roundtrips.")
+                try:
+                    from src.storage.durable_state import mark_state_dirty
+                    mark_state_dirty()
+                except Exception:
+                    pass
+            return deleted
 
     # =========================================================================
     # MULTI-REPORT ZERO-PII IN-MEMORY PARSER
