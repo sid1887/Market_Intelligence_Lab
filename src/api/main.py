@@ -27,6 +27,7 @@ from typing import List, Dict, Any, Optional
 
 from src.core.log_engine import log_engine, request_id_ctx, get_current_rss_mb
 from src.storage.durable_state import mark_state_dirty
+from src.storage.cache import enforce_rss_memory_guard, get_current_process_rss_mb
 
 logging.basicConfig(
     level=logging.INFO,
@@ -331,7 +332,7 @@ def root_probe():
 @app.get("/health")
 @app.get("/api/v1/health")
 def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
-    """Health check endpoint confirming database connectivity and latest settled date."""
+    """Health check endpoint confirming database connectivity, memory headroom, and champion model."""
     try:
         cur = conn.cursor()
         cur.execute("SELECT MAX(trading_date) FROM ohlcv_daily")
@@ -342,6 +343,40 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
         active_count = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM user_watchlists")
         watchlist_count = cur.fetchone()[0]
+
+        # Phase 5 Live Health & Memory Headroom Telemetry
+        guard = enforce_rss_memory_guard(threshold_mb=400.0)
+        rss_mb = guard["rss_mb"]
+        memory_headroom_mb = guard["memory_headroom_mb"]
+
+        # Active champion model lookup (with deterministic fallback)
+        active_champion = "Deterministic Baseline (Momentum+LowVol+PIT)"
+        try:
+            cur.execute("SELECT model_name FROM model_registry WHERE status = 'CHAMPION' ORDER BY created_at DESC LIMIT 1")
+            row = cur.fetchone()
+            if row and row[0]:
+                active_champion = row[0]
+            else:
+                summary_file = Path("data/models/tournament_summary.json")
+                if summary_file.exists():
+                    with open(summary_file, "r") as sf:
+                        s_data = json.load(sf)
+                        champ = s_data.get("champion", {})
+                        if champ.get("promotion_status") == "CHAMPION":
+                            active_champion = champ.get("candidate_name")
+                        else:
+                            active_champion = s_data.get("baseline", {}).get("name", active_champion)
+        except Exception:
+            pass
+
+        # Durable state status
+        durable_state_status = "IN_SYNC"
+        try:
+            from src.storage.durable_state import is_state_dirty
+            durable_state_status = "DIRTY_SYNC_PENDING" if is_state_dirty() else "IN_SYNC"
+        except Exception:
+            pass
+
         return sanitize_for_json({
             "status": "healthy",
             "database": "connected (WAL mode)",
@@ -349,6 +384,11 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
             "latest_factors_date": latest_factors,
             "active_universe_count": active_count,
             "user_watchlist_count": watchlist_count,
+            "rss_mb": rss_mb,
+            "memory_headroom_mb": memory_headroom_mb,
+            "cgroup_memory_limit_mb": 512.0,
+            "durable_state_status": durable_state_status,
+            "active_champion_model": active_champion,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
         })
     except Exception as e:
@@ -381,6 +421,7 @@ def get_screener(
     Safely sanitizes all NaN / Infinity values to prevent serialization crashes.
     """
     global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
+    enforce_rss_memory_guard(threshold_mb=400.0)
     try:
         is_default_query = (
             min_roe is None and
@@ -393,10 +434,10 @@ def get_screener(
 
         accepts_gzip = "gzip" in request.headers.get("accept-encoding", "").lower()
 
-        # Fast In-Memory Materialized View Serve (< 5ms)
-        now_time = datetime.datetime.now().timestamp()
+        # Fast In-Memory Materialized View Serve (< 5ms) with Double-Checked Single-Flight Lock
         if is_default_query:
             with _screener_cache_lock:
+                now_time = datetime.datetime.now().timestamp()
                 if (
                     _screener_snapshot_cache is not None and
                     (now_time - _screener_cache_time < SCREENER_CACHE_TTL_SECONDS)
@@ -429,139 +470,114 @@ def get_screener(
                     }
                     return Response(content=json.dumps(payload).encode("utf-8"), media_type="application/json")
 
-        db = DatabaseManager(DATABASE_PATH)
-        screener = FactorScreener(db)
+                # Cache miss or expired: Generate inside lock to prevent thundering-herd memory ballooning
+                db = DatabaseManager(DATABASE_PATH)
+                screener = FactorScreener(db)
+                with db.get_connection() as conn:
+                    cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily")
+                    latest_date = cur.fetchone()[0]
 
-        # 1. Determine latest trading date
-        with db.get_connection() as conn:
-            cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily")
-            latest_date = cur.fetchone()[0]
+                if not latest_date:
+                    return sanitize_for_json({"as_of_date": None, "total_count": 0, "results": []})
 
-        if not latest_date:
-            return sanitize_for_json({"as_of_date": None, "total_count": 0, "results": []})
-
-        # 2. Build Criteria
-        criteria: Dict[str, Any] = {}
-        if min_roe is not None:
-            criteria["min_roe_pct"] = min_roe
-        if max_de is not None:
-            criteria["max_debt_to_equity"] = max_de
-        if price_above_sma200 is True:
-            criteria["price_above_sma200"] = True
-        if exclude_financials:
-            criteria["exclude_sectors"] = ["Financial Services"]
-        if sort_by:
-            criteria["sort_by"] = sort_by
-        else:
-            criteria["sort_by"] = "composite_score"
-
-        # 3. Execute deterministic screen
-        # If default query, fetch all candidates to populate the in-memory cache
-        fetch_limit = 2500 if is_default_query else limit
-        fetch_offset = 0 if is_default_query else offset
-
-        df = screener.screen(
-            trading_date=latest_date,
-            criteria=criteria if criteria else None,
-            include_watchlists=include_watchlists,
-            limit=fetch_limit,
-            offset=fetch_offset
-        )
-
-        # Sanitize DataFrame replacing NaNs with None as specified in directive
-        df_clean = df.where(pd.notnull(df), None)
-
-        results = []
-        for rank, (_, row) in enumerate(df_clean.iterrows(), start=fetch_offset + 1):
-            sym = str(row["symbol"])
-            b_score = safe_float(row.get("blended_score"), 2)
-            if b_score is None:
-                b_score = safe_float(row.get("composite_score"), 2)
-
-            target_alloc = safe_float(row.get("target_allocation_pct"), 2) or 0.0
-            drivers = row.get("horizon_drivers")
-            if not isinstance(drivers, list):
-                drivers = []
-            is_target = bool(row.get("is_rebalance_target", False))
-
-            results.append({
-                "rank": rank,
-                "symbol": sym,
-                "company_name": str(row.get("company_name", sym)),
-                "sector": str(row.get("sector", "Unclassified")),
-                "close": safe_float(row.get("close"), 2),
-                "sma_200": safe_float(row.get("sma_200"), 2),
-                "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
-                "roe_pct": safe_float(row.get("roe_pct"), 2),
-                "opm_pct": safe_float(row.get("opm_pct"), 2),
-                "excess_ret_20d": (
-                    safe_float(row.get("excess_ret_20d"), 4)
-                    if row.get("excess_ret_20d") is not None
-                    else (safe_float(row.get("ret_20d"), 4) or 0.0)
-                ),
-                "ret_20d": (
-                    safe_float(row.get("ret_20d"), 4)
-                    if row.get("ret_20d") is not None
-                    else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
-                ),
-                "return_20d": (
-                    safe_float(row.get("ret_20d"), 4)
-                    if row.get("ret_20d") is not None
-                    else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
-                ),
-                "composite_score": safe_float(row.get("composite_score"), 2),
-                "blended_score": b_score,
-                "target_allocation_pct": target_alloc,
-                "horizon_drivers": drivers,
-                "is_rebalance_target": is_target,
-                "score_20d": safe_float(row.get("score_20d"), 1),
-                "score_60d": safe_float(row.get("score_60d"), 1),
-                "price_above_sma200": bool(row.get("price_above_sma200", False)),
-                "is_watchlist": bool(row.get("is_watchlist", 0)),
-                "rsi_14": safe_float(row.get("rsi_14"), 2),
-                "volatility_20d": safe_float(row.get("volatility_20d"), 4),
-                "delivery_pct": safe_float(row.get("delivery_pct"), 2),
-                "turnover_cr": safe_float(row.get("turnover_cr"), 2),
-                "distance_52w_high": safe_float(row.get("distance_52w_high"), 4),
-                "distance_52w_low": safe_float(row.get("distance_52w_low"), 4),
-                "pct_from_52w_high": (
-                    max(-100.0, min(0.0, round(float(row.get("distance_52w_high")), 2)))
-                    if row.get("distance_52w_high") is not None and not pd.isna(row.get("distance_52w_high"))
-                    else None
+                df = screener.screen(
+                    trading_date=latest_date,
+                    criteria={"sort_by": "composite_score"},
+                    include_watchlists=include_watchlists,
+                    limit=2500,
+                    offset=0
                 )
-            })
+                df_clean = df.where(pd.notnull(df), None)
 
-        # Populate cache on default queries
-        if is_default_query:
-            payload = {
-                "trading_date": latest_date,
-                "as_of_date": latest_date,
-                "total_candidates": len(results),
-                "returned_count": len(results),
-                "offset": 0,
-                "limit": len(results),
-                "candidates": results,
-                "results": results,
-                "items": results,
-                "cached": True
-            }
-            raw_bytes = json.dumps(payload).encode("utf-8")
-            raw_gzip = gzip.compress(raw_bytes, compresslevel=6)
-            sliced_1000 = results[:1000]
-            raw_1000_bytes = json.dumps({
-                "trading_date": latest_date,
-                "as_of_date": latest_date,
-                "total_candidates": len(results),
-                "returned_count": len(sliced_1000),
-                "offset": 0,
-                "limit": 1000,
-                "candidates": sliced_1000,
-                "results": sliced_1000,
-                "items": sliced_1000,
-                "cached": True
-            }).encode("utf-8")
-            raw_1000_gzip = gzip.compress(raw_1000_bytes, compresslevel=6)
-            with _screener_cache_lock:
+                results = []
+                for rank, (_, row) in enumerate(df_clean.iterrows(), start=1):
+                    sym = str(row["symbol"])
+                    b_score = safe_float(row.get("blended_score"), 2)
+                    if b_score is None:
+                        b_score = safe_float(row.get("composite_score"), 2)
+
+                    target_alloc = safe_float(row.get("target_allocation_pct"), 2) or 0.0
+                    drivers = row.get("horizon_drivers")
+                    if not isinstance(drivers, list):
+                        drivers = []
+                    is_target = bool(row.get("is_rebalance_target", False))
+
+                    results.append({
+                        "rank": rank,
+                        "symbol": sym,
+                        "company_name": str(row.get("company_name", sym)),
+                        "sector": str(row.get("sector", "Unclassified")),
+                        "close": safe_float(row.get("close"), 2),
+                        "sma_200": safe_float(row.get("sma_200"), 2),
+                        "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
+                        "roe_pct": safe_float(row.get("roe_pct"), 2),
+                        "opm_pct": safe_float(row.get("opm_pct"), 2),
+                        "excess_ret_20d": (
+                            safe_float(row.get("excess_ret_20d"), 4)
+                            if row.get("excess_ret_20d") is not None
+                            else (safe_float(row.get("ret_20d"), 4) or 0.0)
+                        ),
+                        "ret_20d": (
+                            safe_float(row.get("ret_20d"), 4)
+                            if row.get("ret_20d") is not None
+                            else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
+                        ),
+                        "return_20d": (
+                            safe_float(row.get("ret_20d"), 4)
+                            if row.get("ret_20d") is not None
+                            else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
+                        ),
+                        "composite_score": safe_float(row.get("composite_score"), 2),
+                        "blended_score": b_score,
+                        "target_allocation_pct": target_alloc,
+                        "horizon_drivers": drivers,
+                        "is_rebalance_target": is_target,
+                        "score_20d": safe_float(row.get("score_20d"), 1),
+                        "score_60d": safe_float(row.get("score_60d"), 1),
+                        "price_above_sma200": bool(row.get("price_above_sma200", False)),
+                        "is_watchlist": bool(row.get("is_watchlist", 0)),
+                        "rsi_14": safe_float(row.get("rsi_14"), 2),
+                        "volatility_20d": safe_float(row.get("volatility_20d"), 4),
+                        "delivery_pct": safe_float(row.get("delivery_pct"), 2),
+                        "turnover_cr": safe_float(row.get("turnover_cr"), 2),
+                        "distance_52w_high": safe_float(row.get("distance_52w_high"), 4),
+                        "distance_52w_low": safe_float(row.get("distance_52w_low"), 4),
+                        "pct_from_52w_high": (
+                            max(-100.0, min(0.0, round(float(row.get("distance_52w_high")), 2)))
+                            if row.get("distance_52w_high") is not None and not pd.isna(row.get("distance_52w_high"))
+                            else None
+                        )
+                    })
+
+                payload = {
+                    "trading_date": latest_date,
+                    "as_of_date": latest_date,
+                    "total_candidates": len(results),
+                    "returned_count": len(results),
+                    "offset": 0,
+                    "limit": len(results),
+                    "candidates": results,
+                    "results": results,
+                    "items": results,
+                    "cached": True
+                }
+                raw_bytes = json.dumps(payload).encode("utf-8")
+                raw_gzip = gzip.compress(raw_bytes, compresslevel=6)
+                sliced_1000 = results[:1000]
+                raw_1000_bytes = json.dumps({
+                    "trading_date": latest_date,
+                    "as_of_date": latest_date,
+                    "total_candidates": len(results),
+                    "returned_count": len(sliced_1000),
+                    "offset": 0,
+                    "limit": 1000,
+                    "candidates": sliced_1000,
+                    "results": sliced_1000,
+                    "items": sliced_1000,
+                    "cached": True
+                }).encode("utf-8")
+                raw_1000_gzip = gzip.compress(raw_1000_bytes, compresslevel=6)
+
                 _screener_snapshot_cache = {
                     "trading_date": latest_date,
                     "as_of_date": latest_date,
@@ -575,42 +591,89 @@ def get_screener(
                 _screener_cache_date = latest_date
                 _screener_cache_time = now_time
 
-            if offset == 0 and limit == 1000:
-                if accepts_gzip:
-                    return Response(content=raw_1000_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
-                return Response(content=gzip.decompress(raw_1000_gzip), media_type="application/json")
-            if offset == 0 and limit >= len(results):
-                if accepts_gzip:
-                    return Response(content=raw_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
-                return Response(content=gzip.decompress(raw_gzip), media_type="application/json")
+                if offset == 0 and limit == 1000:
+                    if accepts_gzip:
+                        return Response(content=raw_1000_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
+                    return Response(content=gzip.decompress(raw_1000_gzip), media_type="application/json")
+                if offset == 0 and limit >= len(results):
+                    if accepts_gzip:
+                        return Response(content=raw_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
+                    return Response(content=gzip.decompress(raw_gzip), media_type="application/json")
 
-            sliced_results = results[offset: offset + limit]
-            sliced_payload = {
-                "trading_date": latest_date,
-                "as_of_date": latest_date,
-                "total_candidates": len(results),
-                "returned_count": len(sliced_results),
-                "offset": offset,
-                "limit": limit,
-                "candidates": sliced_results,
-                "results": sliced_results,
-                "items": sliced_results,
-                "cached": False
-            }
-            return Response(content=json.dumps(sliced_payload).encode("utf-8"), media_type="application/json")
-        else:
-            sliced_results = results
+                sliced_results = results[offset: offset + limit]
+                sliced_payload = {
+                    "trading_date": latest_date,
+                    "as_of_date": latest_date,
+                    "total_candidates": len(results),
+                    "returned_count": len(sliced_results),
+                    "offset": offset,
+                    "limit": limit,
+                    "candidates": sliced_results,
+                    "results": sliced_results,
+                    "items": sliced_results,
+                    "cached": True
+                }
+                return Response(content=json.dumps(sliced_payload).encode("utf-8"), media_type="application/json")
+
+        # Non-default query with explicit filters: execute dynamic screen
+        db = DatabaseManager(DATABASE_PATH)
+        screener = FactorScreener(db)
+        with db.get_connection() as conn:
+            cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily")
+            latest_date = cur.fetchone()[0]
+
+        if not latest_date:
+            return sanitize_for_json({"as_of_date": None, "total_count": 0, "results": []})
+
+        criteria: Dict[str, Any] = {}
+        if min_roe is not None:
+            criteria["min_roe_pct"] = min_roe
+        if max_de is not None:
+            criteria["max_debt_to_equity"] = max_de
+        if price_above_sma200 is True:
+            criteria["price_above_sma200"] = True
+        if exclude_financials:
+            criteria["exclude_sectors"] = ["Financial Services"]
+        criteria["sort_by"] = sort_by if sort_by else "composite_score"
+
+        df = screener.screen(
+            trading_date=latest_date,
+            criteria=criteria,
+            include_watchlists=include_watchlists,
+            limit=limit,
+            offset=offset
+        )
+        df_clean = df.where(pd.notnull(df), None)
+        results = []
+        for rank, (_, row) in enumerate(df_clean.iterrows(), start=offset + 1):
+            sym = str(row["symbol"])
+            b_score = safe_float(row.get("blended_score"), 2) or safe_float(row.get("composite_score"), 2)
+            results.append({
+                "rank": rank,
+                "symbol": sym,
+                "company_name": str(row.get("company_name", sym)),
+                "sector": str(row.get("sector", "Unclassified")),
+                "close": safe_float(row.get("close"), 2),
+                "sma_200": safe_float(row.get("sma_200"), 2),
+                "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
+                "roe_pct": safe_float(row.get("roe_pct"), 2),
+                "opm_pct": safe_float(row.get("opm_pct"), 2),
+                "composite_score": safe_float(row.get("composite_score"), 2),
+                "blended_score": b_score,
+                "is_watchlist": bool(row.get("is_watchlist", 0)),
+            })
 
         return sanitize_for_json({
             "trading_date": latest_date,
             "as_of_date": latest_date,
-            "total_candidates": len(results) if is_default_query else len(df),
-            "returned_count": len(sliced_results),
+            "total_candidates": len(df),
+            "returned_count": len(results),
             "offset": offset,
             "limit": limit,
-            "candidates": sliced_results,
-            "results": sliced_results,
-            "items": sliced_results
+            "candidates": results,
+            "results": results,
+            "items": results,
+            "cached": False
         })
     except Exception as e:
         logger.error(f"Screener execution error: {e}", exc_info=True)
@@ -1115,6 +1178,7 @@ async def stream_copilot_deliberation(request: CopilotStreamRequest):
     Server-Sent Events (SSE) endpoint for multi-agent deliberation:
     Bull Analyst -> Bear Analyst -> Portfolio Manager Judge.
     """
+    enforce_rss_memory_guard(threshold_mb=400.0)
     sym = request.symbol.strip().upper()
     user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
 
@@ -1152,6 +1216,7 @@ async def deliberate_copilot_json(request: CopilotStreamRequest):
     Direct non-streaming JSON endpoint fallback for Copilot deliberation.
     Guarantees reliable turn completion when network proxies or edge limits sever SSE streams.
     """
+    enforce_rss_memory_guard(threshold_mb=400.0)
     sym = request.symbol.strip().upper()
     user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
     res = await copilot_engine.deliberate_json(

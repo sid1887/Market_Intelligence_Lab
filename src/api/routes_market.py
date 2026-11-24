@@ -259,6 +259,8 @@ def get_latest_rebalance_proposal(
 
 @router.get("/stocks/{symbol}/status")
 @router.get("/api/v1/stocks/{symbol}/status")
+@router.get("/symbol/{symbol}")
+@router.get("/api/v1/symbol/{symbol}")
 def get_stock_status(
     symbol: str,
     conn: sqlite3.Connection = Depends(get_db_connection)

@@ -75,23 +75,31 @@ class PITMarketRegimeAnalogEngine:
     ) -> pd.DataFrame:
         """Loads historical daily closes for benchmark symbol strictly <= as_of_date."""
         with self.db.get_connection() as conn:
-            # Check for NIFTY 50 or NIFTY
+            # 1. Check index_daily first (official NIFTY 50 TRI/PRI time-series)
             df = pd.read_sql_query("""
                 SELECT trading_date, open, high, low, close, volume
-                FROM ohlcv_daily
-                WHERE symbol IN (?, 'NIFTY', 'NIFTY50', '^NSEI') AND trading_date <= ?
+                FROM index_daily
+                WHERE index_name IN (?, 'NIFTY 50', 'NIFTY50', 'NIFTY') AND trading_date <= ?
                 ORDER BY trading_date ASC
             """, conn, params=(self.benchmark_symbol, as_of_date))
 
         if df.empty:
-            # Fallback to any broad market proxy if NIFTY 50 table absent
+            with self.db.get_connection() as conn:
+                # 2. Check ohlcv_daily benchmark symbols
+                df = pd.read_sql_query("""
+                    SELECT trading_date, open, high, low, close, volume
+                    FROM ohlcv_daily
+                    WHERE symbol IN (?, 'NIFTY', 'NIFTY50', '^NSEI') AND trading_date <= ?
+                    ORDER BY trading_date ASC
+                """, conn, params=(self.benchmark_symbol, as_of_date))
+
+        if df.empty:
+            # 3. Fallback to liquid bellwether proxy without heavy table scans
             with self.db.get_connection() as conn:
                 df = pd.read_sql_query("""
                     SELECT trading_date, open, high, low, close, volume
                     FROM ohlcv_daily
-                    WHERE trading_date <= ?
-                    GROUP BY trading_date
-                    HAVING COUNT(DISTINCT symbol) >= 5
+                    WHERE symbol = 'RELIANCE' AND trading_date <= ?
                     ORDER BY trading_date ASC
                 """, conn, params=(as_of_date,))
 

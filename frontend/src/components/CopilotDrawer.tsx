@@ -31,6 +31,7 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useBackButtonClose } from "@/hooks/useBackButtonClose";
 import { milEvents } from "@/lib/store";
 import { Database, Gauge, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ExternalApiTelemetry {
   usage_date: string;
@@ -123,6 +124,52 @@ interface CopilotDrawerProps {
   showFloatingTrigger?: boolean;
 }
 
+export interface CopilotDecisionResult {
+  symbol: string;
+  verdict: string;
+  conviction_score: number;
+  entry_price: number;
+  target_price: number;
+  stop_loss: number;
+  can_trade?: boolean;
+  hard_veto_reasons?: string[];
+  position_sizing?: {
+    shares?: number;
+    allocated_capital?: number;
+    fee_drag_pct?: number;
+    roundtrip_friction?: number;
+    gross_rr?: number;
+    net_rr?: number;
+    net_reward?: number;
+    net_risk?: number;
+    can_trade?: boolean;
+    veto_reasons?: string[];
+  };
+  trader_dna_eval?: {
+    coaching_status?: string;
+    advice?: string;
+    breakeven_price?: number;
+    can_trade?: boolean;
+    violations?: string[];
+  };
+  regime_analogs?: {
+    as_of_date?: string;
+    regime_bias?: string;
+    mean_forward_20d_return_pct?: number;
+    median_forward_20d_return_pct?: number;
+    win_rate_20d_pct?: number;
+    worst_forward_drawdown_pct?: number;
+    matches?: Array<{
+      analog_date: string;
+      similarity_score: number;
+      forward_20d_nifty_return_pct: number;
+      forward_20d_max_drawdown_pct: number;
+      market_regime_label: string;
+    }>;
+  };
+  ml_forecast?: MLForecastData;
+}
+
 interface DeliberationState {
   stage: "idle" | "telemetry" | "conversational" | "bull_analyst" | "bear_analyst" | "judge_synthesis" | "complete" | "error";
   statusText: string;
@@ -131,15 +178,7 @@ interface DeliberationState {
   bullText: string;
   bearText: string;
   judgeText: string;
-  decisionResult?: {
-    symbol: string;
-    verdict: string;
-    conviction_score: number;
-    entry_price: number;
-    target_price: number;
-    stop_loss: number;
-    ml_forecast?: MLForecastData;
-  };
+  decisionResult?: CopilotDecisionResult;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
@@ -1544,6 +1583,36 @@ export default function CopilotDrawer({
 
                     {expandedSections.judge && (
                       <div className="p-3.5 space-y-3.5">
+                        {/* 1. Signal Verdict & Hard-Veto Banner */}
+                        {state.decisionResult && (state.decisionResult.verdict === "ABSTAIN" || state.decisionResult.can_trade === false || (state.decisionResult.hard_veto_reasons && state.decisionResult.hard_veto_reasons.length > 0)) && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-rose-950/40 border border-rose-500/40 rounded-xl p-3 space-y-2"
+                          >
+                            <div className="flex items-center gap-2 text-rose-300 font-mono text-xs font-bold">
+                              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                              <span>HARD VETO ACTIVE: EXECUTION WITHHELD</span>
+                              <span className="ml-auto px-2 py-0.5 rounded text-[10px] bg-rose-900/60 border border-rose-500/30 text-rose-200">
+                                ABSTAIN
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-rose-200/80 font-sans leading-tight">
+                              Quantitative friction and portfolio suitability gates blocked active execution for this setup:
+                            </p>
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {(state.decisionResult.hard_veto_reasons || ["EXECUTION_WITHHELD"]).map((reason, rIdx) => (
+                                <span
+                                  key={rIdx}
+                                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-900/50 border border-rose-500/30 text-rose-300 flex items-center gap-1"
+                                >
+                                  <span>🚫</span> {reason}
+                                </span>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+
                         {/* Quick Execution Parameters Pill Box */}
                         {state.decisionResult && state.decisionResult.target_price !== undefined && (
                           <motion.div
@@ -1566,6 +1635,117 @@ export default function CopilotDrawer({
                               <span className="text-xs font-bold text-rose-300">₹{(state.decisionResult.stop_loss ?? 0).toFixed(2)}</span>
                             </div>
                           </motion.div>
+                        )}
+
+                        {/* 2. Exact Rupee Friction & Breakeven Breakdown Card */}
+                        {state.decisionResult?.position_sizing && (
+                          <div className="bg-[#050812] border border-cyan-900/40 rounded-xl p-3 space-y-2.5 font-mono text-xs">
+                            <div className="flex items-center justify-between border-b border-cyan-900/30 pb-1.5">
+                              <span className="text-cyan-300 font-bold flex items-center gap-1.5 text-[11px]">
+                                <Gauge className="w-3.5 h-3.5 text-cyan-400" />
+                                Exact Rupee Friction &amp; Breakeven Math
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Angel One Statutory Engine
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                              <div className="bg-slate-950/60 p-2 rounded border border-white/[0.04]">
+                                <span className="text-slate-500 block">ALLOCATED SIZE</span>
+                                <span className="font-bold text-slate-100">
+                                  ₹{(state.decisionResult.position_sizing.allocated_capital ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 1 })}
+                                </span>
+                                <span className="text-[9px] text-slate-400 block mt-0.5">
+                                  {state.decisionResult.position_sizing.shares ?? 0} shares
+                                </span>
+                              </div>
+                              <div className="bg-slate-950/60 p-2 rounded border border-white/[0.04]">
+                                <span className="text-slate-500 block">TOTAL FRICTION</span>
+                                <span className="font-bold text-amber-300">
+                                  ₹{(state.decisionResult.position_sizing.roundtrip_friction ?? 0).toFixed(2)}
+                                </span>
+                                <span className="text-[9px] text-amber-400/80 block mt-0.5">
+                                  ₹23.60 DP + taxes
+                                </span>
+                              </div>
+                              <div className="bg-slate-950/60 p-2 rounded border border-white/[0.04]">
+                                <span className="text-slate-500 block">FEE DRAG / BE</span>
+                                <span className="font-bold text-rose-300">
+                                  +{(state.decisionResult.position_sizing.fee_drag_pct ?? 0).toFixed(2)}%
+                                </span>
+                                <span className="text-[9px] text-slate-400 block mt-0.5">
+                                  BE: ₹{(state.decisionResult.trader_dna_eval?.breakeven_price ?? state.decisionResult.entry_price ?? 0).toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="bg-slate-950/60 p-2 rounded border border-white/[0.04]">
+                                <span className="text-slate-500 block">POST-COST NET R:R</span>
+                                <span className={cn(
+                                  "font-bold",
+                                  (state.decisionResult.position_sizing.net_rr ?? 0) >= 1.6 ? "text-emerald-300" : "text-rose-400"
+                                )}>
+                                  {(state.decisionResult.position_sizing.net_rr ?? 0).toFixed(2)}x
+                                </span>
+                                <span className="text-[9px] text-slate-400 block mt-0.5">
+                                  Gross: {(state.decisionResult.position_sizing.gross_rr ?? 0).toFixed(2)}x
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 3. PIT Market Regime Analogs Panel */}
+                        {state.decisionResult?.regime_analogs && (
+                          <div className="bg-[#050812] border border-indigo-900/40 rounded-xl p-3 space-y-2 font-mono text-xs">
+                            <div className="flex items-center justify-between border-b border-indigo-900/30 pb-1.5">
+                              <span className="text-indigo-300 font-bold flex items-center gap-1.5 text-[11px]">
+                                <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                                PIT Market Regime Analogs ({state.decisionResult.regime_analogs.regime_bias || "HISTORICAL"})
+                              </span>
+                              <span className="text-[10px] text-indigo-400/80">
+                                Zero-Leakage PIT
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center text-[10px] py-1 bg-indigo-950/20 rounded border border-indigo-500/10">
+                              <div>
+                                <span className="text-slate-400 block text-[9px]">20D NIFTY MEAN</span>
+                                <span className={cn(
+                                  "font-bold",
+                                  (state.decisionResult.regime_analogs.mean_forward_20d_return_pct ?? 0) >= 0 ? "text-emerald-300" : "text-rose-400"
+                                )}>
+                                  {(state.decisionResult.regime_analogs.mean_forward_20d_return_pct ?? 0) > 0 ? "+" : ""}
+                                  {(state.decisionResult.regime_analogs.mean_forward_20d_return_pct ?? 0).toFixed(2)}%
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px]">20D WIN RATE</span>
+                                <span className="font-bold text-indigo-300">
+                                  {(state.decisionResult.regime_analogs.win_rate_20d_pct ?? 0).toFixed(0)}%
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9px]">WORST DRAWDOWN</span>
+                                <span className="font-bold text-rose-400">
+                                  {(state.decisionResult.regime_analogs.worst_forward_drawdown_pct ?? 0).toFixed(2)}%
+                                </span>
+                              </div>
+                            </div>
+                            {state.decisionResult.regime_analogs.matches && state.decisionResult.regime_analogs.matches.length > 0 && (
+                              <div className="space-y-1 pt-1">
+                                <span className="text-[9px] uppercase tracking-wider text-slate-500 block">Top Historical Analog Sessions</span>
+                                <div className="space-y-1 max-h-24 overflow-y-auto thin-scrollbar">
+                                  {state.decisionResult.regime_analogs.matches.slice(0, 4).map((m, mIdx) => (
+                                    <div key={mIdx} className="flex items-center justify-between text-[10px] bg-black/40 px-2 py-1 rounded border border-white/[0.04]">
+                                      <span className="text-slate-300">{m.analog_date}</span>
+                                      <span className="text-indigo-300">Sim: {(m.similarity_score * 100).toFixed(0)}%</span>
+                                      <span className={cn("font-bold", m.forward_20d_nifty_return_pct >= 0 ? "text-emerald-400" : "text-rose-400")}>
+                                        {m.forward_20d_nifty_return_pct > 0 ? "+" : ""}{m.forward_20d_nifty_return_pct.toFixed(2)}%
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         <div className="text-xs text-slate-200 font-sans leading-relaxed">

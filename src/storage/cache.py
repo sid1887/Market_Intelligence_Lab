@@ -6,15 +6,65 @@ and microsecond-latency hit resolution for API hot paths.
 """
 
 import time
+import os
+import gc
 import json
 import gzip
 import logging
+import resource
 import threading
 from collections import OrderedDict
 from typing import Any, Optional, Dict, Tuple, Callable
 from functools import wraps
 
 logger = logging.getLogger("MIL.Cache")
+
+
+def get_current_process_rss_mb() -> float:
+    """Reads current live resident set size in MB from /proc/self/status or getrusage."""
+    try:
+        with open("/proc/self/status", "r") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return float(line.split()[1]) / 1024.0
+    except Exception:
+        pass
+    try:
+        # On Linux, ru_maxrss is in KiB
+        return float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) / 1024.0
+    except Exception:
+        return 0.0
+
+
+def enforce_rss_memory_guard(threshold_mb: float = 400.0) -> Dict[str, Any]:
+    """
+    Checks process RSS memory against threshold. If exceeded, triggers emergency cache
+    eviction and garbage collection to protect Render's 512 MB container against SIGKILL 137.
+    """
+    rss = get_current_process_rss_mb()
+    evicted = False
+    if rss >= threshold_mb:
+        logger.warning(f"[MEMORY-GUARD] Process RSS ({rss:.1f} MB) >= {threshold_mb:.1f} MB! Evicting LRU caches.")
+        app_cache.clear()
+        gc.collect()
+        try:
+            import ctypes
+            libc = ctypes.CDLL("libc.so.6")
+            if hasattr(libc, "malloc_trim"):
+                libc.malloc_trim(0)
+        except Exception:
+            pass
+        evicted = True
+        new_rss = get_current_process_rss_mb()
+        logger.info(f"[MEMORY-GUARD] Emergency eviction complete. RSS: {rss:.1f} MB -> {new_rss:.1f} MB.")
+        rss = new_rss
+
+    return {
+        "rss_mb": round(rss, 2),
+        "threshold_mb": threshold_mb,
+        "evicted": evicted,
+        "memory_headroom_mb": round(max(0.0, 512.0 - rss), 2)
+    }
 
 
 class MemoryLRUCache:
@@ -30,6 +80,10 @@ class MemoryLRUCache:
         self._hits = 0
         self._misses = 0
         self._evictions = 0
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._cache)
 
     def _estimate_size(self, val: Any) -> int:
         if isinstance(val, (bytes, bytearray)):

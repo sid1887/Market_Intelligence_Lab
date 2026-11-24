@@ -14,6 +14,7 @@ Supports live multi-turn history and live streaming via Server-Sent Events (SSE)
 import os
 import re
 import json
+import time
 import asyncio
 import logging
 from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
@@ -323,16 +324,23 @@ class MultiAgentDeliberationEngine:
 
         macro = self.bridge.get_macro_context()
 
-        # Top screener leaders
+        # Top screener leaders (only query if general intent or explicitly requested to conserve memory)
         screener_leaders: List[Dict[str, Any]] = []
-        try:
-            from src.quant.screener import FactorScreener
-            scr = FactorScreener(self.db)
-            top_df = scr.screen(limit=5)
-            if not top_df.empty:
-                screener_leaders = top_df[["symbol", "close", "composite_score", "ret_20d"]].to_dict(orient="records")
-        except Exception as se:
-            logger.debug(f"Screener leader query: {se}")
+        if not symbols or (context_override and context_override.get("include_screener")):
+            now_ts = time.time()
+            if hasattr(self, "_cached_screener_leaders") and (now_ts - getattr(self, "_cached_screener_ts", 0)) < 300:
+                screener_leaders = self._cached_screener_leaders
+            else:
+                try:
+                    from src.quant.screener import FactorScreener
+                    scr = FactorScreener(self.db)
+                    top_df = scr.screen(limit=5)
+                    if not top_df.empty:
+                        screener_leaders = top_df[["symbol", "close", "composite_score", "ret_20d"]].to_dict(orient="records")
+                        self._cached_screener_leaders = screener_leaders
+                        self._cached_screener_ts = now_ts
+                except Exception as se:
+                    logger.debug(f"Screener leader query: {se}")
 
         # Account & portfolio telemetry for quant reasoning
         portfolio_telemetry: Dict[str, Any] = {}
@@ -655,6 +663,14 @@ class MultiAgentDeliberationEngine:
         })
 
         bull_content = ""
+        roe_fmt = f"{fundamentals.get('roe_pct'):.1f}%" if fundamentals.get('roe_pct') is not None else "N/A"
+        opm_fmt = f"{fundamentals.get('opm_pct'):.1f}%" if fundamentals.get('opm_pct') is not None else "N/A"
+        ret_fmt = f"{technicals.get('ret_20d_pct'):+.2f}%" if technicals.get('ret_20d_pct') is not None else "0.00%"
+        target_fmt = f"₹{forecast.get('expected_20d_price', price):.2f}" if forecast.get('expected_20d_price') is not None else f"₹{price:.2f}"
+        pe_fmt = f"{fundamentals.get('ttm_pe'):.1f}x" if fundamentals.get('ttm_pe') is not None else "N/A"
+        de_fmt = f"{fundamentals.get('debt_to_equity'):.2f}x" if fundamentals.get('debt_to_equity') is not None else "N/A"
+        floor_fmt = f"₹{forecast.get('invalidation_floor', price * 0.94):.2f}" if forecast.get('invalidation_floor') is not None else f"₹{price * 0.94:.2f}"
+
         if is_live_llm_configured():
             try:
                 async for kind, payload in self._run_coro_with_keepalives(
@@ -662,8 +678,8 @@ class MultiAgentDeliberationEngine:
                         role="Bullish Research & Momentum Analyst",
                         instruction=(
                             f"Present the strongest data-backed bullish thesis for {symbol} ({company_name}) at ₹{price:.2f}. "
-                            f"Cite ROE ({fundamentals.get('roe_pct', 0):.1f}%), OPM ({fundamentals.get('opm_pct', 0):.1f}%), "
-                            f"20D momentum ({technicals.get('ret_20d_pct', 0):.2f}%), and GARCH 20D target ₹{forecast.get('expected_20d_price', price):.2f}."
+                            f"Cite ROE ({roe_fmt}), OPM ({opm_fmt}), "
+                            f"20D momentum ({ret_fmt}), and GARCH 20D target {target_fmt}."
                         ),
                         context=context
                     )
@@ -697,8 +713,8 @@ class MultiAgentDeliberationEngine:
                         role="Bearish Risk Management Analyst",
                         instruction=(
                             f"Stress-test downside tail risks and valuation multiple for {symbol}. "
-                            f"Scrutinize P/E ({fundamentals.get('ttm_pe', 0):.1f}x), D/E ({fundamentals.get('debt_to_equity', 0):.2f}), "
-                            f"and 80% invalidation floor ₹{forecast.get('invalidation_floor', price * 0.94):.2f}."
+                            f"Scrutinize P/E ({pe_fmt}), D/E ({de_fmt}), "
+                            f"and 80% invalidation floor {floor_fmt}."
                         ),
                         context=context,
                         counter_argument=bull_content
@@ -770,6 +786,11 @@ class MultiAgentDeliberationEngine:
                 "entry_price": price,
                 "target_price": verdict_meta.get("target_price", forecast.get("upper_80", round(price * 1.08, 2))),
                 "stop_loss": verdict_meta.get("stop_loss", forecast.get("lower_80", round(price * 0.94, 2))),
+                "can_trade": verdict_meta.get("can_trade", True),
+                "hard_veto_reasons": verdict_meta.get("hard_veto_reasons", []),
+                "position_sizing": verdict_meta.get("position_sizing", {}),
+                "trader_dna_eval": verdict_meta.get("trader_dna_eval", {}),
+                "regime_analogs": verdict_meta.get("regime_analogs"),
                 "bull_thesis": bull_content,
                 "bear_thesis": bear_content,
                 "judge_memo": judge_content,
@@ -1157,9 +1178,10 @@ class MultiAgentDeliberationEngine:
     async def _stream_llm_role(
         self, role: str, instruction: str, context: Dict[str, Any], counter_argument: Optional[str] = None
     ) -> str:
+        compact_ctx = {k: v for k, v in context.items() if k not in ("lookback_bars", "stocks_data")}
         messages = [
             {"role": "system", "content": f"You are a specialized institutional quant agent: {role}. Be concise, analytical, and cite specific data points."},
-            {"role": "user", "content": f"Context:\n{json.dumps(context, indent=2)}\n\n{f'Prior Bull Thesis:\n{counter_argument}' if counter_argument else ''}\n\nTask:\n{instruction}"}
+            {"role": "user", "content": f"Context:\n{json.dumps(compact_ctx, indent=2, default=str)}\n\n{f'Prior Bull Thesis:\n{counter_argument}' if counter_argument else ''}\n\nTask:\n{instruction}"}
         ]
         reply = await call_llm_completion(messages, max_tokens=650, temperature=0.3)
         return reply or ""
@@ -1167,6 +1189,7 @@ class MultiAgentDeliberationEngine:
     async def _stream_llm_judge(
         self, context: Dict[str, Any], bull_arg: str, bear_arg: str
     ) -> Tuple[str, Dict[str, Any]]:
+        compact_ctx = {k: v for k, v in context.items() if k not in ("lookback_bars", "stocks_data")}
         messages = [
             {
                 "role": "system",
@@ -1181,7 +1204,7 @@ class MultiAgentDeliberationEngine:
             {
                 "role": "user",
                 "content": (
-                    f"Quantitative Context:\n{json.dumps(context, indent=2)}\n\n"
+                    f"Quantitative Context:\n{json.dumps(compact_ctx, indent=2, default=str)}\n\n"
                     f"Bull Analyst Thesis:\n{bull_arg}\n\n"
                     f"Bear Analyst Thesis:\n{bear_arg}\n\n"
                     f"Deliver the Final Portfolio Manager Decision Memo."
@@ -1286,7 +1309,12 @@ class MultiAgentDeliberationEngine:
         opm_val = f.get("opm_pct")
         roe_str = f"{roe_val:.1f}%" if roe_val is not None else "Awaiting Statement"
         opm_str = f"{opm_val:.1f}%" if opm_val is not None else "Awaiting Statement"
-        exp_target = fc.get("target_objective", round(price * 1.08, 2))
+        exp_target = fc.get("target_objective") if fc.get("target_objective") is not None else round(price * 1.08, 2)
+        upper_80 = fc.get("upper_80") if fc.get("upper_80") is not None else round(price * 1.10, 2)
+        ann_vol = fc.get("annualized_volatility") if fc.get("annualized_volatility") is not None else 0.22
+        sma_200 = t.get("sma_200")
+        sma_str = f"₹{sma_200:.2f}" if sma_200 is not None else "N/A"
+        ret_20d = t.get("ret_20d_pct") if t.get("ret_20d_pct") is not None else 0.0
 
         news = ctx.get("news_headlines", [])
         news_snippet = ""
@@ -1318,11 +1346,11 @@ class MultiAgentDeliberationEngine:
             f"   - {sym} return metrics: ROE at **{roe_str}** and operating margins at **{opm_str}**.\n"
             f"   - High return on incremental invested capital enables self-funded capacity additions without shareholding dilution.\n\n"
             f"2. **Trend Momentum & Technical Structure:**\n"
-            f"   - The stock is currently {above_200} (200 SMA: ₹{t.get('sma_200', 0):.2f}).\n"
-            f"   - 20-day return momentum stands at **{t.get('ret_20d_pct', 0.0):+.2f}%**, indicating institutional accumulation during market pullbacks.{ml_snippet}\n\n"
+            f"   - The stock is currently {above_200} (200 SMA: {sma_str}).\n"
+            f"   - 20-day return momentum stands at **{ret_20d:+.2f}%**, indicating institutional accumulation during market pullbacks.{ml_snippet}\n\n"
             f"4. **Econometric Probability Cone:**\n"
-            f"   - The 20-Day GARCH(1,1) model projects an expected drift target of **₹{exp_target:.2f}** with an upper 80% confidence bound of **₹{fc.get('upper_80', price*1.1):.2f}**.\n"
-            f"   - Downside risk is cushioned by historical volatility anchoring at **{fc.get('annualized_volatility', 0.22)*100:.1f}%**.{news_snippet}"
+            f"   - The 20-Day GARCH(1,1) model projects an expected drift target of **₹{exp_target:.2f}** with an upper 80% confidence bound of **₹{upper_80:.2f}**.\n"
+            f"   - Downside risk is cushioned by historical volatility anchoring at **{ann_vol*100:.1f}%**.{news_snippet}"
         )
 
     def _generate_deterministic_bear(self, ctx: Dict[str, Any]) -> str:
@@ -1336,8 +1364,8 @@ class MultiAgentDeliberationEngine:
         de_val = f.get("debt_to_equity")
         pe_str = f"{pe_val:.1f}x" if pe_val is not None else "Awaiting Statement"
         de_str = f"{de_val:.2f}x" if de_val is not None else "Awaiting Statement"
-        stop_floor = fc.get("invalidation_floor", round(price * 0.94, 2))
-        tail_95 = fc.get("lower_95", round(price * 0.90, 2))
+        stop_floor = fc.get("invalidation_floor") if fc.get("invalidation_floor") is not None else round(price * 0.94, 2)
+        tail_95 = fc.get("lower_95") if fc.get("lower_95") is not None else round(price * 0.90, 2)
 
         in10y = macro.get("india_10y_yield_pct")
         in10y_str = f"{in10y:.2f}%" if in10y is not None else "unconfigured (CCIL feed pending)"
@@ -1582,13 +1610,21 @@ class MultiAgentDeliberationEngine:
             verdict_meta: Dict[str, Any] = {}
 
             if is_live_llm_configured():
+                roe_fmt = f"{fundamentals.get('roe_pct'):.1f}%" if fundamentals.get('roe_pct') is not None else "N/A"
+                opm_fmt = f"{fundamentals.get('opm_pct'):.1f}%" if fundamentals.get('opm_pct') is not None else "N/A"
+                ret_fmt = f"{technicals.get('ret_20d_pct'):+.2f}%" if technicals.get('ret_20d_pct') is not None else "0.00%"
+                target_fmt = f"₹{forecast.get('expected_20d_price', price):.2f}" if forecast.get('expected_20d_price') is not None else f"₹{price:.2f}"
+                pe_fmt = f"{fundamentals.get('ttm_pe'):.1f}x" if fundamentals.get('ttm_pe') is not None else "N/A"
+                de_fmt = f"{fundamentals.get('debt_to_equity'):.2f}x" if fundamentals.get('debt_to_equity') is not None else "N/A"
+                floor_fmt = f"₹{forecast.get('invalidation_floor', price * 0.94):.2f}" if forecast.get('invalidation_floor') is not None else f"₹{price * 0.94:.2f}"
+
                 try:
                     bull_content = await self._stream_llm_role(
                         role="Bullish Research & Momentum Analyst",
                         instruction=(
                             f"Present the strongest data-backed bullish thesis for {primary_sym} ({company_name}) at ₹{price:.2f}. "
-                            f"Cite ROE ({fundamentals.get('roe_pct', 0):.1f}%), OPM ({fundamentals.get('opm_pct', 0):.1f}%), "
-                            f"20D momentum ({technicals.get('ret_20d_pct', 0):.2f}%), and GARCH 20D target ₹{forecast.get('expected_20d_price', price):.2f}."
+                            f"Cite ROE ({roe_fmt}), OPM ({opm_fmt}), "
+                            f"20D momentum ({ret_fmt}), and GARCH 20D target {target_fmt}."
                         ),
                         context=grounded
                     )
@@ -1601,8 +1637,8 @@ class MultiAgentDeliberationEngine:
                         role="Bearish Risk Management Analyst",
                         instruction=(
                             f"Stress-test downside tail risks and valuation multiple for {primary_sym}. "
-                            f"Scrutinize P/E ({fundamentals.get('ttm_pe', 0):.1f}x), D/E ({fundamentals.get('debt_to_equity', 0):.2f}), "
-                            f"and 80% invalidation floor ₹{forecast.get('invalidation_floor', price * 0.94):.2f}."
+                            f"Scrutinize P/E ({pe_fmt}), D/E ({de_fmt}), "
+                            f"and 80% invalidation floor {floor_fmt}."
                         ),
                         context=grounded,
                         counter_argument=bull_content
@@ -1633,6 +1669,11 @@ class MultiAgentDeliberationEngine:
                 "entry_price": price,
                 "target_price": verdict_meta.get("target_price") or fc.get("expected_20d_price", round(price * 1.05, 2)),
                 "stop_loss": verdict_meta.get("stop_loss") or fc.get("invalidation_floor", round(price * 0.95, 2)),
+                "can_trade": verdict_meta.get("can_trade", True),
+                "hard_veto_reasons": verdict_meta.get("hard_veto_reasons", []),
+                "position_sizing": verdict_meta.get("position_sizing", {}),
+                "trader_dna_eval": verdict_meta.get("trader_dna_eval", {}),
+                "regime_analogs": verdict_meta.get("regime_analogs"),
                 "bull_thesis": bull_content,
                 "bear_thesis": bear_content,
                 "judge_memo": judge_content,

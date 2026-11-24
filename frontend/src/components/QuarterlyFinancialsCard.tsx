@@ -16,6 +16,8 @@ export interface QuarterlyStatement {
   total_debt?: number | null;
   total_equity?: number | null;
   cash_flow_from_ops?: number | null;
+  data_status?: "OBSERVED_TIMESTAMP" | "STATUTORY_FALLBACK_LAG" | "SECTOR_ESTIMATE" | string;
+  observed_timestamp?: string;
 }
 
 interface QuarterlyFinancialsCardProps {
@@ -249,11 +251,21 @@ export function QuarterlyFinancialsCard({ symbol, statements = [] }: QuarterlyFi
               <th className="py-2.5 px-3 text-right">Margin %</th>
               <th className="py-2.5 px-3 text-right">EPS (₹)</th>
               <th className="py-2.5 px-3 text-center">Audited</th>
+              <th className="py-2.5 px-3 text-center">PIT Provenance</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.03]">
             {recentFirst.map((s, idx) => {
               const margin = s.revenue && s.net_profit && s.revenue > 0 ? (s.net_profit / s.revenue) * 100.0 : null;
+              const provenanceLabel = s.data_status === "STATUTORY_FALLBACK_LAG"
+                ? "STATUTORY_FALLBACK_LAG (45D)"
+                : s.data_status === "SECTOR_ESTIMATE"
+                ? "SECTOR_ESTIMATE (IMPUTED)"
+                : s.filing_date
+                ? `OBSERVED (${s.filing_date})`
+                : "OBSERVED_TIMESTAMP";
+              const isFallback = s.data_status === "STATUTORY_FALLBACK_LAG" || s.data_status === "SECTOR_ESTIMATE";
+
               return (
                 <tr key={s.period_end_date || idx} className="hover:bg-white/[0.02] transition-colors">
                   <td className="py-2 px-3 text-slate-200 font-medium whitespace-nowrap">
@@ -289,6 +301,18 @@ export function QuarterlyFinancialsCard({ symbol, statements = [] }: QuarterlyFi
                       )}
                     >
                       {s.is_audited ? "Audited" : "Reviewed"}
+                    </span>
+                  </td>
+                  <td className="py-2 px-3 text-center">
+                    <span
+                      className={cn(
+                        "text-[9px] px-2 py-0.5 rounded font-mono tracking-tight inline-block",
+                        isFallback
+                          ? "bg-amber-950/70 border border-amber-500/40 text-amber-300"
+                          : "bg-emerald-950/70 border border-emerald-500/40 text-emerald-300"
+                      )}
+                    >
+                      {provenanceLabel}
                     </span>
                   </td>
                 </tr>
