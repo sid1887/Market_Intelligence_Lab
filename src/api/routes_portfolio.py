@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from src.storage.database import DatabaseManager
 from src.api.utils import DATABASE_PATH, sanitize_for_json, get_database_manager
 from src.quant.execution_engine import PaperTradingEngine
+from src.storage.durable_state import mark_state_dirty
 
 logger = logging.getLogger("MIL.PortfolioAPI")
 
@@ -172,6 +173,7 @@ def execute_rebalance(req: ExecuteProposalRequest = Body(...)):
                 proposal_id = str(row[0])
 
         result = engine.execute_proposal(proposal_id=proposal_id, account_id=req.account_id)
+        mark_state_dirty()
         return sanitize_for_json(result)
     except HTTPException:
         raise
@@ -223,6 +225,7 @@ def execute_manual_trade(req: ManualOrderRequest = Body(...)):
             quantity=req.quantity,
             thesis_note=req.thesis_note
         )
+        mark_state_dirty()
         return sanitize_for_json(result)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -242,6 +245,7 @@ def reset_account_capital(req: ResetCapitalRequest = Body(...)):
             new_capital=req.initial_capital,
             fee_tier=req.fee_tier
         )
+        mark_state_dirty()
         return sanitize_for_json(result)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -260,6 +264,7 @@ def adjust_account_cash(req: AdjustCashRequest = Body(...)):
             account_id=req.account_id,
             delta_cash=req.delta_cash
         )
+        mark_state_dirty()
         return sanitize_for_json(result)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -286,6 +291,7 @@ def execute_rebalance_flow(req: RebalanceExecuteRequest = Body(...)):
             proposal_id = prop["proposal_id"]
 
         exec_res = exec_engine.execute_proposal(proposal_id=proposal_id, account_id=req.account_id)
+        mark_state_dirty()
         return sanitize_for_json(exec_res)
     except HTTPException:
         raise
@@ -354,6 +360,7 @@ async def upload_angelone_tradebook(files: List[UploadFile] = File(...)):
             f"Open count={final_summary.get('open_count', 0)}, "
             f"Net P&L=₹{final_summary.get('true_net_pnl', 0.0)}"
         )
+        mark_state_dirty()
         return sanitize_for_json(final_summary)
     except Exception as e:
         logger.error(f"[TRADEBOOK-UPLOAD-ERROR] Failed to parse Angel One tradebook: {e}", exc_info=True)

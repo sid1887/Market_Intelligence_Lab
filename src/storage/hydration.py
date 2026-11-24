@@ -431,6 +431,15 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
                     stats["securities_seeded"] = conn.execute("SELECT COUNT(*) FROM securities_master").fetchone()[0]
                     stats["watchlists_seeded"] = conn.execute("SELECT COUNT(*) FROM user_watchlists").fetchone()[0]
                     stats["catalysts_seeded"] = conn.execute("SELECT COUNT(*) FROM market_catalysts").fetchone()[0]
+
+                # Phase 1: Restore durable user state from Azure Blob Storage if configured
+                try:
+                    from src.storage.durable_state import DurableStateManager
+                    durable_res = DurableStateManager.get_instance(db=db).restore_on_startup()
+                    stats["durable_state"] = durable_res
+                except Exception as e:
+                    logger.warning(f"Durable state restore non-fatal notice: {e}")
+
                 return stats
 
         # Fallback to programmatic universe seed if snapshot missing
@@ -477,6 +486,14 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
 
     # Ensure no null ret_20d values remain in quant_factors_daily
     repair_null_ret_20d(db)
+
+    # Phase 1: Restore durable user state from Azure Blob Storage if configured
+    try:
+        from src.storage.durable_state import DurableStateManager
+        durable_res = DurableStateManager.get_instance(db=db).restore_on_startup()
+        stats["durable_state"] = durable_res
+    except Exception as e:
+        logger.warning(f"Durable state restore non-fatal notice: {e}")
 
     gc.collect()
     logger.info(f"Database hydration check complete: {stats}")

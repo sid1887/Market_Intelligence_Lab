@@ -33,6 +33,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 
 from src.storage.database import DatabaseManager
+from src.portfolio.fee_engine import ANGEL_ONE_DP_CHARGE
 
 logger = logging.getLogger("MIL.TradebookEngine")
 
@@ -40,7 +41,7 @@ DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "
 SECURE_DIR = os.path.join(DATA_DIR, "secure")
 MASTER_ENC_PATH = os.path.join(SECURE_DIR, "master_tradebook.enc")
 SECURE_SALT = b"MIL_SECURE_SALT_V1_2026"
-DEFAULT_ANGEL_ONE_DP_CHARGE = 23.60  # ₹3.50 CDSL + ₹16.50 Angel One + ₹3.60 GST
+DEFAULT_ANGEL_ONE_DP_CHARGE = ANGEL_ONE_DP_CHARGE  # ₹3.50 CDSL + ₹16.50 Angel One + ₹3.60 GST
 
 
 def get_fernet_cipher(secret_key: Optional[str] = None) -> Fernet:

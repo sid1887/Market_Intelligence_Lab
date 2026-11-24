@@ -98,6 +98,13 @@ class CopilotMemoryStore:
             conn.commit()
             episode_id = cur.lastrowid or 0
 
+        # Phase 1: Mark durable state dirty so episodic memory is backed up
+        try:
+            from src.storage.durable_state import mark_state_dirty
+            mark_state_dirty()
+        except Exception:
+            pass
+
         # Auto-prune periodically
         if episode_id % 25 == 0:
             self._prune_episodes()

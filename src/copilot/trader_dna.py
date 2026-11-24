@@ -21,10 +21,15 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from src.storage.database import DatabaseManager
+from src.portfolio.fee_engine import (
+    calculate_roundtrip_friction,
+    calculate_order_charges,
+    ANGEL_ONE_DP_CHARGE
+)
 
 logger = logging.getLogger("MIL.TraderDNA")
 
-DEFAULT_ANGEL_ONE_DP_CHARGE = 23.60
+DEFAULT_ANGEL_ONE_DP_CHARGE = ANGEL_ONE_DP_CHARGE
 
 
 class TraderDNAEngine:
@@ -216,18 +221,20 @@ class TraderDNAEngine:
         shares = int(effective_budget // entry_p) if entry_p > 0 else 0
         invested = round(shares * entry_p, 2)
 
-        # Round-trip statutory friction for delivery equity
+        # Round-trip statutory friction for delivery equity via canonical fee engine
+        sell_turnover = round(shares * target_p, 2)
+        rt = calculate_roundtrip_friction(invested, sell_turnover, dp_override=DEFAULT_ANGEL_ONE_DP_CHARGE)
         stt_buy = round(0.001 * invested, 2)
-        stt_sell = round(0.001 * (shares * target_p), 2)
-        exchange_turnover = round(0.0000345 * 2 * invested, 2)
-        sebi_tax = round(0.000001 * 2 * invested, 2)
-        stamp_duty = round(0.00015 * invested, 2)
-        gst = round(0.18 * (exchange_turnover + sebi_tax), 2)
-        dp_charge = DEFAULT_ANGEL_ONE_DP_CHARGE  # ₹23.60
+        stt_sell = round(0.001 * sell_turnover, 2)
+        exchange_turnover = rt.total_exchange_txn
+        sebi_tax = rt.total_sebi_fee
+        stamp_duty = rt.total_stamp_duty
+        gst = rt.total_gst
+        dp_charge = rt.total_dp_charges
+        total_friction = rt.total_friction
 
-        total_friction = round(stt_buy + stt_sell + exchange_turnover + sebi_tax + stamp_duty + gst + dp_charge, 2)
-        breakeven_exit = round((invested + total_friction) / max(shares, 1), 2) if shares > 0 else entry_p
-        breakeven_pct = round(((breakeven_exit - entry_p) / entry_p * 100.0), 2) if entry_p > 0 else 0.0
+        breakeven_exit = round(rt.breakeven_sell_turnover / max(shares, 1), 2) if shares > 0 else entry_p
+        breakeven_pct = rt.breakeven_upside_pct
 
         gross_upside_pct = round(((target_p - entry_p) / entry_p * 100.0), 2) if entry_p > 0 else 0.0
         gross_downside_pct = round(((entry_p - stop_p) / entry_p * 100.0), 2) if entry_p > 0 else 0.0

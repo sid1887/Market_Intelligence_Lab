@@ -17,15 +17,24 @@ import pandas as pd
 from src.storage.database import DatabaseManager
 from src.ml.registry.manager import ModelRegistryManager
 from src.ml.features.builder import PITFeatureExtractor, FEATURE_COLUMNS
+from src.portfolio.fee_engine import (
+    calculate_order_charges,
+    ANGEL_ONE_DP_CHARGE,
+    STT_RATE as CANONICAL_STT_RATE,
+    NSE_TXN_RATE,
+    SEBI_RATE,
+    STAMP_DUTY_BUY_RATE,
+    GST_RATE
+)
 
 logger = logging.getLogger("MIL.PortfolioBacktester")
 
 # Indian Statutory Delivery Friction Parameters (Delivery Equity)
-STT_RATE = 0.0010                    # 0.10% Securities Transaction Tax on both BUY & SELL
+STT_RATE = CANONICAL_STT_RATE         # 0.10% Securities Transaction Tax on both BUY & SELL
 EXCHANGE_TURNOVER_AND_SLIP = 0.0005  # 0.05% Exchange + SEBI turnover fees + slippage penalty
 BUY_FRICTION_RATE = STT_RATE + EXCHANGE_TURNOVER_AND_SLIP    # 0.0015 (15 bps)
 SELL_FRICTION_RATE = STT_RATE + EXCHANGE_TURNOVER_AND_SLIP   # 0.0015 (15 bps)
-FLAT_SELL_DP_CHARGE = 15.00           # Flat ₹15.00 Depository Participant charge per SELL leg
+FLAT_SELL_DP_CHARGE = ANGEL_ONE_DP_CHARGE  # Exact Angel One DP charge (₹23.60) per SELL leg
 RISK_FREE_RATE_ANNUAL = 0.065         # 6.50% Indian 91-Day T-Bill baseline
 
 
@@ -624,9 +633,13 @@ class PortfolioBacktester:
 
         cagr_pct = (((final_nav / initial_capital) ** (1.0 / max(years, 0.1))) - 1.0) * 100.0 if final_nav > 0 else -100.0
         benchmark_cagr_pct = (((final_bench / initial_capital) ** (1.0 / max(years, 0.1))) - 1.0) * 100.0 if final_bench > 0 else -100.0
-        alpha_cagr_pct = cagr_pct - benchmark_cagr_pct
-        alpha_total_pct = total_return_pct - benchmark_return_pct
-        alpha_pct = alpha_cagr_pct
+        cagr_rounded = round(cagr_pct, 2)
+        benchmark_cagr_rounded = round(benchmark_cagr_pct, 2)
+        alpha_cagr_rounded = round(cagr_rounded - benchmark_cagr_rounded, 2)
+        total_return_rounded = round(total_return_pct, 2)
+        benchmark_return_rounded = round(benchmark_return_pct, 2)
+        alpha_total_rounded = round(total_return_rounded - benchmark_return_rounded, 2)
+        alpha_pct = alpha_cagr_rounded
 
         # Daily returns series
         daily_navs = [pt["nav"] for pt in equity_curve]
@@ -664,13 +677,13 @@ class PortfolioBacktester:
         summary_metrics = {
             "initial_capital": round(initial_capital, 2),
             "final_nav": round(final_nav, 2),
-            "total_return_pct": round(total_return_pct, 2),
-            "benchmark_return_pct": round(benchmark_return_pct, 2),
-            "alpha_pct": round(alpha_cagr_pct, 2),
-            "alpha_cagr_pct": round(alpha_cagr_pct, 2),
-            "alpha_total_pct": round(alpha_total_pct, 2),
-            "cagr_pct": round(cagr_pct, 2),
-            "benchmark_cagr_pct": round(benchmark_cagr_pct, 2),
+            "total_return_pct": total_return_rounded,
+            "benchmark_return_pct": benchmark_return_rounded,
+            "alpha_pct": alpha_cagr_rounded,
+            "alpha_cagr_pct": alpha_cagr_rounded,
+            "alpha_total_pct": alpha_total_rounded,
+            "cagr_pct": cagr_rounded,
+            "benchmark_cagr_pct": benchmark_cagr_rounded,
             "annualized_volatility_pct": round(ann_volatility_pct, 2),
             "sharpe_ratio": round(sharpe_ratio, 2),
             "sortino_ratio": round(sortino_ratio, 2),

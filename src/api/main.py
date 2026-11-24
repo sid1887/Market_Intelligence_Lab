@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from src.core.log_engine import log_engine, request_id_ctx, get_current_rss_mb
+from src.storage.durable_state import mark_state_dirty
 
 logging.basicConfig(
     level=logging.INFO,
@@ -782,6 +783,7 @@ def add_to_watchlist(
                 notes = COALESCE(excluded.notes, user_watchlists.notes)
         """, (sym, comp_name, sector, today_str, payload.target_price, payload.stop_loss, payload.notes))
         conn.commit()
+        mark_state_dirty()
 
         return {
             "status": "ok",
@@ -805,6 +807,7 @@ def remove_from_watchlist(
     try:
         conn.execute("DELETE FROM user_watchlists WHERE symbol = ?", (sym,))
         conn.commit()
+        mark_state_dirty()
         return {
             "status": "ok",
             "message": f"{sym} removed from active user watchlist.",

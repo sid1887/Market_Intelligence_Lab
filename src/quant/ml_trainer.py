@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr, pearsonr
 from sklearn.linear_model import Ridge, ElasticNet
+from src.portfolio.fee_engine import DEFAULT_HURDLE_RATE
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 from src.storage.database import DatabaseManager
@@ -151,7 +152,7 @@ class WalkForwardMLTrainer:
                         chunk_df["forward_close"] = chunk_df.groupby("symbol")["close"].shift(-horizon_days)
                         raw_fwd = (chunk_df["forward_close"] / chunk_df["close"]) - 1.0
                         bench_fwd = raw_fwd.groupby(chunk_df["trading_date"]).transform("median")
-                        chunk_df["forward_return"] = (raw_fwd - bench_fwd) - 0.0015  # ADR-0008: Excess return net of 15 bps friction
+                        chunk_df["forward_return"] = (raw_fwd - bench_fwd) - DEFAULT_HURDLE_RATE  # ADR-0008: Excess return net of statutory friction
 
                         # Fast returns
                         chunk_df["ret_1d"] = chunk_df.groupby("symbol")["close"].pct_change(1).fillna(0.0)
@@ -258,11 +259,11 @@ class WalkForwardMLTrainer:
         if df.empty or len(df) < 100:
             return pd.DataFrame()
 
-        # Compute forward return target per symbol (ADR-0008: Excess return net of 15 bps friction)
+        # Compute forward return target per symbol (ADR-0008: Excess return net of statutory friction)
         df["forward_close"] = df.groupby("symbol")["close"].shift(-horizon_days)
         raw_fwd = (df["forward_close"] / df["close"]) - 1.0
         bench_fwd = raw_fwd.groupby(df["trading_date"]).transform("median")
-        df["forward_return"] = (raw_fwd - bench_fwd) - 0.0015
+        df["forward_return"] = (raw_fwd - bench_fwd) - DEFAULT_HURDLE_RATE
 
         # Construct 8 standardized features
         safe_vol = np.maximum(df["volatility_20d"], 0.05)

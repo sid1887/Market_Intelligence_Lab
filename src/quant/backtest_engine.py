@@ -23,6 +23,15 @@ import pandas as pd
 from src.storage.database import DatabaseManager
 from src.quant.screener import FactorScreener
 from src.quant.performance import PerformanceMetricsCalculator
+from src.portfolio.fee_engine import (
+    calculate_order_charges,
+    ANGEL_ONE_DP_CHARGE,
+    STT_RATE,
+    NSE_TXN_RATE,
+    SEBI_RATE,
+    STAMP_DUTY_BUY_RATE,
+    GST_RATE
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +41,10 @@ class BacktestEngine:
     Simulates multi-factor systematic equity strategies with realistic friction modeling.
     """
 
-    STT_BUY_RATE = 0.001       # 0.1% on equity delivery buy
-    STT_SELL_RATE = 0.001      # 0.1% on equity delivery sell
-    EXCHANGE_TURNOVER_RATE = 0.000035  # 0.0035% exchange charges & stamp duty
-    DP_CHARGE_PER_SELL = 15.34 # Flat CDSL DP charge per liquidated equity symbol (incl. GST)
+    STT_BUY_RATE = STT_RATE
+    STT_SELL_RATE = STT_RATE
+    EXCHANGE_TURNOVER_RATE = NSE_TXN_RATE + SEBI_RATE
+    DP_CHARGE_PER_SELL = ANGEL_ONE_DP_CHARGE  # Canonical Angel One DP charge (₹23.60)
 
     def __init__(self, db_manager: Optional[DatabaseManager] = None):
         self.db = db_manager or DatabaseManager()
