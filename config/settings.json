@@ -21,8 +21,8 @@
     "pri_historical_endpoint": "https://www.niftyindices.com/BackPage/getHistoricaldatatabletoString",
     "tri_historical_endpoint": "https://www.niftyindices.com/BackPage/getTotalReturnIndexString",
     "default_benchmark": "NIFTY 50",
-    "default_mode": "PRI",
-    "secondary_mode": "TRI"
+    "default_mode": "TRI",
+    "secondary_mode": "PRI"
   },
   "scheduler": {
     "eod_poll_start_ist": "16:30",

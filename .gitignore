@@ -15,9 +15,12 @@ env/
 .env.*
 !.env.example
 
-# VAPID Keys & Push Secrets
+# VAPID Keys & Push Secrets & PEM/ENC
 data/vapid.json
 data/vapid_private.pem
+data/vapid*
+*.pem
+*.enc
 
 # Database files & local scratch files
 *.db
@@ -29,9 +32,15 @@ data/market_lab.db*
 *.db-wal
 !data/cloud_seed_snapshot.json.gz
 backups/
+data/backups/
 data/raw/
 *.log
 .system_generated/
+*.zip
+*.7z
+*.tar*
+*.gz
+!data/cloud_seed_snapshot.json.gz
 
 # Dynamic runtime telemetry & ML artifacts (generated dynamically by server)
 data/macro_telemetry.json
@@ -44,6 +53,9 @@ data/models/
 # OS artifacts
 .DS_Store
 Thumbs.db
+dir.txt
+c_dir.txt
+mil_context_bundle.txt
 
 # Encrypted Tradebook Records (PII-free, server encrypted)
 data/secure/

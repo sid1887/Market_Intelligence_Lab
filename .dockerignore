@@ -1,0 +1,46 @@
+# .dockerignore
+# Exclude heavy backups, DBs, models, node_modules, tests, and temporary logs from Docker build context
+
+.git
+.github
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+
+# Large Backups & Databases (Kept locally on HDD)
+backups/
+data/backups/
+data/raw/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/*.db*
+*.zip
+*.7z
+*.tar*
+
+# Secrets & Local State
+.env
+.env.*
+!.env.example
+data/secure/
+*.pem
+*.enc
+data/vapid*
+
+# Node / Frontend Artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Documentation & Scratch Logs
+docs/
+*.log
+.system_generated/

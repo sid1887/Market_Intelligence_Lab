@@ -409,3 +409,28 @@ def export_master_tradebook_excel():
         logger.error(f"[TRADEBOOK-EXPORT-ERROR] Error exporting master Excel: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to export master Excel: {str(e)}")
 
+
+@router.get("/trader-dna")
+def get_trader_dna_profile():
+    """
+    Returns live Trader DNA behavioral discipline scorecard, consecutive loss streak,
+    cooldown status, hold horizon comparison, and Angel One ₹23.60 DP fee friction audit.
+    """
+    try:
+        from src.copilot.trader_dna import TraderDNAEngine
+        db = get_database_manager(DATABASE_PATH)
+        dna_engine = TraderDNAEngine(db)
+        profile = dna_engine.get_live_execution_profile()
+
+        # Add aliases and normalized fields for consumer compatibility
+        profile["cooldown_active"] = profile.get("defensive_cooldown_active", False)
+        profile["consecutive_loss_streak"] = profile.get("consecutive_losses", 0)
+        profile["total_friction"] = round(
+            profile.get("total_dp_charges", 0.0) + profile.get("total_trade_taxes", 0.0), 2
+        )
+        return sanitize_for_json(profile)
+    except Exception as e:
+        logger.error(f"[TRADER-DNA-ERROR] Error fetching Trader DNA profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch Trader DNA profile: {str(e)}")
+
+

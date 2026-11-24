@@ -1,44 +1,44 @@
 {
-  "timestamp": "2026-11-24T12:56:36Z",
+  "timestamp": "2026-11-24T14:10:35Z",
   "target_environment": "Render Free (0.1 vCPU / 512 MB RAM)",
-  "port_bind_ms": 2621.89,
-  "background_hydration_ms": 6448.72,
-  "idle_rss_mb": 364.63,
-  "peak_cgroup_memory_mb": 370.5,
-  "memory_headroom_mb": 141.5,
+  "port_bind_ms": 3485.93,
+  "background_hydration_ms": 6552.78,
+  "idle_rss_mb": 365.55,
+  "peak_cgroup_memory_mb": 370.78,
+  "memory_headroom_mb": 141.22,
   "cgroup_memory_limit_mb": 512.0,
-  "p50_latency_ms": 161.49,
-  "p95_latency_ms": 1709.71,
-  "p99_latency_ms": 1755.12,
-  "mean_latency_ms": 279.4,
+  "p50_latency_ms": 192.39,
+  "p95_latency_ms": 902.57,
+  "p99_latency_ms": 1448.95,
+  "mean_latency_ms": 243.19,
   "total_requests": 32,
   "concurrency": 3,
   "endpoint_breakdown": {
     "/api/v1/health": {
       "count": 8,
-      "p50_ms": 213.87,
-      "p95_ms": 261.41
+      "p50_ms": 264.94,
+      "p95_ms": 293.34
     },
     "/api/v1/screener?limit=50": {
       "count": 8,
-      "p50_ms": 20.68,
-      "p95_ms": 35.15
+      "p50_ms": 29.78,
+      "p95_ms": 53.46
     },
     "/api/v1/stocks/RELIANCE/status": {
       "count": 8,
-      "p50_ms": 13.16,
-      "p95_ms": 47.5
+      "p50_ms": 13.47,
+      "p95_ms": 46.8
     },
     "/api/v1/copilot/deliberate": {
       "count": 8,
-      "p50_ms": 471.23,
-      "p95_ms": 1755.12
+      "p50_ms": 526.21,
+      "p95_ms": 1448.95
     }
   },
   "memory_ceiling_check": {
     "threshold_mb": 410.0,
-    "peak_observed_mb": 370.5,
-    "oom_buffer_mb": 141.5,
+    "peak_observed_mb": 370.78,
+    "oom_buffer_mb": 141.22,
     "status": "PASS (VERIFIED SAFE)"
   }
 }

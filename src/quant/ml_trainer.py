@@ -965,13 +965,60 @@ class TwoStageTournamentRunner:
             all_test_returns.extend(active_rets.tolist())
 
         mean_sharpe = float(np.mean(split_sharpes)) if split_sharpes else 0.0
+        moments = self._compute_return_moments(all_test_returns)
 
-        return {
+        res = {
             "name": "Deterministic Baseline (Momentum+LowVol+PIT)",
             "mean_net_sharpe": round(mean_sharpe, 4),
             "split_sharpes": [round(s, 4) for s in split_sharpes],
             "total_signals": len(all_test_returns),
-            "returns": all_test_returns
+            "promotion_status": "BENCHMARK"
+        }
+        res.update(moments)
+        return res
+
+    @staticmethod
+    def _compute_return_moments(returns: List[float]) -> Dict[str, float]:
+        """Computes compact statistical moments instead of serializing raw float arrays."""
+        if not returns:
+            return {
+                "mean_return": 0.0,
+                "std_return": 0.0,
+                "skewness": 0.0,
+                "excess_kurtosis": 0.0,
+                "p05_return": 0.0,
+                "p50_return": 0.0,
+                "p95_return": 0.0
+            }
+        arr = np.array(returns, dtype=float)
+        arr = arr[np.isfinite(arr)]
+        if len(arr) == 0:
+            return {
+                "mean_return": 0.0,
+                "std_return": 0.0,
+                "skewness": 0.0,
+                "excess_kurtosis": 0.0,
+                "p05_return": 0.0,
+                "p50_return": 0.0,
+                "p95_return": 0.0
+            }
+        m = float(np.mean(arr))
+        s = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
+        diff = arr - m
+        m2 = float(np.mean(diff ** 2))
+        m3 = float(np.mean(diff ** 3))
+        m4 = float(np.mean(diff ** 4))
+        skew = (m3 / (m2 ** 1.5)) if m2 > 1e-12 else 0.0
+        kurt = (m4 / (m2 ** 2) - 3.0) if m2 > 1e-12 else 0.0
+
+        return {
+            "mean_return": round(m, 6),
+            "std_return": round(s, 6),
+            "skewness": round(skew, 4),
+            "excess_kurtosis": round(kurt, 4),
+            "p05_return": round(float(np.percentile(arr, 5)), 6),
+            "p50_return": round(float(np.percentile(arr, 50)), 6),
+            "p95_return": round(float(np.percentile(arr, 95)), 6)
         }
 
     def train_and_evaluate_candidates(
@@ -1089,7 +1136,8 @@ class TwoStageTournamentRunner:
                 "REJECTED_BELOW_BASELINE" if not beats_baseline else "REJECTED_OVERFITTING"
             )
 
-            results.append({
+            moments = self._compute_return_moments(cand_test_returns)
+            cand_dict = {
                 "candidate_id": cand["id"],
                 "candidate_name": cand["name"],
                 "cpcv_mean_sharpe": round(mean_sh, 4),
@@ -1101,9 +1149,10 @@ class TwoStageTournamentRunner:
                 "traded_signals_count": traded_count,
                 "abstained_signals_count": abstained_count,
                 "promotion_status": promotion_status,
-                "returns": cand_test_returns,
                 "dsr_metrics": dsr_metrics
-            })
+            }
+            cand_dict.update(moments)
+            results.append(cand_dict)
 
         return results
 

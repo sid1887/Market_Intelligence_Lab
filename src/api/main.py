@@ -999,6 +999,53 @@ def get_ml_telemetry_endpoint(limit: int = Query(25, ge=1, le=100)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch ML telemetry: {str(e)}")
 
 
+@app.get("/models/tournament")
+@app.get("/api/v1/models/tournament")
+def get_ml_tournament_summary():
+    """
+    Returns latest CPCV(6, 2) walk-forward ML tournament summary, candidate metrics,
+    Deflated Sharpe Ratio (DSR) stats, and active production champion model status.
+    """
+    try:
+        summary_path = Path("data/models/tournament_summary.json")
+        if not summary_path.exists():
+            summary_path = Path(__file__).resolve().parent.parent.parent / "data" / "models" / "tournament_summary.json"
+
+        if summary_path.exists():
+            with open(summary_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Determine active production champion
+            champ = data.get("champion", {})
+            if champ.get("promotion_status") == "CHAMPION":
+                active_champion = champ.get("candidate_name", "ML Champion")
+            else:
+                active_champion = data.get("baseline", {}).get("name", "Deterministic Baseline (Momentum+LowVol+PIT)")
+
+            data["active_champion"] = active_champion
+            data["status"] = "SUCCESS"
+            return sanitize_for_json(data)
+        else:
+            return sanitize_for_json({
+                "status": "NO_TOURNAMENT_RECORD",
+                "active_champion": "Deterministic Baseline (Momentum+LowVol+PIT)",
+                "baseline": {
+                    "name": "Deterministic Baseline (Momentum+LowVol+PIT)",
+                    "mean_net_sharpe": 0.4322,
+                },
+                "candidates": [],
+                "champion": {
+                    "promotion_status": "REJECTED_BELOW_BASELINE",
+                    "candidate_name": "None"
+                },
+                "promotion_verdict": "REJECTED_BELOW_BASELINE",
+                "message": "No tournament run summary found on disk. Deterministic baseline active."
+            })
+    except Exception as e:
+        logger.error(f"Error reading tournament summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to load tournament summary: {str(e)}")
+
+
 @app.post("/news/ingest")
 @app.post("/api/v1/news/ingest")
 def trigger_news_ingestion(symbols: Optional[List[str]] = Query(None)):

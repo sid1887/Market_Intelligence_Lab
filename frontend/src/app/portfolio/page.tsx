@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import { BentoCard } from "@/components/ui/BentoCard";
 import { AnimatedTabs } from "@/components/ui/AnimatedTabs";
-import { PositionsTable, OrdersBlotter, CapitalSeedModal, CapitalUtilizationGauge, RealTradebookPanel } from "@/components/portfolio";
+import { PositionsTable, OrdersBlotter, CapitalSeedModal, CapitalUtilizationGauge, RealTradebookPanel, TraderDNAPanel } from "@/components/portfolio";
 import {
   fetchPortfolioSummary,
   fetchPortfolioPositions,
@@ -63,6 +63,13 @@ interface AccountTab {
 }
 
 const ACCOUNTS: AccountTab[] = [
+  {
+    id: "trader_dna",
+    name: "Trader DNA & ₹23.60 DP Friction",
+    badge: "Discipline Guard",
+    type: "MANUAL",
+    desc: "Realized win rate, median hold, early exit rate, cooldown trigger & ₹23.60 DP drag audit.",
+  },
   {
     id: "real_tradebook",
     name: "Real Tradebook & Master Excel",
@@ -183,7 +190,7 @@ function PortfolioContent() {
       if (invalidateCache) {
         clearMemoryCache("/portfolio");
       }
-      if (accId === "real_tradebook") {
+      if (accId === "real_tradebook" || accId === "trader_dna") {
         setLoading(false);
         return;
       }
@@ -537,7 +544,9 @@ function PortfolioContent() {
             label: acc.name,
             badge: acc.badge,
             desc: acc.desc,
-            icon: acc.id === "real_tradebook" ? (
+            icon: acc.id === "trader_dna" ? (
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+            ) : acc.id === "real_tradebook" ? (
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
             ) : acc.type === "SYSTEMATIC" ? (
               <Sparkles className="w-4 h-4 text-cyan-400" />
@@ -655,7 +664,7 @@ function PortfolioContent() {
         )}
 
         {/* Summary Bento Metric Cards */}
-        {activeAccount !== "real_tradebook" && (loading && !summary ? (
+        {activeAccount !== "real_tradebook" && activeAccount !== "trader_dna" && (loading && !summary ? (
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-5">
             {[...Array(5)].map((_, i) => (
               <div
@@ -736,9 +745,11 @@ function PortfolioContent() {
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             className="space-y-6"
           >
-        {/* Real Tradebook & Master Excel Panel */}
+        {/* Real Tradebook & Trader DNA Panels */}
         {activeAccount === "real_tradebook" ? (
           <RealTradebookPanel />
+        ) : activeAccount === "trader_dna" ? (
+          <TraderDNAPanel />
         ) : (
           <>
         {/* FrontPage Discretionary Trade Ticket (Active for paper_manual_1) */}

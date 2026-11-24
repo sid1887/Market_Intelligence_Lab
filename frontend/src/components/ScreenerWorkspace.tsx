@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { ScreenerCandidate, toggleWatchlist } from "@/lib/api";
 import { ScreenerScoreCell } from "./ScreenerScoreCell";
 import { SectorHeatmap } from "./SectorHeatmap";
+import { computeTicketFriction, TICKET_SIZES, TicketSize } from "@/lib/friction";
 
 export type SectorFilter = string;
 
@@ -37,6 +38,9 @@ export interface OptionalColumn {
 }
 
 export const SCREENER_COLUMNS: OptionalColumn[] = [
+  { id: "feeDrag", label: "Fee Drag", field: "ret_20d", width: "w-20" },
+  { id: "netRR", label: "Net R:R", field: "ret_20d", width: "w-20" },
+  { id: "execStatus", label: "DP Gate", field: "ret_20d", width: "w-28" },
   { id: "roe", label: "ROE", field: "roe_pct", width: "w-20" },
   { id: "ret20", label: "20D Ret", field: "ret_20d", width: "w-24" },
   { id: "deliv", label: "Deliv %", field: "delivery_pct", width: "w-20" },
@@ -48,6 +52,9 @@ export const SCREENER_COLUMNS: OptionalColumn[] = [
 ];
 
 export const DEFAULT_COLUMNS: Record<string, boolean> = {
+  feeDrag: true,
+  netRR: true,
+  execStatus: true,
   roe: true,
   ret20: true,
   deliv: true,
@@ -166,6 +173,7 @@ interface DesktopRowProps {
   isSelected: boolean;
   onSelect: (sym: string) => void;
   columns: Record<string, boolean>;
+  ticketSize: TicketSize;
   onContextMenu?: (e: React.MouseEvent, cand: ScreenerCandidate) => void;
   onMouseEnter?: (e: React.MouseEvent, cand: ScreenerCandidate) => void;
   onMouseLeave?: () => void;
@@ -177,6 +185,7 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
   isSelected,
   onSelect,
   columns,
+  ticketSize,
   onContextMenu,
   onMouseEnter,
   onMouseLeave,
@@ -184,6 +193,8 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
   const ret20 = cand.ret_20d ?? cand.excess_ret_20d ?? 0.0;
   const isPositiveRet = ret20 > 0;
   const isNegativeRet = ret20 < 0;
+
+  const friction = computeTicketFriction(cand.close, ticketSize);
 
   const score =
     cand.blended_score && cand.blended_score > 0
@@ -261,6 +272,41 @@ const DesktopScreenerRow = React.memo(function DesktopScreenerRow({
           <span className="text-slate-600">—</span>
         )}
       </div>
+
+      {/* Micro-Capital DP Friction Columns */}
+      {columns.feeDrag && (
+        <div className="w-20 text-right tabular-nums shrink-0 pr-1" title={`Roundtrip Friction: ₹${friction.totalFriction} (incl. ₹23.60 DP fee)`}>
+          <span className={friction.feeDragPct <= 1.25 ? "text-emerald-400 font-semibold" : "text-rose-400 font-medium"}>
+            {friction.shares > 0 ? `${friction.feeDragPct.toFixed(2)}%` : "N/A"}
+          </span>
+        </div>
+      )}
+
+      {columns.netRR && (
+        <div className="w-20 text-right tabular-nums shrink-0 pr-1" title="Post-Cost Net Reward-to-Risk">
+          <span className={friction.netRR >= 1.6 ? "text-emerald-400 font-bold" : "text-amber-400 font-medium"}>
+            {friction.shares > 0 ? `${friction.netRR.toFixed(2)}` : "—"}
+          </span>
+        </div>
+      )}
+
+      {columns.execStatus && (
+        <div className="w-28 text-center shrink-0 pr-1">
+          {friction.status === "EXECUTABLE" ? (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40">
+              EXECUTABLE
+            </span>
+          ) : friction.status === "NO_TRADE (DP DRAG)" ? (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950/80 text-rose-300 border border-rose-500/40" title="Fee drag > 1.25% or Net R:R < 1.6 due to ₹23.60 DP fee">
+              NO_TRADE (DP)
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-900 text-slate-400 border border-white/[0.08]" title="Stock price exceeds ticket size">
+              PRICE &gt; TICKET
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Optional Dynamic Columns */}
       {columns.roe && (
@@ -430,13 +476,38 @@ function ScreenerWorkspaceComponent({
   const [onlyRebalanceTargets, setOnlyRebalanceTargets] = useState<boolean>(false);
   const [columns, setColumns] = useState<Record<string, boolean>>(DEFAULT_COLUMNS);
   const [showColumnPicker, setShowColumnPicker] = useState<boolean>(false);
+  const [ticketSize, setTicketSize] = useState<TicketSize>(5000);
+  const [hideNoTrade, setHideNoTrade] = useState<boolean>(false);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem("mil:screener-columns");
       if (stored) setColumns(JSON.parse(stored));
+      const storedTicket = localStorage.getItem("mil:screener-ticket-size");
+      if (storedTicket) {
+        const val = parseInt(storedTicket, 10);
+        if (TICKET_SIZES.includes(val as TicketSize)) setTicketSize(val as TicketSize);
+      }
+      const storedHide = localStorage.getItem("mil:screener-hide-no-trade");
+      if (storedHide !== null) {
+        setHideNoTrade(storedHide === "true");
+      }
     } catch {}
   }, []);
+
+  const handleTicketSizeChange = (size: TicketSize) => {
+    setTicketSize(size);
+    try {
+      localStorage.setItem("mil:screener-ticket-size", String(size));
+    } catch {}
+  };
+
+  const handleHideNoTradeToggle = (hide: boolean) => {
+    setHideNoTrade(hide);
+    try {
+      localStorage.setItem("mil:screener-hide-no-trade", String(hide));
+    } catch {}
+  };
 
   const router = useRouter();
   const [hoveredCandidate, setHoveredCandidate] = useState<ScreenerCandidate | null>(null);
@@ -513,6 +584,7 @@ function ScreenerWorkspaceComponent({
       All: baseList.length,
       aboveSma200: 0,
       rebalanceTargets: 0,
+      executableSetups: 0,
     };
     for (const sec of SECTOR_FILTERS) {
       if (sec !== "All") counts[sec] = 0;
@@ -525,9 +597,10 @@ function ScreenerWorkspaceComponent({
       }
       if (c.price_above_sma200) counts.aboveSma200++;
       if (c.is_rebalance_target || (c.target_allocation_pct || 0) > 0) counts.rebalanceTargets++;
+      if (computeTicketFriction(c.close, ticketSize).isExecutable) counts.executableSetups++;
     }
     return counts;
-  }, [candidates, viewMode]);
+  }, [candidates, viewMode, ticketSize]);
 
   // Filtered and Sorted Candidates
   const filteredCandidates = useMemo(() => {
@@ -558,6 +631,11 @@ function ScreenerWorkspaceComponent({
         return false;
       }
 
+      if (hideNoTrade) {
+        const friction = computeTicketFriction(item.close, ticketSize);
+        if (!friction.isExecutable) return false;
+      }
+
       return true;
     });
 
@@ -585,7 +663,7 @@ function ScreenerWorkspaceComponent({
     });
 
     return list;
-  }, [candidates, viewMode, search, sectorFilter, sortField, sortAsc, minRoe, onlyAbove200Sma, onlyRebalanceTargets]);
+  }, [candidates, viewMode, search, sectorFilter, sortField, sortAsc, minRoe, onlyAbove200Sma, onlyRebalanceTargets, hideNoTrade, ticketSize]);
 
   // TanStack Virtualizers for continuous 60fps scrolling
   const desktopVirtualizer = useVirtualizer({
@@ -1003,10 +1081,47 @@ function ScreenerWorkspaceComponent({
           )}
         </div>
 
+        <div className="h-3 w-[1px] bg-white/[0.08] mx-1 shrink-0" />
+
+        {/* Micro-Capital Ticket Size Selector */}
+        <div className="flex items-center gap-1 bg-[#050811] border border-white/[0.08] px-2 py-0.5 rounded text-[11px] font-mono shrink-0">
+          <span className="text-[10px] text-slate-400 font-semibold">Ticket:</span>
+          {TICKET_SIZES.map((size) => (
+            <button
+              key={size}
+              onClick={() => handleTicketSizeChange(size)}
+              className={`px-1.5 py-0.2 rounded text-[10px] font-mono transition-colors ${
+                ticketSize === size
+                  ? "bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              ₹{(size / 1000).toFixed(size % 1000 !== 0 ? 1 : 0)}k
+            </button>
+          ))}
+        </div>
+
+        {/* Hide NO_TRADE Setups Toggle */}
+        <button
+          onClick={() => handleHideNoTradeToggle(!hideNoTrade)}
+          className={`px-2 py-0.5 rounded text-[11px] font-mono whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            hideNoTrade
+              ? "bg-amber-950/80 text-amber-300 border border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.25)] font-bold"
+              : "text-slate-400 hover:text-amber-300 hover:bg-slate-900/60 border border-transparent"
+          }`}
+          title="Hide Setups with Roundtrip Fee Drag > 1.25% or Net R:R < 1.6 due to ₹23.60 DP fee"
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${hideNoTrade ? "bg-amber-400" : "bg-slate-600"}`} />
+          <span>Hide NO_TRADE ({filterCounts.executableSetups ?? 0} Executable)</span>
+        </button>
+
         {/* Filter Reset if Active */}
-        {(search || sectorFilter !== "All" || onlyAbove200Sma || onlyRebalanceTargets || minRoe !== null) && (
+        {(search || sectorFilter !== "All" || onlyAbove200Sma || onlyRebalanceTargets || minRoe !== null || hideNoTrade) && (
           <button
-            onClick={clearAllFilters}
+            onClick={() => {
+              clearAllFilters();
+              setHideNoTrade(false);
+            }}
             className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono text-amber-400 hover:bg-amber-950/40 border border-amber-500/30 transition-colors ml-auto"
             title="Clear all active filters"
           >
@@ -1246,6 +1361,36 @@ function ScreenerWorkspaceComponent({
               </div>
 
               {/* Dynamic Optional Column Headers */}
+              {columns.feeDrag && (
+                <div
+                  role="columnheader"
+                  className="w-20 text-right shrink-0 cursor-default flex items-center justify-end gap-1 hover:text-slate-200 pr-1 text-slate-400 font-mono text-[11px]"
+                  title="Angel One Roundtrip Fee Drag % (including ₹23.60 DP fee)"
+                >
+                  <span>Fee Drag</span>
+                </div>
+              )}
+
+              {columns.netRR && (
+                <div
+                  role="columnheader"
+                  className="w-20 text-right shrink-0 cursor-default flex items-center justify-end gap-1 hover:text-slate-200 pr-1 text-slate-400 font-mono text-[11px]"
+                  title="Post-Cost Net Reward-to-Risk"
+                >
+                  <span>Net R:R</span>
+                </div>
+              )}
+
+              {columns.execStatus && (
+                <div
+                  role="columnheader"
+                  className="w-28 text-center shrink-0 cursor-default flex items-center justify-center gap-1 hover:text-slate-200 pr-1 text-slate-400 font-mono text-[11px]"
+                  title="DP Fee Drag Gate (Executable vs NO_TRADE)"
+                >
+                  <span>DP Gate</span>
+                </div>
+              )}
+
               {columns.roe && (
                 <div
                   role="columnheader"
@@ -1516,6 +1661,7 @@ function ScreenerWorkspaceComponent({
                           isSelected={cand.symbol === selectedSymbol}
                           onSelect={onSelectSymbol}
                           columns={columns}
+                          ticketSize={ticketSize}
                           onContextMenu={handleContextMenu}
                           onMouseEnter={handleRowMouseEnter}
                           onMouseLeave={handleRowMouseLeave}

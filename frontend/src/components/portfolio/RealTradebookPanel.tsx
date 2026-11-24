@@ -166,6 +166,23 @@ export function RealTradebookPanel() {
 
             <button
               type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("tab", "trader_dna");
+                  window.history.replaceState(null, "", url.toString());
+                  window.dispatchEvent(new Event("popstate"));
+                  window.location.reload();
+                }
+              }}
+              className="px-3 py-2 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-xs font-mono text-cyan-300 flex items-center space-x-1.5 transition-all shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Trader DNA Discipline</span>
+            </button>
+
+            <button
+              type="button"
               onClick={handleDownloadExcel}
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-mono font-bold text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center space-x-2 transition-all"
             >

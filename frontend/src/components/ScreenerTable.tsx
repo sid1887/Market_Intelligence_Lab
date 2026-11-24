@@ -6,6 +6,7 @@ import { Search, ChevronRight, SlidersHorizontal, ExternalLink } from "lucide-re
 import { motion, AnimatePresence } from "framer-motion";
 import { ScreenerScoreCell } from "./ScreenerScoreCell";
 import QuickInspectDrawer from "./QuickInspectDrawer";
+import { computeTicketFriction, TICKET_SIZES, TicketSize } from "@/lib/friction";
 
 export interface ScreenerCandidate {
   rank: number;
@@ -42,6 +43,8 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
   const [onlyAbove200Sma, setOnlyAbove200Sma] = useState<boolean>(false);
   const [excludeFinancials, setExcludeFinancials] = useState<boolean>(false);
   const [onlyWatchlist, setOnlyWatchlist] = useState<boolean>(false);
+  const [ticketSize, setTicketSize] = useState<TicketSize>(5000);
+  const [hideNoTrade, setHideNoTrade] = useState<boolean>(false);
 
   // Quick-Inspect Drawer state
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
@@ -107,9 +110,15 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
         return false;
       }
 
+      // Hide NO_TRADE setups (fee drag > 1.25% or net R:R < 1.6)
+      if (hideNoTrade) {
+        const friction = computeTicketFriction(item.close, ticketSize);
+        if (!friction.isExecutable) return false;
+      }
+
       return true;
     });
-  }, [candidates, search, selectedSector, minRoe, maxDe, onlyAbove200Sma, excludeFinancials, onlyWatchlist]);
+  }, [candidates, search, selectedSector, minRoe, maxDe, onlyAbove200Sma, excludeFinancials, onlyWatchlist, hideNoTrade, ticketSize]);
 
   return (
     <>
@@ -246,7 +255,39 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
               {maxDe === 0.5 ? "✓ D/E < 0.5" : "D/E < 0.5"}
             </button>
 
-            {(minRoe > 0 || maxDe < 999 || onlyAbove200Sma || excludeFinancials || onlyWatchlist || search || selectedSector !== "All") && (
+            {/* Ticket Size Selector */}
+            <div className="flex items-center gap-1 bg-[#040711] border border-white/[0.08] px-2 py-0.5 rounded text-[11px] font-mono">
+              <span className="text-[10px] text-slate-400 font-semibold">Ticket:</span>
+              {TICKET_SIZES.map((size) => (
+                <button
+                  key={size}
+                  onClick={() => setTicketSize(size)}
+                  className={`px-1.5 py-0.2 rounded text-[10px] font-mono transition-colors ${
+                    ticketSize === size
+                      ? "bg-cyan-950 text-cyan-300 border border-cyan-500/50 font-bold"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  ₹{(size / 1000).toFixed(size % 1000 !== 0 ? 1 : 0)}k
+                </button>
+              ))}
+            </div>
+
+            {/* Hide NO_TRADE Toggle */}
+            <button
+              onClick={() => setHideNoTrade(!hideNoTrade)}
+              className={`px-2 py-0.5 rounded text-[11px] font-mono whitespace-nowrap transition-all flex items-center gap-1.5 border ${
+                hideNoTrade
+                  ? "bg-amber-950/90 border-amber-500/60 text-amber-200 font-bold"
+                  : "bg-[#040711] border-white/[0.06] text-slate-400 hover:text-slate-200"
+              }`}
+              title="Hide setups with fee drag > 1.25% or net R:R < 1.6 due to ₹23.60 DP fee"
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${hideNoTrade ? "bg-amber-400" : "bg-slate-600"}`} />
+              <span>{hideNoTrade ? "✓ Hide NO_TRADE" : "Hide NO_TRADE"}</span>
+            </button>
+
+            {(minRoe > 0 || maxDe < 999 || onlyAbove200Sma || excludeFinancials || onlyWatchlist || search || selectedSector !== "All" || hideNoTrade) && (
               <button
                 onClick={() => {
                   setMinRoe(0);
@@ -256,6 +297,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
                   setOnlyWatchlist(false);
                   setSelectedSector("All");
                   setSearch("");
+                  setHideNoTrade(false);
                 }}
                 className="px-2 py-0.5 text-[11px] text-rose-400 hover:text-rose-300 underline underline-offset-2 ml-auto"
               >
@@ -274,6 +316,9 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
                 <th scope="col" className="sticky left-10 bg-[#070c18] z-20 shadow-[2px_0_10px_-2px_rgba(0,0,0,0.8)] py-2 px-3.5 min-w-[180px]">Symbol / Name</th>
                 <th scope="col" className="py-2 px-3">Sector</th>
                 <th scope="col" className="py-2 px-3 text-right">Close (₹)</th>
+                <th scope="col" className="py-2 px-2.5 text-right font-mono" title="Angel One Roundtrip Fee Drag % (including ₹23.60 DP fee)">Fee Drag</th>
+                <th scope="col" className="py-2 px-2.5 text-right font-mono" title="Post-Cost Net Reward-to-Risk">Net R:R</th>
+                <th scope="col" className="py-2 px-2.5 text-center font-mono" title="DP Fee Drag Gate">DP Gate</th>
                 <th scope="col" className="py-2 px-3 text-right">200 SMA</th>
                 <th scope="col" className="py-2 px-3 text-right">D/E</th>
                 <th scope="col" className="py-2 px-3 text-right">ROE %</th>
@@ -287,12 +332,12 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
               {loading ? (
                 [1, 2, 3, 4, 5, 6, 7].map(i => (
                   <tr key={i} className="h-10 animate-pulse bg-[#060a14]">
-                    <td colSpan={11} className="py-2 px-4 bg-white/[0.02]" />
+                    <td colSpan={14} className="py-2 px-4 bg-white/[0.02]" />
                   </tr>
                 ))
               ) : filteredCandidates.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-slate-500 font-mono">
+                  <td colSpan={14} className="py-8 text-center text-slate-500 font-mono">
                     No securities match the selected screening criteria.
                   </td>
                 </tr>
@@ -301,6 +346,7 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
                   {filteredCandidates.map((c, idx) => {
                     const score = c.composite_score || 0;
                     const rowBg = idx % 2 === 0 ? "bg-[#060a14]/70" : "bg-[#04070e]/85";
+                    const friction = computeTicketFriction(c.close, ticketSize);
 
                     return (
                       <motion.tr
@@ -353,6 +399,37 @@ export default function ScreenerTable({ candidates, asOfDate, loading }: Screene
                         {/* Close Price */}
                         <td className="py-1.5 px-3 text-right font-bold text-slate-100 font-mono tabular-nums text-[13px]">
                           {c.close !== null ? `₹${c.close.toFixed(2)}` : "—"}
+                        </td>
+
+                        {/* Fee Drag % */}
+                        <td className="py-1.5 px-2.5 text-right font-mono tabular-nums text-[12px]">
+                          <span className={friction.feeDragPct <= 1.25 ? "text-emerald-400 font-semibold" : "text-rose-400 font-medium"}>
+                            {friction.shares > 0 ? `${friction.feeDragPct.toFixed(2)}%` : "N/A"}
+                          </span>
+                        </td>
+
+                        {/* Net R:R */}
+                        <td className="py-1.5 px-2.5 text-right font-mono tabular-nums text-[12px]">
+                          <span className={friction.netRR >= 1.6 ? "text-emerald-400 font-bold" : "text-amber-400 font-medium"}>
+                            {friction.shares > 0 ? `${friction.netRR.toFixed(2)}` : "—"}
+                          </span>
+                        </td>
+
+                        {/* DP Gate */}
+                        <td className="py-1.5 px-2.5 text-center">
+                          {friction.status === "EXECUTABLE" ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40">
+                              EXECUTABLE
+                            </span>
+                          ) : friction.status === "NO_TRADE (DP DRAG)" ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-950/80 text-rose-300 border border-rose-500/40" title="Fee drag > 1.25% or Net R:R < 1.6 due to ₹23.60 DP fee">
+                              NO_TRADE (DP)
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-900 text-slate-400 border border-white/[0.08]">
+                              PRICE &gt; TICKET
+                            </span>
+                          )}
                         </td>
 
                         {/* 200 SMA */}

@@ -124,6 +124,10 @@ def sanitize_for_json(obj: Any) -> Any:
         s_clean = obj.where(pd.notnull(obj), None)
         return sanitize_for_json(s_clean.to_dict())
 
+    # Handle Booleans and Numpy Booleans (must precede int check since bool subclasses int)
+    if isinstance(obj, (bool, np.bool_)):
+        return bool(obj)
+
     # Handle Floats and Numpy Floats
     if isinstance(obj, (float, np.floating)):
         if math.isnan(obj) or math.isinf(obj):
@@ -133,10 +137,6 @@ def sanitize_for_json(obj: Any) -> Any:
     # Handle Integers and Numpy Integers
     if isinstance(obj, (int, np.integer)):
         return int(obj)
-
-    # Handle Booleans and Numpy Booleans
-    if isinstance(obj, (bool, np.bool_)):
-        return bool(obj)
 
     # Handle Dictionaries
     if isinstance(obj, dict):

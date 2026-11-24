@@ -1590,5 +1590,129 @@ export function getTradebookExportUrl(): string {
   return `${getPortfolioProxyBase()}/tradebook/export`;
 }
 
+export interface TraderDNAProfile {
+  total_capital: number;
+  realized_net_pnl: number;
+  realized_gross_pnl: number;
+  total_trade_taxes: number;
+  total_dp_charges: number;
+  total_friction: number;
+  fee_drag_pct: number;
+  total_trades: number;
+  win_count: number;
+  winning_trades: number;
+  loss_count: number;
+  losing_trades: number;
+  win_rate_pct: number;
+  avg_ticket_size: number;
+  avg_breakeven_pct: number;
+  median_hold_days: number;
+  early_exit_rate_pct: number;
+  max_drawdown: number;
+  half_size_guard: boolean;
+  size_multiplier: number;
+  avg_hold_days_winners: number;
+  avg_hold_days_losers: number;
+  holding_window_bias: string;
+  win_rate_under_3d: number;
+  win_rate_5_to_15d: number;
+  consecutive_losses: number;
+  consecutive_loss_streak: number;
+  last_loss_amount: number;
+  last_loss_date?: string | null;
+  cooldown_active: boolean;
+  defensive_cooldown_active: boolean;
+  cooldown_reasons: string[];
+  max_ticket_allowed: number;
+  coaching_badge: string;
+  open_positions: Array<{
+    symbol: string;
+    isin?: string;
+    scrip_name?: string;
+    qty: number;
+    quantity: number;
+    avg_buy_price: number;
+    buy_value: number;
+    live_ltp: number;
+    unrealized_pnl: number;
+    unrealized_pct: number;
+    breakeven_price: number;
+    points_to_breakeven: number;
+  }>;
+  total_unrealized_pnl: number;
+}
+
+export interface TournamentCandidate {
+  candidate_id: string;
+  candidate_name: string;
+  cpcv_mean_sharpe: number;
+  baseline_net_sharpe: number;
+  excess_sharpe_vs_baseline: number;
+  deflated_sharpe_ratio: number;
+  sharpe_star_hurdle: number;
+  abstention_rate: number;
+  traded_signals_count: number;
+  abstained_signals_count: number;
+  promotion_status: string;
+  mean_return: number;
+  std_return: number;
+  skewness: number;
+  excess_kurtosis: number;
+  p05_return: number;
+  p50_return: number;
+  p95_return: number;
+}
+
+export interface TournamentSummary {
+  run_id?: string;
+  created_at?: string;
+  horizon_days?: number;
+  n_splits?: number;
+  n_test_splits?: number;
+  cpcv_combinations?: number;
+  min_meta_prob?: number;
+  reference_ticket?: number;
+  status?: string;
+  active_champion: string;
+  promotion_verdict: string;
+  baseline: {
+    name: string;
+    mean_net_sharpe: number;
+    split_sharpes?: number[];
+    total_signals?: number;
+    mean_return?: number;
+    std_return?: number;
+    skewness?: number;
+    excess_kurtosis?: number;
+    p05_return?: number;
+    p50_return?: number;
+    p95_return?: number;
+  };
+  candidates: TournamentCandidate[];
+  champion: TournamentCandidate;
+  holdout_net_sharpe?: number;
+}
+
+export async function fetchTraderDNAProfile(): Promise<TraderDNAProfile> {
+  const url = `${getPortfolioProxyBase()}/trader-dna`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to fetch Trader DNA (${res.status}): ${errorText}`);
+  }
+  return (await res.json()) as TraderDNAProfile;
+}
+
+export async function fetchTournamentSummary(): Promise<TournamentSummary> {
+  const url = `${API_BASE}/models/tournament`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to fetch Tournament Summary (${res.status}): ${errorText}`);
+  }
+  return (await res.json()) as TournamentSummary;
+}
+
+
 
 
