@@ -75,16 +75,24 @@ def parse_args():
         default="data/models/tournament_summary.json",
         help="Output path for tournament summary JSON (default: data/models/tournament_summary.json)"
     )
+    parser.add_argument(
+        "--feature-set",
+        type=str,
+        choices=["baseline_8", "alpha_v2_flow_pead"],
+        default="alpha_v2_flow_pead",
+        help="Feature set selection for tournament: 'baseline_8' or 'alpha_v2_flow_pead' (default: alpha_v2_flow_pead)"
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     logger.info("=" * 70)
-    logger.info("MARKET INTELLIGENCE LAB 2.0 — PHASE 3 MODEL TOURNAMENT ENGINE")
+    logger.info("MARKET INTELLIGENCE LAB 2.0 — MODEL TOURNAMENT ENGINE")
     logger.info("=" * 70)
     logger.info(f"Configuration: Horizon={args.horizon}d | Splits={args.n_splits} | TestSplits={args.n_test_splits}")
-    logger.info(f"Meta-Gating Hurdle={args.min_meta_prob:.2f} | Ref Ticket=₹{args.reference_ticket:,.2f} | Holdout={args.holdout_sessions}d")
+    logger.info(f"Feature Set={args.feature_set} | Meta-Gating Hurdle={args.min_meta_prob:.2f}")
+    logger.info(f"Ref Ticket=₹{args.reference_ticket:,.2f} | Holdout={args.holdout_sessions}d")
 
     db = DatabaseManager()
     runner = TwoStageTournamentRunner(
@@ -95,7 +103,8 @@ def main():
         min_meta_prob=args.min_meta_prob,
         reference_ticket=args.reference_ticket,
         holdout_sessions=args.holdout_sessions,
-        summary_path=args.summary_path
+        summary_path=args.summary_path,
+        feature_set=args.feature_set
     )
 
     logger.info("Initiating dataset extraction and feature matrix preparation...")
@@ -111,9 +120,11 @@ def main():
     champion = summary.get("champion", {})
 
     print("\n" + "=" * 80)
-    print("PHASE 3 TOURNAMENT EXECUTION REPORT SUMMARY")
+    print("MIL 2.0 TOURNAMENT EXECUTION REPORT SUMMARY")
     print("=" * 80)
     print(f"Run ID:                {summary.get('run_id')}")
+    print(f"Feature Set:           {summary.get('feature_set', args.feature_set)} ({summary.get('feature_count', len(runner.feature_cols))} features)")
+    print(f"Friction Drag:         {summary.get('friction_drag_rate', runner.friction_drag_rate) * 100:.2f}% (Angel One delivery schedule @ ₹{args.reference_ticket:,.0f})")
     print(f"CPCV Combinations:     {summary.get('cpcv_combinations')} splits (5 complete out-of-sample paths)")
     print(f"Holdout Net Sharpe:    {summary.get('holdout_net_sharpe')}")
     print(f"Promotion Verdict:     {summary.get('promotion_verdict')}")

@@ -25,14 +25,26 @@ import pandas as pd
 from scipy.stats import spearmanr, pearsonr
 from sklearn.linear_model import Ridge, ElasticNet, RidgeClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import HistGradientBoostingRegressor, HistGradientBoostingClassifier
+from sklearn.ensemble import (
+    HistGradientBoostingRegressor,
+    HistGradientBoostingClassifier,
+    GradientBoostingClassifier,
+    ExtraTreesClassifier
+)
 from src.ml.triple_barrier import TripleBarrierLabeler, TripleBarrierEvent
 from src.quant.validation import CombinatorialPurgedCV, deflated_sharpe_ratio
 from src.portfolio.fee_engine import (
     calculate_roundtrip_friction,
     ANGEL_ONE_DP_CHARGE,
-    PROFILE_ZERO,
-    DEFAULT_HURDLE_RATE
+    PROFILE_ZERO
+)
+from src.ml.features.institutional_flow import (
+    calculate_institutional_flow_features,
+    FLOW_FEATURE_COLUMNS
+)
+from src.ml.features.pead_engine import (
+    calculate_pead_features,
+    PEAD_FEATURE_COLUMNS
 )
 from src.storage.durable_state import mark_state_dirty
 from src.storage.database import DatabaseManager
@@ -52,6 +64,24 @@ FEATURE_COLUMNS_8 = [
     "relative_strength_nifty",
     "news_sentiment_7d"
 ]
+
+FEATURE_COLUMNS_FLOW = FLOW_FEATURE_COLUMNS
+FEATURE_COLUMNS_PEAD = PEAD_FEATURE_COLUMNS
+FEATURE_COLUMNS_ALPHA_V2 = FEATURE_COLUMNS_8 + FEATURE_COLUMNS_FLOW + FEATURE_COLUMNS_PEAD
+
+
+def get_canonical_roundtrip_friction_rate(ticket: float = 5000.0, profile: str = PROFILE_ZERO) -> float:
+    """
+    Computes exact percentage fee drag for a reference order turnover
+    using the canonical Angel One delivery fee engine (₹23.60 DP + statutory taxes).
+    """
+    rt = calculate_roundtrip_friction(
+        buy_turnover=max(1.0, float(ticket)),
+        sell_turnover=max(1.0, float(ticket)),
+        profile=profile,
+        dp_override=ANGEL_ONE_DP_CHARGE
+    )
+    return round(float(rt.fee_drag_pct / 100.0), 6)
 
 
 # Thread-safe in-memory cache for ML inference (15-min TTL)
@@ -138,13 +168,16 @@ class WalkForwardMLTrainer:
         self.summary_path = Path(summary_path)
         self.archive_path = Path(archive_path)
 
-    def extract_training_dataset(self, horizon_days: int = 20) -> pd.DataFrame:
+    def extract_training_dataset(self, horizon_days: int = 20, feature_set: str = "alpha_v2_flow_pead") -> pd.DataFrame:
         """
         Extracts historical multi-asset panel:
         1. If 10-year .milz columnar archive exists, streams in 150-symbol chunks with memory-safe gc.
         2. Otherwise falls back to SQLite factors_daily or quant_factors_daily joined with ohlcv_daily.
-        Computes forward excess returns: y_{t,h} = (Close_{t+h} / Close_t) - 1.0.
+        Computes forward excess returns net of exact Angel One delivery friction:
+        y_{t,h} = (Close_{t+h} / Close_t) - 1.0 - bench - friction_drag.
         """
+        friction_drag = get_canonical_roundtrip_friction_rate(5000.0)
+
         # 1. Check for 10-year .milz columnar archive first
         if self.archive_path and self.archive_path.exists():
             try:
@@ -161,7 +194,7 @@ class WalkForwardMLTrainer:
                         chunk_df["forward_close"] = chunk_df.groupby("symbol")["close"].shift(-horizon_days)
                         raw_fwd = (chunk_df["forward_close"] / chunk_df["close"]) - 1.0
                         bench_fwd = raw_fwd.groupby(chunk_df["trading_date"]).transform("median")
-                        chunk_df["forward_return"] = (raw_fwd - bench_fwd) - DEFAULT_HURDLE_RATE  # ADR-0008: Excess return net of statutory friction
+                        chunk_df["forward_return"] = (raw_fwd - bench_fwd) - friction_drag  # Exact Angel One delivery fee drag
 
                         # Fast returns
                         chunk_df["ret_1d"] = chunk_df.groupby("symbol")["close"].pct_change(1).fillna(0.0)
@@ -210,7 +243,12 @@ class WalkForwardMLTrainer:
                         for feat in FEATURE_COLUMNS_8:
                             df[feat] = df.groupby("trading_date")[feat].rank(pct=True).fillna(0.5).astype(np.float32)
 
-                        df = df.dropna(subset=["forward_return"] + FEATURE_COLUMNS_8).reset_index(drop=True)
+                        if feature_set == "alpha_v2_flow_pead":
+                            df = self.enrich_flow_and_pead_features(df)
+
+                        req_cols = ["forward_return"] + (FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8)
+                        avail_req = [c for c in req_cols if c in df.columns]
+                        df = df.dropna(subset=avail_req).reset_index(drop=True)
                         if len(df) >= 100:
                             return df
             except Exception as milz_err:
@@ -268,11 +306,11 @@ class WalkForwardMLTrainer:
         if df.empty or len(df) < 100:
             return pd.DataFrame()
 
-        # Compute forward return target per symbol (ADR-0008: Excess return net of statutory friction)
+        # Compute forward return target per symbol net of exact Angel One delivery friction
         df["forward_close"] = df.groupby("symbol")["close"].shift(-horizon_days)
         raw_fwd = (df["forward_close"] / df["close"]) - 1.0
         bench_fwd = raw_fwd.groupby(df["trading_date"]).transform("median")
-        df["forward_return"] = (raw_fwd - bench_fwd) - DEFAULT_HURDLE_RATE
+        df["forward_return"] = (raw_fwd - bench_fwd) - friction_drag
 
         # Construct 8 standardized features
         safe_vol = np.maximum(df["volatility_20d"], 0.05)
@@ -303,9 +341,66 @@ class WalkForwardMLTrainer:
         for feat in FEATURE_COLUMNS_8:
             df[feat] = df.groupby("trading_date")[feat].rank(pct=True).fillna(0.5)
 
-        # Drop rows missing forward target
-        df = df.dropna(subset=["forward_return"] + FEATURE_COLUMNS_8).reset_index(drop=True)
+        if feature_set == "alpha_v2_flow_pead":
+            df = self.enrich_flow_and_pead_features(df)
+
+        req_cols = ["forward_return"] + (FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8)
+        avail_req = [c for c in req_cols if c in df.columns]
+        df = df.dropna(subset=avail_req).reset_index(drop=True)
         return df
+
+    def enrich_flow_and_pead_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Enriches dataset with institutional delivery flow features and PIT PEAD surprise metrics.
+        """
+        if df.empty or "symbol" not in df.columns or "trading_date" not in df.columns:
+            return df
+
+        enriched = df.copy()
+
+        # 1. Flow features
+        try:
+            flow_df = calculate_institutional_flow_features(enriched, drop_non_trading=False)
+            flow_cols_to_merge = [c for c in FLOW_FEATURE_COLUMNS if c in flow_df.columns]
+            enriched = enriched.merge(
+                flow_df[["symbol", "trading_date"] + flow_cols_to_merge],
+                on=["symbol", "trading_date"],
+                how="left"
+            )
+        except Exception as e:
+            logger.warning(f"[ML-TRAINER] Flow feature calculation fallback: {e}")
+            for col in FLOW_FEATURE_COLUMNS:
+                if col not in enriched.columns:
+                    enriched[col] = 0.0
+
+        # 2. PEAD features
+        try:
+            with self.db.get_connection() as conn:
+                fin_sql = """
+                SELECT symbol, period_end_date, filing_date, eps, revenue, ebitda, net_profit, 'OBSERVED_TIMESTAMP' as pit_provenance
+                FROM financial_statements_quarterly
+                """
+                fin_df = pd.read_sql_query(fin_sql, conn)
+            
+            if not fin_df.empty:
+                pead_df = calculate_pead_features(enriched[["symbol", "trading_date"]], fin_df)
+                pead_cols_to_merge = [c for c in PEAD_FEATURE_COLUMNS if c in pead_df.columns]
+                enriched = enriched.merge(
+                    pead_df[["symbol", "trading_date"] + pead_cols_to_merge],
+                    on=["symbol", "trading_date"],
+                    how="left"
+                )
+        except Exception as e:
+            logger.warning(f"[ML-TRAINER] PEAD feature calculation fallback: {e}")
+
+        # Ensure all columns exist and fill NaNs
+        for col in FLOW_FEATURE_COLUMNS + PEAD_FEATURE_COLUMNS:
+            if col not in enriched.columns:
+                enriched[col] = 0.0
+            else:
+                enriched[col] = enriched[col].fillna(0.0)
+
+        return enriched
 
     def run_training_tournament(
         self,
@@ -862,7 +957,8 @@ class TwoStageTournamentRunner:
         min_meta_prob: float = 0.55,
         reference_ticket: float = 5000.0,
         holdout_sessions: int = 252,
-        summary_path: str = "data/models/tournament_summary.json"
+        summary_path: str = "data/models/tournament_summary.json",
+        feature_set: str = "baseline_8"
     ):
         self.db = db or DatabaseManager()
         self.horizon_days = int(horizon_days)
@@ -872,6 +968,9 @@ class TwoStageTournamentRunner:
         self.reference_ticket = float(reference_ticket)
         self.holdout_sessions = int(holdout_sessions)
         self.summary_path = Path(summary_path)
+        self.feature_set = feature_set
+        self.feature_cols = FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8
+        self.friction_drag_rate = get_canonical_roundtrip_friction_rate(self.reference_ticket)
         self.labeler = TripleBarrierLabeler(
             db=self.db,
             horizon_sessions=self.horizon_days,
@@ -899,15 +998,22 @@ class TwoStageTournamentRunner:
             df = df[df["data_status"] != "SECTOR_ESTIMATE"].copy()
 
         # Ensure features are present
-        for feat in FEATURE_COLUMNS_8:
+        for feat in self.feature_cols:
             if feat not in df.columns:
-                df[feat] = 0.5
+                df[feat] = 0.5 if feat in FEATURE_COLUMNS_8 else 0.0
 
         if "trading_date" in df.columns:
             df = df.sort_values("trading_date").reset_index(drop=True)
 
         if "net_return" not in df.columns:
-            df["net_return"] = df.get("forward_return", pd.Series(0.0, index=df.index))
+            if "forward_return" in df.columns:
+                df["net_return"] = df["forward_return"]
+            elif "forward_close" in df.columns and "close" in df.columns:
+                raw_fwd = (df["forward_close"] / df["close"]) - 1.0
+                df["net_return"] = raw_fwd - self.friction_drag_rate
+            else:
+                df["net_return"] = 0.0
+
         if "label" not in df.columns:
             df["label"] = np.where(df["net_return"] > 0.0025, 1, np.where(df["net_return"] < -0.0025, -1, 0))
 
@@ -1028,19 +1134,27 @@ class TwoStageTournamentRunner:
         baseline_net_sharpe: float
     ) -> List[Dict[str, Any]]:
         """
-        Trains and benchmarks Candidate A (Ridge + Meta-Calibrator) vs Candidate B (HGB + Meta-Calibrator)
-        using two-stage meta-labeling and Deflated Sharpe Ratio calculation across M=2 trials.
+        Trains and benchmarks Candidate A (Ridge + Meta-Calibrator), Candidate B (HGB + Meta-Calibrator),
+        and Candidate C (ExtraTrees + Meta-Calibrator) using two-stage meta-labeling and
+        Deflated Sharpe Ratio calculation across M=3 trials.
         """
-        feature_cols = [c for c in FEATURE_COLUMNS_8 if c in dev_df.columns]
+        feature_cols = [c for c in self.feature_cols if c in dev_df.columns]
         X = dev_df[feature_cols].values
         # Directional binary target for Stage 1 (+1 if net_return > 0 else 0)
         y = (dev_df["label"] > 0).astype(int).values if "label" in dev_df.columns else (dev_df["forward_return"] > 0).astype(int).values
         net_returns = dev_df["net_return"].values if "net_return" in dev_df.columns else dev_df.get("forward_return", pd.Series(0.0, index=dev_df.index)).values
 
-        candidates = [
-            {"id": "candidate_ridge_meta", "name": "RidgeClassifier + MetaCalibrator", "type": "RIDGE"},
-            {"id": "candidate_hgb_meta", "name": "HistGradientBoosting + MetaCalibrator", "type": "HGB"}
-        ]
+        if self.feature_set == "alpha_v2_flow_pead":
+            candidates = [
+                {"id": "candidate_ridge_meta", "name": "RidgeClassifier + MetaCalibrator", "type": "RIDGE"},
+                {"id": "candidate_hgb_meta", "name": "HistGradientBoosting + MetaCalibrator", "type": "HGB"},
+                {"id": "candidate_extratrees_meta", "name": "ExtraTreesClassifier + MetaCalibrator", "type": "EXTRA_TREES"}
+            ]
+        else:
+            candidates = [
+                {"id": "candidate_ridge_meta", "name": "RidgeClassifier + MetaCalibrator", "type": "RIDGE"},
+                {"id": "candidate_hgb_meta", "name": "HistGradientBoosting + MetaCalibrator", "type": "HGB"}
+            ]
         results = []
 
         for cand in candidates:
@@ -1060,8 +1174,13 @@ class TwoStageTournamentRunner:
                     m1.fit(X_train, y_train)
                     p1_train = m1.predict(X_train)
                     p1_test = m1.predict(X_test)
-                else:
+                elif cand["type"] == "HGB":
                     m1 = HistGradientBoostingClassifier(max_iter=40, max_leaf_nodes=15, min_samples_leaf=10, random_state=42)
+                    m1.fit(X_train, y_train)
+                    p1_train = m1.predict(X_train)
+                    p1_test = m1.predict(X_test)
+                else:
+                    m1 = ExtraTreesClassifier(n_estimators=30, max_depth=6, min_samples_leaf=10, random_state=42, n_jobs=1)
                     m1.fit(X_train, y_train)
                     p1_train = m1.predict(X_train)
                     p1_test = m1.predict(X_test)
@@ -1108,7 +1227,7 @@ class TwoStageTournamentRunner:
             total_evals = max(1, traded_count + abstained_count)
             abstention_rate = round(abstained_count / total_evals, 4)
 
-            # 4. Deflated Sharpe Ratio (accounting for M=2 trials and sample size)
+            # 4. Deflated Sharpe Ratio (accounting for M=3 trials and sample size)
             if cand_test_returns and len(cand_test_returns) >= 5:
                 dsr_metrics = deflated_sharpe_ratio(
                     returns=cand_test_returns,
@@ -1161,7 +1280,7 @@ class TwoStageTournamentRunner:
         df: Optional[pd.DataFrame] = None
     ) -> Dict[str, Any]:
         """
-        Executes complete Phase 3 tournament:
+        Executes complete Phase 3 / Phase 7 tournament:
         1. Prepares verified feature matrix (excluding SECTOR_ESTIMATE and Trader DNA).
         2. Sets up 15 Combinatorial Purged CV folds.
         3. Benchmarks deterministic rule-based baseline.
@@ -1170,7 +1289,7 @@ class TwoStageTournamentRunner:
         """
         if df is None:
             trainer = WalkForwardMLTrainer(db=self.db)
-            raw_data = trainer.extract_training_dataset(horizon_days=self.horizon_days)
+            raw_data = trainer.extract_training_dataset(horizon_days=self.horizon_days, feature_set=self.feature_set)
         else:
             raw_data = df
 
@@ -1199,12 +1318,15 @@ class TwoStageTournamentRunner:
             holdout_sharpe = round(best_cand["cpcv_mean_sharpe"] * 0.9, 4)
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        run_id = f"run_phase3_{self.horizon_days}d_{uuid.uuid4().hex[:8]}"
+        run_id = f"run_phase7_{self.horizon_days}d_{uuid.uuid4().hex[:8]}"
 
         summary_payload = {
             "run_id": run_id,
             "created_at": now_iso,
             "horizon_days": self.horizon_days,
+            "feature_set": self.feature_set,
+            "feature_count": len(self.feature_cols),
+            "friction_drag_rate": self.friction_drag_rate,
             "n_splits": self.n_splits,
             "n_test_splits": self.n_test_splits,
             "cpcv_combinations": len(cv_splits),
