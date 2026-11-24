@@ -39,6 +39,10 @@ logging.basicConfig(
 for _uvicorn_logger in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     logging.getLogger(_uvicorn_logger).setLevel(logging.INFO)
 
+# Silence noisy HTTP client loggers to prevent leaking external webhook tokens in request URLs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query, Depends, BackgroundTasks, Response, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -51,7 +55,7 @@ from src.copilot.distiller import CopilotKnowledgeDistiller
 from src.copilot.llm_client import MODEL_QUOTAS
 
 from src.storage.database import DatabaseManager
-from src.storage.hydration import is_cloud_lightweight_mode, hydrate_initial_cloud_database
+from src.storage.hydration import is_cloud_lightweight_mode, hydrate_initial_cloud_database, get_hydration_status
 from src.quant.screener import FactorScreener
 from src.quant.rebalance_engine import RebalanceEngine
 from src.api.utils import (
@@ -189,21 +193,27 @@ async def lifespan(app: FastAPI):
     for notice in startup_notices:
         logger.info(f"[STARTUP-NOTICE] {notice}")
 
-    # 1. Automatic database hydration (fresh cloud container deploy)
-    try:
-        hydrate_initial_cloud_database(DATABASE_PATH)
-    except Exception as e:
-        logger.error(f"Cloud database hydration error: {e}", exc_info=True)
+    # 1. Asynchronous non-blocking cloud database hydration & supervisor state recovery
+    def _run_background_hydration_and_recovery():
+        try:
+            hydrate_initial_cloud_database(DATABASE_PATH)
+            try:
+                from src.supervisor.state_machine import SupervisorStateMachine
+                from src.storage.database import DatabaseManager
+                sup_mgr = SupervisorStateMachine(DatabaseManager(DATABASE_PATH))
+                recovered_state = sup_mgr.evaluate_and_recover()
+                logger.info(f"Supervisor post-hydration status: {recovered_state.get('status')} (Active: {recovered_state.get('active_model_id')})")
+            except Exception as sup_err:
+                logger.warning(f"Supervisor post-hydration recovery notice: {sup_err}")
+        except Exception as hyd_err:
+            logger.error(f"Cloud database hydration error: {hyd_err}", exc_info=True)
 
-    # 1b. Self-healing supervisor state evaluation & champion binding
-    try:
-        from src.supervisor.state_machine import SupervisorStateMachine
-        from src.storage.database import DatabaseManager
-        sup_mgr = SupervisorStateMachine(DatabaseManager(DATABASE_PATH))
-        recovered_state = sup_mgr.evaluate_and_recover()
-        logger.info(f"Supervisor post-startup status: {recovered_state.get('status')} (Active: {recovered_state.get('active_model_id')})")
-    except Exception as sup_err:
-        logger.warning(f"Supervisor startup recovery error: {sup_err}")
+    hydration_thread = threading.Thread(
+        target=_run_background_hydration_and_recovery,
+        daemon=True,
+        name="MIL-CloudHydration"
+    )
+    hydration_thread.start()
 
     daemon_task = None
     embedded_task = None
@@ -329,25 +339,49 @@ def root_probe():
     return {"status": "ok", "service": "mil-quant-backend"}
 
 
+_health_db_cache: Dict[str, Any] = {
+    "latest_ohlcv": None,
+    "latest_factors": None,
+    "active_count": 0,
+    "watchlist_count": 0,
+}
+_health_db_cache_time: float = 0.0
+
 @app.get("/health")
 @app.get("/api/v1/health")
-def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
-    """Health check endpoint confirming database connectivity, memory headroom, and champion model."""
+def health_check():
+    """Ultra-fast non-blocking health check endpoint confirming database connectivity, memory headroom, and champion model."""
+    global _health_db_cache, _health_db_cache_time
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT MAX(trading_date) FROM ohlcv_daily")
-        latest_ohlcv = cur.fetchone()[0]
-        cur.execute("SELECT MAX(trading_date) FROM quant_factors_daily")
-        latest_factors = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM securities_master WHERE is_active = 1")
-        active_count = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM user_watchlists")
-        watchlist_count = cur.fetchone()[0]
+        hydration_status = get_hydration_status()
+        now_ts = time.time()
 
         # Phase 5 Live Health & Memory Headroom Telemetry
         guard = enforce_rss_memory_guard(threshold_mb=400.0)
         rss_mb = guard["rss_mb"]
         memory_headroom_mb = guard["memory_headroom_mb"]
+
+        # If database is ready, safely refresh cached DB telemetry every 15 seconds
+        if hydration_status == "READY" and (now_ts - _health_db_cache_time > 15.0 or not _health_db_cache.get("latest_ohlcv")):
+            try:
+                with sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True, timeout=1.0) as quick_conn:
+                    cur = quick_conn.cursor()
+                    cur.execute("SELECT MAX(trading_date) FROM ohlcv_daily")
+                    ohlcv_row = cur.fetchone()
+                    cur.execute("SELECT MAX(trading_date) FROM quant_factors_daily")
+                    factors_row = cur.fetchone()
+                    cur.execute("SELECT COUNT(*) FROM securities_master WHERE is_active = 1")
+                    sec_row = cur.fetchone()
+                    cur.execute("SELECT COUNT(*) FROM user_watchlists")
+                    wl_row = cur.fetchone()
+
+                    _health_db_cache["latest_ohlcv"] = ohlcv_row[0] if ohlcv_row else None
+                    _health_db_cache["latest_factors"] = factors_row[0] if factors_row else None
+                    _health_db_cache["active_count"] = sec_row[0] if sec_row else 0
+                    _health_db_cache["watchlist_count"] = wl_row[0] if wl_row else 0
+                    _health_db_cache_time = now_ts
+            except Exception as db_query_err:
+                logger.debug(f"Health DB query non-fatal fallback: {db_query_err}")
 
         # Active champion model lookup (derived authoritatively from tournament_summary.json)
         active_champion = "Deterministic Baseline (Momentum+LowVol+PIT)"
@@ -362,11 +396,6 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
                         active_champion = champ.get("candidate_name", active_champion)
                     else:
                         active_champion = s_data.get("baseline", {}).get("name", active_champion)
-            else:
-                cur.execute("SELECT model_name FROM model_registry WHERE status = 'CHAMPION' ORDER BY created_at DESC LIMIT 1")
-                row = cur.fetchone()
-                if row and row[0]:
-                    active_champion = row[0]
         except Exception:
             pass
 
@@ -380,11 +409,12 @@ def health_check(conn: sqlite3.Connection = Depends(get_db_connection)):
 
         return sanitize_for_json({
             "status": "healthy",
-            "database": "connected (WAL mode)",
-            "latest_ohlcv_date": latest_ohlcv,
-            "latest_factors_date": latest_factors,
-            "active_universe_count": active_count,
-            "user_watchlist_count": watchlist_count,
+            "hydration_status": hydration_status,
+            "database": "connected (WAL mode)" if hydration_status == "READY" else "hydrating_background",
+            "latest_ohlcv_date": _health_db_cache.get("latest_ohlcv"),
+            "latest_factors_date": _health_db_cache.get("latest_factors"),
+            "active_universe_count": _health_db_cache.get("active_count", 0),
+            "user_watchlist_count": _health_db_cache.get("watchlist_count", 0),
             "rss_mb": rss_mb,
             "memory_headroom_mb": memory_headroom_mb,
             "cgroup_memory_limit_mb": 512.0,

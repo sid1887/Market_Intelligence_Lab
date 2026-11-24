@@ -162,6 +162,36 @@ class TestPostPhase7Hotfix(unittest.TestCase):
         self.assertEqual(pead_res["is_observed_pead"].sum(), 0)
         self.assertEqual(pead_res["pead_reaction_score"].sum(), 0.0)
 
+    def test_non_blocking_health_check_latency_and_hydration_status(self):
+        """Verifies /api/v1/health exposes hydration_status and responds in < 25ms without SQLite locking."""
+        from src.storage.hydration import get_hydration_status
+        status = get_hydration_status()
+        self.assertIn(status, ("HYDRATING", "READY", "INITIALIZING"))
+
+        # Measure 5 consecutive health checks
+        latencies = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            resp = self.client.get("/api/v1/health")
+            latencies.append((time.perf_counter() - t0) * 1000.0)
+            self.assertEqual(resp.status_code, 200)
+
+        data = resp.json()
+        self.assertIn("hydration_status", data)
+        self.assertIn(data["hydration_status"], ("HYDRATING", "READY"))
+        avg_lat = sum(latencies) / len(latencies)
+        self.assertLess(avg_lat, 25.0, f"Average health latency {avg_lat:.2f} ms exceeds 25.0 ms target")
+
+    def test_supervisor_recovers_to_deterministic_baseline(self):
+        """Verifies supervisor state machine recognizes Deterministic Baseline as valid NORMAL state."""
+        from src.supervisor.state_machine import SupervisorStateMachine
+        sup_mgr = SupervisorStateMachine(self.db)
+        state = sup_mgr.evaluate_and_recover()
+        self.assertEqual(state["status"], "NORMAL")
+        self.assertEqual(state["active_model_id"], "baseline_deterministic")
+        self.assertIn("Deterministic Baseline", state.get("model_name", ""))
+        self.assertTrue(state["can_infer"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,7 +15,19 @@ from typing import Optional, Dict, Any, List
 
 import httpx
 
+# Silence noisy HTTP client loggers to prevent leaking Telegram bot tokens in request URLs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger("notifications.telegram_bot")
+
+def mask_token(token: Optional[str]) -> str:
+    """Masks a Telegram bot token for safe logging."""
+    if not token:
+        return "<not-set>"
+    if len(token) <= 8:
+        return "***"
+    return f"{token[:4]}...{token[-4:]}"
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(ROOT_DIR, "data")

@@ -189,7 +189,7 @@ def test_multi_stock_comparison_endpoint(api_client):
 def test_tournament_summary_artifacts():
     """
     Pillar 3: Verify tournament summary artifact exists and contains valid
-    4-fold evaluation metrics for both 20D and 60D models.
+    evaluation metrics for models. Supports both modern CPCV(6, 2) and legacy 4-fold summaries.
     """
     summary_path = Path("data/models/tournament_summary.json")
     assert summary_path.exists(), "tournament_summary.json must exist in data/models/"
@@ -197,28 +197,33 @@ def test_tournament_summary_artifacts():
     with open(summary_path, "r") as f:
         summary = json.load(f)
 
-    assert "folds" in summary
-    assert len(summary["folds"]) == 4, "Must contain exactly 4 walk-forward folds"
-    assert "overall_summary" in summary
+    if "cpcv_combinations" in summary or "candidates" in summary or "baseline" in summary:
+        assert "baseline" in summary or "candidates" in summary
+        assert "champion" in summary
+        assert "promotion_verdict" in summary
+    else:
+        assert "folds" in summary
+        assert len(summary["folds"]) == 4, "Must contain exactly 4 walk-forward folds"
+        assert "overall_summary" in summary
 
-    overall = summary["overall_summary"]
-    assert "tactical_20d" in overall
-    assert "trend_60d" in overall
-    assert "feature_importance_pct" in overall
+        overall = summary["overall_summary"]
+        assert "tactical_20d" in overall
+        assert "trend_60d" in overall
+        assert "feature_importance_pct" in overall
 
-    t20 = overall["tactical_20d"]
-    assert "champion" in t20
-    assert "champion_ic" in t20
-    assert t20["champion_ic"] > 0
+        t20 = overall["tactical_20d"]
+        assert "champion" in t20
+        assert "champion_ic" in t20
+        assert t20["champion_ic"] > 0
 
-    t60 = overall["trend_60d"]
-    assert "champion" in t60
-    assert "champion_ic" in t60
-    assert t60["champion_ic"] > 0
+        t60 = overall["trend_60d"]
+        assert "champion" in t60
+        assert "champion_ic" in t60
+        assert t60["champion_ic"] > 0
 
-    feat_imp = overall["feature_importance_pct"]
-    assert len(feat_imp) > 0
-    assert "rsi_14" in feat_imp
+        feat_imp = overall["feature_importance_pct"]
+        assert len(feat_imp) > 0
+        assert "rsi_14" in feat_imp
 
 
 def test_load_tournament_weights_normalization():

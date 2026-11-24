@@ -10,6 +10,11 @@ import logging
 from typing import Dict, Any, Optional
 
 import httpx
+
+# Silence noisy HTTP client loggers to prevent leaking Telegram bot tokens in request URLs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 from fastapi import APIRouter, Request, Header, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 

@@ -11,6 +11,8 @@ import os
 import gc
 import json
 import gzip
+import time
+import threading
 import logging
 import sqlite3
 from datetime import datetime, timezone
@@ -23,6 +25,23 @@ from src.tasks.catalyst_engine import init_catalyst_tables, catalyst_engine
 from src.data.universe_expander import UniverseExpander
 
 logger = logging.getLogger("storage.hydration")
+
+# Thread-safe in-memory hydration status
+_hydration_status: str = "READY"
+_hydration_lock = threading.Lock()
+
+
+def get_hydration_status() -> str:
+    """Returns current cloud database hydration status: 'HYDRATING' or 'READY'."""
+    with _hydration_lock:
+        return _hydration_status
+
+
+def set_hydration_status(status: str) -> None:
+    """Sets hydration status thread-safely."""
+    global _hydration_status
+    with _hydration_lock:
+        _hydration_status = status
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SNAPSHOT_PATH = os.path.join(ROOT_DIR, "data", "cloud_seed_snapshot.json.gz")
@@ -254,10 +273,12 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                         is_streamable = True
                         break
 
+            chunk_size = 2500
+            chunk_counter = 0
+
             if is_streamable:
                 current_table = None
                 batch = []
-                chunk_size = 5000
                 with gzip.open(snapshot_path, "rt", encoding="utf-8") as f:
                     for line in f:
                         line_s = line.strip()
@@ -272,6 +293,10 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                                 insert_batch(current_table, batch)
                                 conn.commit()
                                 batch = []
+                                chunk_counter += 1
+                                time.sleep(0.015)
+                                if chunk_counter % 10 == 0:
+                                    gc.collect()
                             current_table = None
                             continue
                         if current_table and line_s.startswith("{"):
@@ -281,13 +306,24 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                             batch.append(row_dict)
                             if len(batch) >= chunk_size:
                                 insert_batch(current_table, batch)
+                                conn.commit()
                                 batch = []
+                                chunk_counter += 1
+                                time.sleep(0.015)
+                                if chunk_counter % 10 == 0:
+                                    gc.collect()
             else:
                 with gzip.open(snapshot_path, "rb") as f:
                     snap = json.loads(f.read().decode("utf-8"))
                 for tbl, rows in snap.items():
                     if rows and isinstance(rows, list):
-                        insert_batch(tbl, rows)
+                        for i in range(0, len(rows), chunk_size):
+                            insert_batch(tbl, rows[i:i + chunk_size])
+                            conn.commit()
+                            chunk_counter += 1
+                            time.sleep(0.015)
+                            if chunk_counter % 10 == 0:
+                                gc.collect()
                 del snap
                 gc.collect()
 
@@ -305,7 +341,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                         singleton_id, current_state, active_model_id, last_transition_at,
                         transition_reason, quarantined_symbols_json, auto_retrain_enabled, updated_at
                     ) VALUES (
-                        1, 'NORMAL', 'model_HistGradientBoosting_Alpha5D_20261107_131103_e80532',
+                        1, 'NORMAL', 'baseline_deterministic',
                         datetime('now'), 'COLD_BOOT_HYDRATION', '[]', 1, datetime('now')
                     )
                 """)
@@ -395,106 +431,110 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
     Checks if the local SQLite database is uninitialized or missing core data.
     If empty or fresh, automatically migrates schema and unpacks cloud_seed_snapshot.
     """
-    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-    db = DatabaseManager(db_path)
-
-    # 1. Base schema initialization
-    db.init_schema()
-
-    with db.get_connection() as conn:
-        conn.execute("PRAGMA journal_mode = WAL;")
-        ensure_core_tables_exist(conn)
-
-    init_push_tables()
-    init_catalyst_tables()
-
-    stats = {
-        "securities_seeded": 0,
-        "watchlists_seeded": 0,
-        "catalysts_seeded": 0,
-        "hydrated_from_snapshot": False
-    }
-
-    # 2. Check securities_master count
-    with db.get_connection() as conn:
-        cur = conn.execute("SELECT COUNT(*) FROM securities_master")
-        sec_count = cur.fetchone()[0]
-
-    # If database is fresh (0 securities), attempt instant snapshot hydration first!
-    if sec_count == 0:
-        logger.info("Fresh database detected (0 securities). Attempting instant snapshot hydration...")
-        if os.path.exists(SNAPSHOT_PATH):
-            success = hydrate_from_snapshot(db, SNAPSHOT_PATH)
-            if success:
-                stats["hydrated_from_snapshot"] = True
-                with db.get_connection() as conn:
-                    stats["securities_seeded"] = conn.execute("SELECT COUNT(*) FROM securities_master").fetchone()[0]
-                    stats["watchlists_seeded"] = conn.execute("SELECT COUNT(*) FROM user_watchlists").fetchone()[0]
-                    stats["catalysts_seeded"] = conn.execute("SELECT COUNT(*) FROM market_catalysts").fetchone()[0]
-
-                # Phase 1: Restore durable user state from Azure Blob Storage if configured
-                try:
-                    from src.storage.durable_state import DurableStateManager
-                    durable_res = DurableStateManager.get_instance(db=db).restore_on_startup()
-                    stats["durable_state"] = durable_res
-                except Exception as e:
-                    logger.warning(f"Durable state restore non-fatal notice: {e}")
-
-                return stats
-
-        # Fallback to programmatic universe seed if snapshot missing
-        logger.info("Snapshot unavailable; falling back to programmatic universe expander seed...")
-        expander = UniverseExpander(db)
-        max_seed = 500 if is_cloud_lightweight_mode() else 1000
-        res = expander.seed_master_universe(max_symbols=max_seed)
-        stats["securities_seeded"] = res.get("master_records_inserted", 0)
-
-    # 3. Check and hydrate user_watchlists
-    now_iso = datetime.now(timezone.utc).isoformat()
-    with db.get_connection() as conn:
-        cur = conn.execute("SELECT COUNT(*) FROM user_watchlists")
-        wl_count = cur.fetchone()[0]
-        if wl_count == 0:
-            logger.info("Seeding default user watchlists...")
-            for w in DEFAULT_WATCHLIST_SEED:
-                conn.execute("""
-                    INSERT OR IGNORE INTO user_watchlists (
-                        symbol, company_name, sector, notes, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                """, (w["symbol"], w["company_name"], w["sector"], "Initial institutional seed", now_iso, now_iso))
-            conn.commit()
-            stats["watchlists_seeded"] = len(DEFAULT_WATCHLIST_SEED)
-
-    # 4. Check and synthesize initial market catalysts
-    with db.get_connection() as conn:
-        cur = conn.execute("SELECT COUNT(*) FROM market_catalysts")
-        cat_count = cur.fetchone()[0]
-
-    if cat_count == 0:
-        if is_cloud_lightweight_mode():
-            logger.info("CLOUD_LIGHTWEIGHT_MODE active: Skipping initial catalyst scan on boot.")
-        else:
-            logger.info("Synthesizing initial intraday causal catalysts...")
-            try:
-                catalysts = catalyst_engine.run_intraday_scan()
-                stats["catalysts_seeded"] = len(catalysts)
-            except Exception as e:
-                logger.warning(f"Initial catalyst scan partial: {e}")
-
-    # Verify active ML model deployments point to valid artifacts on disk
-    verify_model_deployments(db)
-
-    # Ensure no null ret_20d values remain in quant_factors_daily
-    repair_null_ret_20d(db)
-
-    # Phase 1: Restore durable user state from Azure Blob Storage if configured
+    set_hydration_status("HYDRATING")
     try:
-        from src.storage.durable_state import DurableStateManager
-        durable_res = DurableStateManager.get_instance(db=db).restore_on_startup()
-        stats["durable_state"] = durable_res
-    except Exception as e:
-        logger.warning(f"Durable state restore non-fatal notice: {e}")
+        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        db = DatabaseManager(db_path)
 
-    gc.collect()
-    logger.info(f"Database hydration check complete: {stats}")
-    return stats
+        # 1. Base schema initialization
+        db.init_schema()
+
+        with db.get_connection() as conn:
+            conn.execute("PRAGMA journal_mode = WAL;")
+            ensure_core_tables_exist(conn)
+
+        init_push_tables()
+        init_catalyst_tables()
+
+        stats = {
+            "securities_seeded": 0,
+            "watchlists_seeded": 0,
+            "catalysts_seeded": 0,
+            "hydrated_from_snapshot": False
+        }
+
+        # 2. Check securities_master count
+        with db.get_connection() as conn:
+            cur = conn.execute("SELECT COUNT(*) FROM securities_master")
+            sec_count = cur.fetchone()[0]
+
+        # If database is fresh (0 securities), attempt instant snapshot hydration first!
+        if sec_count == 0:
+            logger.info("Fresh database detected (0 securities). Attempting instant snapshot hydration...")
+            if os.path.exists(SNAPSHOT_PATH):
+                success = hydrate_from_snapshot(db, SNAPSHOT_PATH)
+                if success:
+                    stats["hydrated_from_snapshot"] = True
+                    with db.get_connection() as conn:
+                        stats["securities_seeded"] = conn.execute("SELECT COUNT(*) FROM securities_master").fetchone()[0]
+                        stats["watchlists_seeded"] = conn.execute("SELECT COUNT(*) FROM user_watchlists").fetchone()[0]
+                        stats["catalysts_seeded"] = conn.execute("SELECT COUNT(*) FROM market_catalysts").fetchone()[0]
+
+                    # Phase 1: Restore durable user state from Azure Blob Storage if configured
+                    try:
+                        from src.storage.durable_state import DurableStateManager
+                        durable_res = DurableStateManager.get_instance(db=db).restore_on_startup()
+                        stats["durable_state"] = durable_res
+                    except Exception as e:
+                        logger.warning(f"Durable state restore non-fatal notice: {e}")
+
+                    return stats
+
+            # Fallback to programmatic universe seed if snapshot missing
+            logger.info("Snapshot unavailable; falling back to programmatic universe expander seed...")
+            expander = UniverseExpander(db)
+            max_seed = 500 if is_cloud_lightweight_mode() else 1000
+            res = expander.seed_master_universe(max_symbols=max_seed)
+            stats["securities_seeded"] = res.get("master_records_inserted", 0)
+
+        # 3. Check and hydrate user_watchlists
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with db.get_connection() as conn:
+            cur = conn.execute("SELECT COUNT(*) FROM user_watchlists")
+            wl_count = cur.fetchone()[0]
+            if wl_count == 0:
+                logger.info("Seeding default user watchlists...")
+                for w in DEFAULT_WATCHLIST_SEED:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO user_watchlists (
+                            symbol, company_name, sector, notes, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                    """, (w["symbol"], w["company_name"], w["sector"], "Initial institutional seed", now_iso, now_iso))
+                conn.commit()
+                stats["watchlists_seeded"] = len(DEFAULT_WATCHLIST_SEED)
+
+        # 4. Check and synthesize initial market catalysts
+        with db.get_connection() as conn:
+            cur = conn.execute("SELECT COUNT(*) FROM market_catalysts")
+            cat_count = cur.fetchone()[0]
+
+        if cat_count == 0:
+            if is_cloud_lightweight_mode():
+                logger.info("CLOUD_LIGHTWEIGHT_MODE active: Skipping initial catalyst scan on boot.")
+            else:
+                logger.info("Synthesizing initial intraday causal catalysts...")
+                try:
+                    catalysts = catalyst_engine.run_intraday_scan()
+                    stats["catalysts_seeded"] = len(catalysts)
+                except Exception as e:
+                    logger.warning(f"Initial catalyst scan partial: {e}")
+
+        # Verify active ML model deployments point to valid artifacts on disk
+        verify_model_deployments(db)
+
+        # Ensure no null ret_20d values remain in quant_factors_daily
+        repair_null_ret_20d(db)
+
+        # Phase 1: Restore durable user state from Azure Blob Storage if configured
+        try:
+            from src.storage.durable_state import DurableStateManager
+            durable_res = DurableStateManager.get_instance(db=db).restore_on_startup()
+            stats["durable_state"] = durable_res
+        except Exception as e:
+            logger.warning(f"Durable state restore non-fatal notice: {e}")
+
+        gc.collect()
+        logger.info(f"Database hydration check complete: {stats}")
+        return stats
+    finally:
+        set_hydration_status("READY")

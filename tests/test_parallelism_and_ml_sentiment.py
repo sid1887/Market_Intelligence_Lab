@@ -154,9 +154,10 @@ def test_screener_cached_endpoint_latency():
     """
     client = TestClient(app)
 
-    # Cold warm-up call
+    # Cold warm-up calls to ensure pre-serialized cache is primed
     r_cold = client.get("/api/v1/screener?limit=1000")
     assert r_cold.status_code == 200, f"Cold request failed: {r_cold.text}"
+    client.get("/api/v1/screener?limit=1000")
 
     # Measure warm cached responses
     latencies = []
