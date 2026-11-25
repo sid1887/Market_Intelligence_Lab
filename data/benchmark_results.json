@@ -1,49 +1,49 @@
 {
-  "timestamp": "2026-11-24T16:25:08Z",
+  "timestamp": "2026-11-25T13:32:54Z",
   "target_environment": "Render Free (0.1 vCPU / 512 MB RAM)",
-  "port_bind_ms": 2830.52,
-  "background_hydration_ms": 7429.64,
-  "idle_rss_mb": 365.14,
-  "peak_cgroup_memory_mb": 405.01,
-  "memory_headroom_mb": 106.99,
+  "port_bind_ms": 2617.16,
+  "background_hydration_ms": 6439.05,
+  "idle_rss_mb": 364.69,
+  "peak_cgroup_memory_mb": 387.6,
+  "memory_headroom_mb": 124.4,
   "cgroup_memory_limit_mb": 512.0,
-  "p50_latency_ms": 27.43,
-  "p95_latency_ms": 1740.87,
-  "p99_latency_ms": 1759.59,
-  "mean_latency_ms": 238.32,
+  "p50_latency_ms": 22.59,
+  "p95_latency_ms": 1384.36,
+  "p99_latency_ms": 1527.79,
+  "mean_latency_ms": 217.4,
   "total_requests": 32,
   "concurrency": 3,
   "endpoint_breakdown": {
     "/api/v1/health": {
       "count": 7,
-      "p50_ms": 19.86,
-      "p95_ms": 205.4
+      "p50_ms": 8.88,
+      "p95_ms": 225.04
     },
     "/api/v1/supervisor/status": {
       "count": 7,
-      "p50_ms": 7.52,
-      "p95_ms": 56.61
+      "p50_ms": 7.71,
+      "p95_ms": 22.59
     },
     "/api/v1/screener?limit=50": {
       "count": 6,
-      "p50_ms": 45.53,
-      "p95_ms": 72.92
+      "p50_ms": 53.37,
+      "p95_ms": 107.84
     },
     "/api/v1/stocks/RELIANCE/status": {
       "count": 6,
-      "p50_ms": 20.34,
-      "p95_ms": 35.18
+      "p50_ms": 10.35,
+      "p95_ms": 26.18
     },
     "/api/v1/copilot/deliberate": {
       "count": 6,
-      "p50_ms": 1495.43,
-      "p95_ms": 1759.59
+      "p50_ms": 1357.71,
+      "p95_ms": 1527.79
     }
   },
   "memory_ceiling_check": {
     "threshold_mb": 410.0,
-    "peak_observed_mb": 405.01,
-    "oom_buffer_mb": 106.99,
+    "peak_observed_mb": 387.6,
+    "oom_buffer_mb": 124.4,
     "status": "PASS (VERIFIED SAFE)"
   }
 }

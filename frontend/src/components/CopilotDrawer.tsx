@@ -86,6 +86,37 @@ interface LiveTelemetryState {
   traderDnaBadge?: string;
 }
 
+interface ConformalHorizonCone {
+  horizon_days: number;
+  q_80: number;
+  q_95: number;
+  lower_95_price: number;
+  lower_80_price: number;
+  point_estimate_price: number;
+  upper_80_price: number;
+  upper_95_price: number;
+  drift_flag?: string;
+}
+
+interface RegimeStatusData {
+  active_regime: string;
+  probabilities?: Record<string, number>;
+  policy?: {
+    label?: string;
+    position_scale?: number;
+    max_portfolio_exposure?: number;
+    min_meta_prob_delta?: number;
+  };
+  conformal?: {
+    global_drift_status?: string;
+  };
+  symbol_cones?: {
+    symbol?: string;
+    current_price?: number;
+    horizons?: Record<string, ConformalHorizonCone>;
+  } | null;
+}
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -621,6 +652,7 @@ export default function CopilotDrawer({
 
   const [mlForecast, setMlForecast] = useState<MLForecastData | null>(null);
   const [liveTelemetry, setLiveTelemetry] = useState<LiveTelemetryState | null>(null);
+  const [regimeStatus, setRegimeStatus] = useState<RegimeStatusData | null>(null);
   const [showMlPanel, setShowMlPanel] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isDebateActive, setIsDebateActive] = useState(false);
@@ -718,10 +750,33 @@ export default function CopilotDrawer({
     }
   }, []);
 
-  // Eagerly fetch ML Alpha Forecast when context symbol changes and drawer is open
+  // Eagerly fetch ML Alpha Forecast & HMM Regime + Conformal Cones when context symbol changes and drawer is open
   useEffect(() => {
-    if (!effectiveSymbol || !isOpen) return;
+    if (!isOpen) return;
     let isCancelled = false;
+
+    const fetchRegimeAndCones = async () => {
+      try {
+        const qs = effectiveSymbol ? `?symbol=${encodeURIComponent(effectiveSymbol)}&horizon_days=20` : "";
+        const res = await fetch(`${API_BASE}/regime/status${qs}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!isCancelled && data.active_regime) {
+            setRegimeStatus(data);
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+    };
+    fetchRegimeAndCones();
+
+    if (!effectiveSymbol) {
+      return () => {
+        isCancelled = true;
+      };
+    }
+
     const fetchMlForecast = async () => {
       try {
         const res = await fetch(`${API_BASE}/ml/forecast/${encodeURIComponent(effectiveSymbol)}`);
@@ -1285,10 +1340,43 @@ export default function CopilotDrawer({
                 )}
               </div>
 
-              {/* Live Market Telemetry & Trader DNA Badges */}
-              {liveTelemetry && (
+              {/* Live Market Telemetry, HMM Regime & Conformal Cones Strip */}
+              {(liveTelemetry || regimeStatus) && (
                 <div className="px-3 sm:px-5 py-1.5 bg-[#03060c] border-b border-white/[0.06] flex items-center gap-2 overflow-x-auto text-[10px] font-mono scrollbar-none">
-                  {liveTelemetry.liveQuote && (
+                  {regimeStatus && (
+                    <span
+                      title={`Causal HMM Forward-Filtered Probabilities | Position Scale: ${((regimeStatus.policy?.position_scale ?? 1) * 100).toFixed(0)}%`}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border shrink-0 ${
+                        regimeStatus.active_regime === "STRESS_DRAWDOWN"
+                          ? "bg-rose-950/70 border-rose-500/40 text-rose-300"
+                          : regimeStatus.active_regime === "HIGH_VOL_CHOP"
+                          ? "bg-amber-950/70 border-amber-500/40 text-amber-300"
+                          : "bg-emerald-950/70 border-emerald-500/30 text-emerald-300"
+                      }`}
+                    >
+                      <Activity className="w-2.5 h-2.5" />
+                      HMM: {regimeStatus.active_regime}
+                      {regimeStatus.probabilities?.[regimeStatus.active_regime] !== undefined && (
+                        <span>({Math.round(regimeStatus.probabilities[regimeStatus.active_regime] * 100)}%)</span>
+                      )}
+                      {regimeStatus.policy?.max_portfolio_exposure !== undefined && (
+                        <span className="opacity-75">· MaxExp {Math.round(regimeStatus.policy.max_portfolio_exposure * 100)}%</span>
+                      )}
+                    </span>
+                  )}
+                  {regimeStatus?.symbol_cones?.horizons?.["20D"] && (
+                    <span
+                      title={`Weighted Adaptive Conformal Cones (20D) | q80=${regimeStatus.symbol_cones.horizons["20D"].q_80}x | q95=${regimeStatus.symbol_cones.horizons["20D"].q_95}x`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-950/60 border border-violet-500/30 text-violet-300 shrink-0"
+                    >
+                      <Gauge className="w-2.5 h-2.5 text-violet-400" />
+                      20D CONE 80%: ₹{regimeStatus.symbol_cones.horizons["20D"].lower_80_price.toFixed(0)}–₹{regimeStatus.symbol_cones.horizons["20D"].upper_80_price.toFixed(0)}
+                      <span className="opacity-70">
+                        | 95%: ₹{regimeStatus.symbol_cones.horizons["20D"].lower_95_price.toFixed(0)}–₹{regimeStatus.symbol_cones.horizons["20D"].upper_95_price.toFixed(0)}
+                      </span>
+                    </span>
+                  )}
+                  {liveTelemetry?.liveQuote && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 shrink-0">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                       LIVE QUOTE: ₹{Number(liveTelemetry.liveQuote.ltp || 0).toFixed(2)}
@@ -1299,13 +1387,13 @@ export default function CopilotDrawer({
                       )}
                     </span>
                   )}
-                  {liveTelemetry.webCatalystsCount !== undefined && liveTelemetry.webCatalystsCount > 0 && (
+                  {liveTelemetry?.webCatalystsCount !== undefined && liveTelemetry.webCatalystsCount > 0 && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-950/60 border border-indigo-500/30 text-indigo-300 shrink-0">
                       <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
                       WEB SEARCH: {liveTelemetry.webCatalystsCount} {liveTelemetry.webCatalystsCount === 1 ? "source" : "sources"}
                     </span>
                   )}
-                  {liveTelemetry.traderDnaBadge && (
+                  {liveTelemetry?.traderDnaBadge && (
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border shrink-0 ${
                       liveTelemetry.traderDnaBadge.includes("Cooldown")
                         ? "bg-rose-950/60 border-rose-500/40 text-rose-300"

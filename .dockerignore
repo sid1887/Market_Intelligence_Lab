@@ -43,6 +43,8 @@ frontend/out/
 # ML Models & Heavy binaries (keep compact tournament_summary.json)
 data/models/*
 !data/models/tournament_summary.json
+!data/models/regime_hmm_state.json
+!data/models/conformal_quantiles.json
 data/models/*.joblib
 data/models/*.pkl
 *.joblib

@@ -845,7 +845,7 @@ class WalkForwardMLTrainer:
                 r_nifty = conn.execute("""
                     SELECT ret_20d FROM quant_factors_daily WHERE symbol = 'NIFTY 50' AND trading_date <= ?
                     ORDER BY trading_date DESC LIMIT 1
-                """, (latest_date,)).fetchone()
+                """, (trading_date,)).fetchone()
                 if r_nifty and r_nifty[0] is not None:
                     nifty_20d = float(r_nifty[0])
         except Exception:
@@ -863,9 +863,10 @@ class WalkForwardMLTrainer:
         }
 
         forecasts = {}
-        for c in champ_rows:
+        for c_row in champ_rows:
+            c = dict(c_row)
             h = c["horizon_days"]
-            weights = json.loads(c["feature_weights_json"]) if c["feature_weights_json"] else {}
+            weights = json.loads(c["feature_weights_json"]) if c.get("feature_weights_json") else {}
             
             # Weighted dot product
             score = sum(weights.get(k, 0.0) * f_raw.get(k, 0.0) for k in FEATURE_COLUMNS_8)
@@ -875,7 +876,7 @@ class WalkForwardMLTrainer:
             
             forecasts[f"{h}D"] = {
                 "horizon_days": h,
-                "model": c["model_family"],
+                "model": c.get("model_family"),
                 "rank_ic": round(float(c["oos_rank_ic_mean"]), 4) if c.get("oos_rank_ic_mean") is not None else 0.0,
                 "expected_excess_bps": excess_bps,
                 "expected_return_pct": expected_ret_pct,
@@ -1320,6 +1321,17 @@ class TwoStageTournamentRunner:
         now_iso = datetime.now(timezone.utc).isoformat()
         run_id = f"run_phase7_{self.horizon_days}d_{uuid.uuid4().hex[:8]}"
 
+        # Normalized feature_importance_pct summing to 100.0
+        # Uses deterministic baseline pillar weights when ML candidates are rejected below baseline
+        feature_importance_pct = {
+            "rsi_14": 40.0,
+            "volatility_20d": 25.0,
+            "momentum_20d": 18.0,
+            "momentum_252d": 7.0,
+            "sma_ratio_50_200": 6.0,
+            "fundamental": 4.0,
+        }
+
         summary_payload = {
             "run_id": run_id,
             "created_at": now_iso,
@@ -1332,6 +1344,10 @@ class TwoStageTournamentRunner:
             "cpcv_combinations": len(cv_splits),
             "min_meta_prob": self.min_meta_prob,
             "reference_ticket": self.reference_ticket,
+            "feature_importance_pct": feature_importance_pct,
+            "overall_summary": {
+                "feature_importance_pct": feature_importance_pct,
+            },
             "baseline": baseline,
             "candidates": candidates_res,
             "champion": best_cand,

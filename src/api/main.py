@@ -357,7 +357,7 @@ def health_check():
         now_ts = time.time()
 
         # Phase 5 Live Health & Memory Headroom Telemetry
-        guard = enforce_rss_memory_guard(threshold_mb=400.0)
+        guard = enforce_rss_memory_guard(threshold_mb=385.0)
         rss_mb = guard["rss_mb"]
         memory_headroom_mb = guard["memory_headroom_mb"]
 
@@ -464,7 +464,7 @@ def get_screener(
     Safely sanitizes all NaN / Infinity values to prevent serialization crashes.
     """
     global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
-    enforce_rss_memory_guard(threshold_mb=400.0)
+    enforce_rss_memory_guard(threshold_mb=385.0)
     try:
         is_default_query = (
             min_roe is None and
@@ -1089,6 +1089,87 @@ def get_ml_tournament_summary():
         raise HTTPException(status_code=500, detail=f"Failed to load tournament summary: {str(e)}")
 
 
+@app.get("/regime/status")
+@app.get("/api/v1/regime/status")
+def get_regime_status(symbol: Optional[str] = Query(None), horizon_days: int = Query(20, ge=5, le=60)):
+    """
+    Returns active 3-State Gaussian HMM market regime, causal forward-only probabilities,
+    execution policy rules, and calibrated 80% / 95% Weighted Adaptive Conformal Cones.
+    """
+    try:
+        from src.quant.regime_hmm import load_regime_hmm_state, REGIME_POLICIES
+        from src.quant.conformal_cones import load_conformal_quantiles, compute_conformal_price_cone
+
+        hmm_state = load_regime_hmm_state()
+        conf_state = load_conformal_quantiles()
+
+        latest_regime = hmm_state.get("latest_regime", "HIGH_VOL_CHOP")
+        policy = hmm_state.get("active_policy") or REGIME_POLICIES.get(latest_regime, {})
+
+        payload: Dict[str, Any] = {
+            "status": "ok",
+            "causality_mode": hmm_state.get("causality_mode", "FORWARD_ONLY_FILTER"),
+            "latest_date": hmm_state.get("latest_date"),
+            "active_regime": latest_regime,
+            "probabilities": hmm_state.get("latest_probabilities", {}),
+            "policy": policy,
+            "regime_distribution_pct": hmm_state.get("regime_distribution_pct", {}),
+            "recent_history": (hmm_state.get("recent_history") or [])[-30:],
+            "conformal": {
+                "global_drift_status": conf_state.get("global_drift_status", "CALIBRATED"),
+                "drift_alerts": conf_state.get("drift_alerts", []),
+                "quantiles_active_regime": conf_state.get("quantiles_by_regime", {}).get(latest_regime, {}),
+            },
+            "symbol_cones": None,
+        }
+
+        if symbol:
+            sym = symbol.strip().upper()
+            try:
+                with sqlite3.connect(f"file:{DATABASE_PATH}?mode=ro", uri=True, timeout=1.0) as conn:
+                    closes_rows = conn.execute(
+                        "SELECT close FROM ohlcv_daily WHERE symbol = ? AND is_synthetic = 0 ORDER BY trading_date DESC LIMIT 25",
+                        (sym,),
+                    ).fetchall()
+                    closes = [float(r[0]) for r in reversed(closes_rows) if r[0] is not None and float(r[0]) > 0]
+                    px = closes[-1] if closes else 100.0
+                    if len(closes) >= 10:
+                        import math
+                        log_rets = [math.log(closes[i] / closes[i - 1]) for i in range(1, len(closes))]
+                        mean_r = sum(log_rets) / len(log_rets)
+                        var_r = sum((r - mean_r) ** 2 for r in log_rets) / max(len(log_rets) - 1, 1)
+                        vol_20d = min(max(math.sqrt(var_r * 252.0), 0.08), 1.20)
+                        ret_20d = (closes[-1] / closes[0]) - 1.0
+                    else:
+                        vol_20d = 0.25
+                        ret_20d = 0.0
+
+                    cones_by_horizon = {}
+                    for h in (5, 10, 20):
+                        exp_ret = max(-0.10, min(0.10, ret_20d * (h / 20.0) * 0.15))
+                        cones_by_horizon[f"{h}D"] = compute_conformal_price_cone(
+                            current_price=px,
+                            expected_return=exp_ret,
+                            annual_vol=vol_20d,
+                            horizon_days=h,
+                            regime=latest_regime,
+                        )
+                    payload["symbol_cones"] = {
+                        "symbol": sym,
+                        "current_price": px,
+                        "annual_vol": round(vol_20d, 4),
+                        "requested_horizon": f"{horizon_days}D",
+                        "horizons": cones_by_horizon,
+                    }
+            except Exception as sym_err:
+                logger.debug(f"Symbol conformal cone lookup notice for {sym}: {sym_err}")
+
+        return sanitize_for_json(payload)
+    except Exception as e:
+        logger.error(f"Error computing regime status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to compute regime status: {str(e)}")
+
+
 @app.post("/news/ingest")
 @app.post("/api/v1/news/ingest")
 def trigger_news_ingestion(symbols: Optional[List[str]] = Query(None)):
@@ -1268,7 +1349,7 @@ async def stream_copilot_deliberation(request: CopilotStreamRequest):
     Server-Sent Events (SSE) endpoint for multi-agent deliberation:
     Bull Analyst -> Bear Analyst -> Portfolio Manager Judge.
     """
-    enforce_rss_memory_guard(threshold_mb=400.0)
+    enforce_rss_memory_guard(threshold_mb=385.0)
     sym = request.symbol.strip().upper()
     user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
 
@@ -1306,7 +1387,7 @@ async def deliberate_copilot_json(request: CopilotStreamRequest):
     Direct non-streaming JSON endpoint fallback for Copilot deliberation.
     Guarantees reliable turn completion when network proxies or edge limits sever SSE streams.
     """
-    enforce_rss_memory_guard(threshold_mb=400.0)
+    enforce_rss_memory_guard(threshold_mb=385.0)
     sym = request.symbol.strip().upper()
     user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
     res = await copilot_engine.deliberate_json(

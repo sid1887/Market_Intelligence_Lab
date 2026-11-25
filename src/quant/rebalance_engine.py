@@ -64,7 +64,7 @@ def load_tournament_weights(model_summary_path: str = "data/models/tournament_su
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        raw_weights = data.get("overall_summary", {}).get("feature_importance_pct")
+        raw_weights = data.get("feature_importance_pct") or data.get("overall_summary", {}).get("feature_importance_pct")
         if not raw_weights or not isinstance(raw_weights, dict):
             logger.warning(f"No valid feature_importance_pct in {model_summary_path}. Using fallback defaults.")
             return DEFAULT_TOURNAMENT_WEIGHTS.copy()

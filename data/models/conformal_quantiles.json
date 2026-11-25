@@ -1,0 +1,120 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-11-25T13:27:07.121786+00:00",
+  "decay_lambda": 0.996,
+  "coverage_drift_threshold": 0.72,
+  "active_regime": "STRESS_DRAWDOWN",
+  "global_drift_status": "CONFORMAL_COVERAGE_DRIFT",
+  "drift_alerts": [
+    "LOW_VOL_TREND:10D (cov=70.0%)",
+    "HIGH_VOL_CHOP:10D (cov=71.7%)",
+    "STRESS_DRAWDOWN:10D (cov=71.7%)"
+  ],
+  "quantiles_by_regime": {
+    "LOW_VOL_TREND": {
+      "5D": {
+        "sample_count": 430607,
+        "q_80": 1.253,
+        "q_95": 2.5984,
+        "raw_q_80": 1.253,
+        "raw_q_95": 2.5984,
+        "rolling_60_coverage_80": 0.7667,
+        "rolling_60_coverage_95": 0.95,
+        "drift_flag": "CALIBRATED",
+        "drift_widening_factor": 1.0
+      },
+      "10D": {
+        "sample_count": 430607,
+        "q_80": 1.6028,
+        "q_95": 2.8923,
+        "raw_q_80": 1.4024,
+        "raw_q_95": 2.5306,
+        "rolling_60_coverage_80": 0.7,
+        "rolling_60_coverage_95": 0.8667,
+        "drift_flag": "CONFORMAL_COVERAGE_DRIFT",
+        "drift_widening_factor": 1.1429
+      },
+      "20D": {
+        "sample_count": 430607,
+        "q_80": 1.5272,
+        "q_95": 2.4156,
+        "raw_q_80": 1.5272,
+        "raw_q_95": 2.4156,
+        "rolling_60_coverage_80": 0.75,
+        "rolling_60_coverage_95": 0.9333,
+        "drift_flag": "CALIBRATED",
+        "drift_widening_factor": 1.0
+      }
+    },
+    "HIGH_VOL_CHOP": {
+      "5D": {
+        "sample_count": 307850,
+        "q_80": 1.2866,
+        "q_95": 2.233,
+        "raw_q_80": 1.2866,
+        "raw_q_95": 2.233,
+        "rolling_60_coverage_80": 0.7333,
+        "rolling_60_coverage_95": 0.9167,
+        "drift_flag": "CALIBRATED",
+        "drift_widening_factor": 1.0
+      },
+      "10D": {
+        "sample_count": 307850,
+        "q_80": 2.3521,
+        "q_95": 3.322,
+        "raw_q_80": 2.1071,
+        "raw_q_95": 2.9759,
+        "rolling_60_coverage_80": 0.7167,
+        "rolling_60_coverage_95": 0.9,
+        "drift_flag": "CONFORMAL_COVERAGE_DRIFT",
+        "drift_widening_factor": 1.1163
+      },
+      "20D": {
+        "sample_count": 307850,
+        "q_80": 2.0499,
+        "q_95": 3.434,
+        "raw_q_80": 2.0499,
+        "raw_q_95": 3.434,
+        "rolling_60_coverage_80": 0.7333,
+        "rolling_60_coverage_95": 0.9167,
+        "drift_flag": "CALIBRATED",
+        "drift_widening_factor": 1.0
+      }
+    },
+    "STRESS_DRAWDOWN": {
+      "5D": {
+        "sample_count": 44601,
+        "q_80": 0.9511,
+        "q_95": 1.7755,
+        "raw_q_80": 0.9511,
+        "raw_q_95": 1.7755,
+        "rolling_60_coverage_80": 0.9,
+        "rolling_60_coverage_95": 0.9667,
+        "drift_flag": "CALIBRATED",
+        "drift_widening_factor": 1.0
+      },
+      "10D": {
+        "sample_count": 43601,
+        "q_80": 1.3056,
+        "q_95": 2.2179,
+        "raw_q_80": 1.1696,
+        "raw_q_95": 1.9868,
+        "rolling_60_coverage_80": 0.7167,
+        "rolling_60_coverage_95": 0.9333,
+        "drift_flag": "CONFORMAL_COVERAGE_DRIFT",
+        "drift_widening_factor": 1.1163
+      },
+      "20D": {
+        "sample_count": 41601,
+        "q_80": 1.6966,
+        "q_95": 2.9963,
+        "raw_q_80": 1.6966,
+        "raw_q_95": 2.9963,
+        "rolling_60_coverage_80": 0.7333,
+        "rolling_60_coverage_95": 0.9333,
+        "drift_flag": "CALIBRATED",
+        "drift_widening_factor": 1.0
+      }
+    }
+  }
+}
