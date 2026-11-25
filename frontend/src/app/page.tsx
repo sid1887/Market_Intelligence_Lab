@@ -128,7 +128,7 @@ export default function CockpitPage() {
           setAsOfDate(scrRes.value.as_of_date);
         }
         setSelectedSymbol((prev) => prev || (results.length > 0 ? results[0].symbol : null));
-        if (results.length === 0 && hydrationRetryRef.current < 15) {
+        if (results.length === 0 && hydrationRetryRef.current < 40) {
           hydrationRetryRef.current += 1;
           setTimeout(() => {
             void loadPageData(true);
@@ -136,7 +136,7 @@ export default function CockpitPage() {
         } else if (results.length > 0) {
           hydrationRetryRef.current = 0;
         }
-      } else if (hydrationRetryRef.current < 15) {
+      } else if (hydrationRetryRef.current < 40) {
         hydrationRetryRef.current += 1;
         setTimeout(() => {
           void loadPageData(true);

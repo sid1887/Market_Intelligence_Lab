@@ -273,7 +273,7 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                         is_streamable = True
                         break
 
-            chunk_size = 2500
+            chunk_size = 5000
             chunk_counter = 0
 
             if is_streamable:
@@ -294,8 +294,8 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                                 conn.commit()
                                 batch = []
                                 chunk_counter += 1
-                                time.sleep(0.015)
-                                if chunk_counter % 10 == 0:
+                                time.sleep(0.005)
+                                if chunk_counter % 20 == 0:
                                     gc.collect()
                             current_table = None
                             continue
@@ -309,8 +309,8 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                                 conn.commit()
                                 batch = []
                                 chunk_counter += 1
-                                time.sleep(0.015)
-                                if chunk_counter % 10 == 0:
+                                time.sleep(0.005)
+                                if chunk_counter % 20 == 0:
                                     gc.collect()
             else:
                 with gzip.open(snapshot_path, "rb") as f:
@@ -321,8 +321,8 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                             insert_batch(tbl, rows[i:i + chunk_size])
                             conn.commit()
                             chunk_counter += 1
-                            time.sleep(0.015)
-                            if chunk_counter % 10 == 0:
+                            time.sleep(0.005)
+                            if chunk_counter % 20 == 0:
                                 gc.collect()
                 del snap
                 gc.collect()
