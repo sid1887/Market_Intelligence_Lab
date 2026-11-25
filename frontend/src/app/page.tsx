@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -105,6 +105,8 @@ export default function CockpitPage() {
     dismissActiveJob,
   } = usePlatformEvents();
 
+  const hydrationRetryRef = useRef(0);
+
   // 2. Initial Screener & Watchlist Data Fetch
   const loadPageData = useCallback(async (invalidateCache: boolean = false) => {
     if (invalidateCache || candidates.length === 0) {
@@ -126,6 +128,19 @@ export default function CockpitPage() {
           setAsOfDate(scrRes.value.as_of_date);
         }
         setSelectedSymbol((prev) => prev || (results.length > 0 ? results[0].symbol : null));
+        if (results.length === 0 && hydrationRetryRef.current < 15) {
+          hydrationRetryRef.current += 1;
+          setTimeout(() => {
+            void loadPageData(true);
+          }, 4000);
+        } else if (results.length > 0) {
+          hydrationRetryRef.current = 0;
+        }
+      } else if (hydrationRetryRef.current < 15) {
+        hydrationRetryRef.current += 1;
+        setTimeout(() => {
+          void loadPageData(true);
+        }, 4000);
       }
 
       if (wlRes.status === "fulfilled") {

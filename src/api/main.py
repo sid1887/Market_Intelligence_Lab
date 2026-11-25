@@ -205,6 +205,11 @@ async def lifespan(app: FastAPI):
                 logger.info(f"Supervisor post-hydration status: {recovered_state.get('status')} (Active: {recovered_state.get('active_model_id')})")
             except Exception as sup_err:
                 logger.warning(f"Supervisor post-hydration recovery notice: {sup_err}")
+            finally:
+                global _supervisor_status_cache, _supervisor_status_cache_time
+                _supervisor_status_cache = {}
+                _supervisor_status_cache_time = 0.0
+                invalidate_screener_cache()
         except Exception as hyd_err:
             logger.error(f"Cloud database hydration error: {hyd_err}", exc_info=True)
 
@@ -440,10 +445,18 @@ def get_supervisor_status(force_refresh: bool = False):
     """Returns real-time status of the autonomous supervisor, EOD daemon, and universe health (cached with 30s TTL)."""
     global _supervisor_status_cache, _supervisor_status_cache_time
     now = time.monotonic()
+    hydration_status = get_hydration_status()
     if not force_refresh and _supervisor_status_cache and (now - _supervisor_status_cache_time) < _SUPERVISOR_STATUS_TTL_SECONDS:
         return _supervisor_status_cache
 
     status = platform_daemon.get_status()
+    if hydration_status != "READY":
+        if status.get("supervisor_state") in ("NO_ACTIVE_MODEL", "INITIALIZING", None):
+            status["supervisor_state"] = "NORMAL"
+            status["active_model_id"] = "baseline_deterministic"
+            status["model_name"] = "Deterministic Baseline (Momentum+LowVol+PIT)"
+        return status
+
     _supervisor_status_cache = status
     _supervisor_status_cache_time = now
     return status
