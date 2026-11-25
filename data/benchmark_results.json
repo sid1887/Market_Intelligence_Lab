@@ -1,49 +1,49 @@
 {
-  "timestamp": "2026-11-25T15:43:29Z",
+  "timestamp": "2026-11-25T16:07:52Z",
   "target_environment": "Render Free (0.1 vCPU / 512 MB RAM)",
-  "port_bind_ms": 4535.43,
-  "background_hydration_ms": 2998.97,
-  "idle_rss_mb": 368.46,
-  "peak_cgroup_memory_mb": 394.31,
-  "memory_headroom_mb": 117.69,
+  "port_bind_ms": 2880.81,
+  "background_hydration_ms": 1465.21,
+  "idle_rss_mb": 372.7,
+  "peak_cgroup_memory_mb": 384.45,
+  "memory_headroom_mb": 127.55,
   "cgroup_memory_limit_mb": 512.0,
-  "p50_latency_ms": 75.18,
-  "p95_latency_ms": 1755.21,
-  "p99_latency_ms": 2760.72,
-  "mean_latency_ms": 390.32,
+  "p50_latency_ms": 13.7,
+  "p95_latency_ms": 1059.54,
+  "p99_latency_ms": 1852.75,
+  "mean_latency_ms": 245.81,
   "total_requests": 32,
   "concurrency": 3,
   "endpoint_breakdown": {
     "/api/v1/health": {
       "count": 7,
-      "p50_ms": 91.52,
-      "p95_ms": 482.73
+      "p50_ms": 4.06,
+      "p95_ms": 200.09
     },
     "/api/v1/supervisor/status": {
       "count": 7,
-      "p50_ms": 42.74,
-      "p95_ms": 1043.04
+      "p50_ms": 6.42,
+      "p95_ms": 868.16
     },
     "/api/v1/screener?limit=50": {
       "count": 6,
-      "p50_ms": 57.05,
-      "p95_ms": 95.33
+      "p50_ms": 31.22,
+      "p95_ms": 58.74
     },
     "/api/v1/stocks/RELIANCE/status": {
       "count": 6,
-      "p50_ms": 51.76,
-      "p95_ms": 96.59
+      "p50_ms": 8.5,
+      "p95_ms": 28.22
     },
     "/api/v1/copilot/deliberate": {
       "count": 6,
-      "p50_ms": 1332.29,
-      "p95_ms": 2760.72
+      "p50_ms": 978.6,
+      "p95_ms": 1852.75
     }
   },
   "memory_ceiling_check": {
     "threshold_mb": 410.0,
-    "peak_observed_mb": 394.31,
-    "oom_buffer_mb": 117.69,
+    "peak_observed_mb": 384.45,
+    "oom_buffer_mb": 127.55,
     "status": "PASS (VERIFIED SAFE)"
   }
 }

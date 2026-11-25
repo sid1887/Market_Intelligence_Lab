@@ -36,7 +36,7 @@ def get_current_process_rss_mb() -> float:
         return 0.0
 
 
-def enforce_rss_memory_guard(threshold_mb: float = 385.0) -> Dict[str, Any]:
+def enforce_rss_memory_guard(threshold_mb: float = 375.0) -> Dict[str, Any]:
     """
     Checks process RSS memory against threshold. If exceeded, triggers emergency cache
     eviction and garbage collection to protect Render's 512 MB container against SIGKILL 137.

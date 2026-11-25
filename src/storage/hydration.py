@@ -538,3 +538,8 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
         return stats
     finally:
         set_hydration_status("READY")
+        try:
+            from src.storage.cache import enforce_rss_memory_guard
+            enforce_rss_memory_guard(threshold_mb=375.0)
+        except Exception:
+            pass

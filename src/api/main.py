@@ -357,7 +357,7 @@ def health_check():
         now_ts = time.time()
 
         # Phase 5 Live Health & Memory Headroom Telemetry
-        guard = enforce_rss_memory_guard(threshold_mb=385.0)
+        guard = enforce_rss_memory_guard(threshold_mb=375.0)
         rss_mb = guard["rss_mb"]
         memory_headroom_mb = guard["memory_headroom_mb"]
 
@@ -399,11 +399,14 @@ def health_check():
         except Exception:
             pass
 
-        # Durable state status
-        durable_state_status = "IN_SYNC"
+        # Durable state status & active dual-cloud backends
+        durable_state_status = "LOCAL_ONLY"
+        durable_backends_active: List[str] = []
         try:
-            from src.storage.durable_state import is_state_dirty
-            durable_state_status = "DIRTY_SYNC_PENDING" if is_state_dirty() else "IN_SYNC"
+            from src.storage.durable_state import DurableStateManager
+            summary = DurableStateManager.get_instance().get_status_summary()
+            durable_state_status = summary.get("durable_state_status", "LOCAL_ONLY")
+            durable_backends_active = summary.get("durable_backends_active", [])
         except Exception:
             pass
 
@@ -419,6 +422,7 @@ def health_check():
             "memory_headroom_mb": memory_headroom_mb,
             "cgroup_memory_limit_mb": 512.0,
             "durable_state_status": durable_state_status,
+            "durable_backends_active": durable_backends_active,
             "active_champion_model": active_champion,
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
         })
@@ -464,7 +468,7 @@ def get_screener(
     Safely sanitizes all NaN / Infinity values to prevent serialization crashes.
     """
     global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
-    enforce_rss_memory_guard(threshold_mb=385.0)
+    enforce_rss_memory_guard(threshold_mb=375.0)
     try:
         is_default_query = (
             min_roe is None and
@@ -636,7 +640,7 @@ def get_screener(
 
                 del df, df_clean, raw_bytes, raw_1000_bytes
                 gc.collect()
-                enforce_rss_memory_guard(threshold_mb=385.0)
+                enforce_rss_memory_guard(threshold_mb=375.0)
 
                 if offset == 0 and limit == 1000:
                     if accepts_gzip:
@@ -1369,7 +1373,7 @@ async def stream_copilot_deliberation(request: CopilotStreamRequest):
     Server-Sent Events (SSE) endpoint for multi-agent deliberation:
     Bull Analyst -> Bear Analyst -> Portfolio Manager Judge.
     """
-    enforce_rss_memory_guard(threshold_mb=385.0)
+    enforce_rss_memory_guard(threshold_mb=375.0)
     sym = request.symbol.strip().upper()
     user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
 
@@ -1407,7 +1411,7 @@ async def deliberate_copilot_json(request: CopilotStreamRequest):
     Direct non-streaming JSON endpoint fallback for Copilot deliberation.
     Guarantees reliable turn completion when network proxies or edge limits sever SSE streams.
     """
-    enforce_rss_memory_guard(threshold_mb=385.0)
+    enforce_rss_memory_guard(threshold_mb=375.0)
     sym = request.symbol.strip().upper()
     user_prompt = request.prompt or "Debate Bull vs Bear Thesis"
     res = await copilot_engine.deliberate_json(

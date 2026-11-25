@@ -32,7 +32,12 @@ import urllib.error
 from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 
+import httpx
+
 from src.storage.database import DatabaseManager
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger("MIL.DurableState")
 
@@ -157,6 +162,102 @@ class AzureBlobClient:
         return None
 
 
+class GitHubRepoStateClient:
+    """
+    Cardless, zero-cost durable state client using GitHub's REST Contents API
+    against a private repository (e.g., sid1887/mil-user-state) via httpx.
+    """
+
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        repo: Optional[str] = None,
+        state_path: Optional[str] = None,
+    ):
+        self.token = (token if token is not None else os.environ.get("MIL_STATE_GITHUB_TOKEN", "")).strip()
+        self.repo = (repo if repo is not None else os.environ.get("MIL_STATE_GITHUB_REPO", "")).strip().strip("/")
+        self.state_path = (
+            state_path if state_path is not None else os.environ.get("MIL_STATE_GITHUB_PATH", "state/user_state_bundle.json.gz")
+        ).strip().lstrip("/")
+        self.tradebook_path = "state/master_tradebook.enc"
+        self.api_base = "https://api.github.com"
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.token and self.repo)
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+    def _get_file_meta(self, path: str) -> Optional[Dict[str, Any]]:
+        if not self.is_configured:
+            return None
+        url = f"{self.api_base}/repos/{self.repo}/contents/{path.lstrip('/')}"
+        with httpx.Client(timeout=20.0) as client:
+            resp = client.get(url, headers=self._headers())
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+
+    def download_file(self, path: Optional[str] = None) -> Optional[bytes]:
+        """Downloads and base64-decodes a file from the private GitHub state repo."""
+        if not self.is_configured:
+            return None
+        target = (path or self.state_path).lstrip("/")
+        meta = self._get_file_meta(target)
+        if not meta:
+            return None
+
+        content_b64 = meta.get("content")
+        if content_b64:
+            return base64.b64decode(content_b64)
+
+        download_url = meta.get("download_url")
+        if download_url:
+            with httpx.Client(timeout=30.0) as client:
+                dl_resp = client.get(download_url, headers=self._headers())
+                dl_resp.raise_for_status()
+                return dl_resp.content
+        return None
+
+    def upload_file(
+        self,
+        data: bytes,
+        path: Optional[str] = None,
+        commit_message: str = "chore(state): sync MIL durable user state",
+    ) -> bool:
+        """Uploads (creates or updates with SHA) a file to the private GitHub state repo."""
+        if not self.is_configured:
+            return False
+        target = (path or self.state_path).lstrip("/")
+        url = f"{self.api_base}/repos/{self.repo}/contents/{target}"
+
+        sha: Optional[str] = None
+        try:
+            meta = self._get_file_meta(target)
+            if meta:
+                sha = meta.get("sha")
+        except Exception as meta_err:
+            logger.warning(f"[DURABLE-STATE-GH] Metadata check failed for {target}: {meta_err}")
+
+        payload: Dict[str, Any] = {
+            "message": commit_message,
+            "content": base64.b64encode(data).decode("ascii"),
+        }
+        if sha:
+            payload["sha"] = sha
+
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.put(url, headers=self._headers(), json=payload)
+            resp.raise_for_status()
+            return resp.status_code in (200, 201)
+
+
 class DurableStateManager:
     """
     Manages debounced asynchronous state backups and startup hydration
@@ -166,9 +267,15 @@ class DurableStateManager:
     _instance: Optional["DurableStateManager"] = None
     _lock = threading.Lock()
 
-    def __init__(self, db: Optional[DatabaseManager] = None, client: Optional[AzureBlobClient] = None):
+    def __init__(
+        self,
+        db: Optional[DatabaseManager] = None,
+        client: Optional[AzureBlobClient] = None,
+        github_client: Optional[GitHubRepoStateClient] = None,
+    ):
         self.db = db or DatabaseManager()
         self.client = client or AzureBlobClient()
+        self.github_client = github_client or GitHubRepoStateClient()
         self.debounce_seconds: float = 30.0
         self.max_wait_seconds: float = 120.0
         self._is_dirty: bool = False
@@ -176,6 +283,40 @@ class DurableStateManager:
         self._last_flush_time: float = time.time()
         self._daemon_started: bool = False
         self._daemon_thread: Optional[threading.Thread] = None
+        self._last_sync_status: str = self._compute_initial_status()
+
+    def _compute_initial_status(self) -> str:
+        az = self.client.is_configured
+        gh = self.github_client.is_configured
+        if az and gh:
+            return "IN_SYNC_DUAL"
+        if az:
+            return "IN_SYNC_AZURE"
+        if gh:
+            return "IN_SYNC_GITHUB_FALLBACK"
+        return "LOCAL_ONLY"
+
+    @property
+    def has_any_backend(self) -> bool:
+        return self.client.is_configured or self.github_client.is_configured
+
+    def get_active_backends(self) -> List[str]:
+        backends: List[str] = []
+        if self.client.is_configured:
+            backends.append("azure_blob")
+        if self.github_client.is_configured:
+            backends.append("github_repo")
+        return backends
+
+    def get_status_summary(self) -> Dict[str, Any]:
+        if self._is_dirty and self.has_any_backend:
+            status = "DIRTY_SYNC_PENDING"
+        else:
+            status = self._last_sync_status
+        return {
+            "durable_state_status": status,
+            "durable_backends_active": self.get_active_backends(),
+        }
 
     @classmethod
     def get_instance(cls, db: Optional[DatabaseManager] = None) -> "DurableStateManager":
@@ -193,7 +334,7 @@ class DurableStateManager:
     def _ensure_daemon(self) -> None:
         if self._daemon_started and self._daemon_thread and self._daemon_thread.is_alive():
             return
-        if not self.client.is_configured:
+        if not self.has_any_backend:
             return  # No-op in local dev / unconfigured environments
         with self._lock:
             if not self._daemon_started or not (self._daemon_thread and self._daemon_thread.is_alive()):
@@ -310,60 +451,128 @@ class DurableStateManager:
 
     def flush_sync(self) -> bool:
         """
-        Executes an immediate synchronous snapshot export and upload to Azure Blob Storage.
+        Executes an immediate synchronous snapshot export and dual-cloud upload
+        (Azure Blob primary + Private GitHub Repo secondary/failover).
         """
-        if not self.client.is_configured:
+        if not self.has_any_backend:
             self._is_dirty = False
+            self._last_sync_status = "LOCAL_ONLY"
             return False
 
         try:
-            # 1. Snapshot and upload SQLite user tables
             gz_bytes = self.export_mutable_state()
-            state_ok = self.client.upload_blob(CONTAINER_NAME, STATE_BLOB_NAME, gz_bytes, "application/gzip")
-
-            # 2. Upload master_tradebook.enc if present
             enc_data = self.export_tradebook_enc()
-            enc_ok = True
-            if enc_data:
-                enc_ok = self.client.upload_blob(CONTAINER_NAME, TRADEBOOK_ENC_BLOB_NAME, enc_data, "application/octet-stream")
+        except Exception as exp_err:
+            logger.error(f"[DURABLE-STATE-SYNC-ERROR] Snapshot export failed: {exp_err}")
+            return False
 
-            if state_ok and enc_ok:
-                self._is_dirty = False
-                self._last_flush_time = time.time()
-                logger.info(f"[DURABLE-STATE-SYNC-SUCCESS] Flushed user state snapshot ({len(gz_bytes)} bytes) to Azure Blob.")
-                return True
+        azure_ok = False
+        if self.client.is_configured:
+            try:
+                s_ok = self.client.upload_blob(CONTAINER_NAME, STATE_BLOB_NAME, gz_bytes, "application/gzip")
+                e_ok = True
+                if enc_data:
+                    e_ok = self.client.upload_blob(CONTAINER_NAME, TRADEBOOK_ENC_BLOB_NAME, enc_data, "application/octet-stream")
+                azure_ok = bool(s_ok and e_ok)
+            except Exception as az_err:
+                logger.warning(f"[DURABLE-STATE-AZURE-FAIL] Azure upload failed (failing over if GitHub configured): {az_err}")
+                azure_ok = False
+
+        github_ok = False
+        if self.github_client.is_configured:
+            try:
+                gh_s_ok = self.github_client.upload_file(
+                    gz_bytes,
+                    path=self.github_client.state_path,
+                    commit_message="chore(state): sync user_state_bundle.json.gz",
+                )
+                gh_e_ok = True
+                if enc_data:
+                    gh_e_ok = self.github_client.upload_file(
+                        enc_data,
+                        path=self.github_client.tradebook_path,
+                        commit_message="chore(state): sync master_tradebook.enc",
+                    )
+                github_ok = bool(gh_s_ok and gh_e_ok)
+            except Exception as gh_err:
+                logger.warning(f"[DURABLE-STATE-GH-FAIL] GitHub state upload failed: {gh_err}")
+                github_ok = False
+
+        if azure_ok and github_ok:
+            self._last_sync_status = "IN_SYNC_DUAL"
+        elif azure_ok:
+            self._last_sync_status = "IN_SYNC_AZURE"
+        elif github_ok:
+            self._last_sync_status = "IN_SYNC_GITHUB_FALLBACK"
+        else:
             return False
-        except Exception as e:
-            logger.error(f"[DURABLE-STATE-SYNC-ERROR] Flush failed: {e}")
-            return False
+
+        self._is_dirty = False
+        self._last_flush_time = time.time()
+        logger.info(
+            f"[DURABLE-STATE-SYNC-SUCCESS] Flushed user state ({len(gz_bytes)} bytes) -> status={self._last_sync_status}"
+        )
+        return True
+
+    def sync_user_state(self) -> bool:
+        """Alias for flush_sync() supporting dual-cloud sync."""
+        return self.flush_sync()
 
     def restore_on_startup(self) -> Dict[str, Any]:
         """
-        Downloads latest_user_state.json.gz and master_tradebook.enc from Azure Blob Storage
-        and restores them into SQLite WAL and disk during application boot.
+        Attempts restore from Azure Blob first; if Azure is unconfigured, disabled,
+        or raises an exception, automatically fails over to the Private GitHub Repo.
         """
-        if not self.client.is_configured:
-            logger.info("[DURABLE-STATE-BOOT] AZURE_STORAGE_CONNECTION_STRING not set. Using local database state.")
-            return {"status": "SKIPPED_UNCONFIGURED"}
+        if not self.has_any_backend:
+            self._last_sync_status = "LOCAL_ONLY"
+            logger.info("[DURABLE-STATE-BOOT] No cloud state backend configured. Using local SQLite state.")
+            return {"status": "LOCAL_ONLY", "tables": {}, "tradebook_restored": False}
 
-        logger.info("[DURABLE-STATE-BOOT] Checking for durable state in Azure Blob Storage...")
-        results: Dict[str, Any] = {"status": "SUCCESS", "tables": {}, "tradebook_restored": False}
+        results: Dict[str, Any] = {"status": "LOCAL_ONLY", "tables": {}, "tradebook_restored": False, "provider": None}
+        restored_from_azure = False
 
-        # 1. Restore SQLite user tables
-        gz_data = self.client.download_blob(CONTAINER_NAME, STATE_BLOB_NAME)
-        if gz_data:
-            restored = self.restore_mutable_state(gz_data)
-            results["tables"] = restored
-        else:
-            results["tables"] = {}
+        # 1. Primary: Azure Blob Storage
+        if self.client.is_configured:
+            try:
+                logger.info("[DURABLE-STATE-BOOT] Checking for durable state in Azure Blob Storage...")
+                gz_data = self.client.download_blob(CONTAINER_NAME, STATE_BLOB_NAME)
+                enc_data = self.client.download_blob(CONTAINER_NAME, TRADEBOOK_ENC_BLOB_NAME)
+                if gz_data is not None:
+                    results["tables"] = self.restore_mutable_state(gz_data)
+                    restored_from_azure = True
+                if enc_data is not None:
+                    results["tradebook_restored"] = self.restore_tradebook_enc(enc_data)
+                    restored_from_azure = True
+                if restored_from_azure:
+                    self._last_sync_status = "IN_SYNC_DUAL" if self.github_client.is_configured else "IN_SYNC_AZURE"
+                    results["status"] = self._last_sync_status
+                    results["provider"] = "azure_blob"
+                    return results
+            except Exception as az_err:
+                logger.warning(f"[DURABLE-STATE-BOOT] Azure restore failed ({az_err}); checking GitHub failover...")
 
-        # 2. Restore encrypted tradebook file
-        enc_data = self.client.download_blob(CONTAINER_NAME, TRADEBOOK_ENC_BLOB_NAME)
-        if enc_data:
-            enc_ok = self.restore_tradebook_enc(enc_data)
-            results["tradebook_restored"] = enc_ok
+        # 2. Secondary / Cardless Failover: Private GitHub Repo
+        if self.github_client.is_configured:
+            try:
+                logger.info("[DURABLE-STATE-BOOT] Restoring durable state from Private GitHub Repo failover...")
+                gh_gz = self.github_client.download_file(self.github_client.state_path)
+                gh_enc = self.github_client.download_file(self.github_client.tradebook_path)
+                if gh_gz is not None:
+                    results["tables"] = self.restore_mutable_state(gh_gz)
+                if gh_enc is not None:
+                    results["tradebook_restored"] = self.restore_tradebook_enc(gh_enc)
+                self._last_sync_status = "IN_SYNC_GITHUB_FALLBACK"
+                results["status"] = "IN_SYNC_GITHUB_FALLBACK"
+                results["provider"] = "github_repo"
+                return results
+            except Exception as gh_err:
+                logger.warning(f"[DURABLE-STATE-BOOT] GitHub failover restore error: {gh_err}")
 
         return results
+
+    def restore_user_state(self) -> Dict[str, Any]:
+        """Alias for restore_on_startup() supporting dual-cloud failover."""
+        return self.restore_on_startup()
 
 
 def is_state_dirty() -> bool:
