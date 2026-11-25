@@ -11,7 +11,7 @@
 set -euo pipefail
 
 RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-mil-research}"
-LOCATION="${AZURE_LOCATION:-centralindia}"
+LOCATION="${AZURE_LOCATION:-indiasouthcentral}"
 VM_NAME="${AZURE_BURST_VM_NAME:-mil-burst-worker}"
 VM_SIZE="${AZURE_BURST_VM_SIZE:-Standard_D4s_v5}"
 STORAGE_ACCOUNT="${AZURE_STORAGE_ACCOUNT:-milstatearchive74b8}"
