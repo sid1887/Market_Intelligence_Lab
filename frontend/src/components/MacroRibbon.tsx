@@ -1,9 +1,39 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { TrendingUp, TrendingDown, Minus, ShieldCheck, AlertTriangle, AlertCircle, WifiOff, Terminal } from "lucide-react";
-import { MacroResponse, SupervisorStatus } from "@/lib/api";
+import { TrendingUp, TrendingDown, Minus, ShieldCheck, AlertTriangle, AlertCircle, WifiOff, Terminal, Activity, Network } from "lucide-react";
+import { API_BASE, MacroResponse, SupervisorStatus } from "@/lib/api";
 import { milEvents } from "@/lib/store";
+
+interface RegimeRibbonState {
+  active_regime: string;
+  probabilities?: Record<string, number>;
+  policy?: {
+    position_scale?: number;
+    max_portfolio_exposure?: number;
+    min_meta_prob_delta?: number;
+    veto_high_beta_breakouts?: boolean;
+  };
+}
+
+interface SpilloverRibbonState {
+  systemic_contagion_index: number;
+  contagion_regime: string;
+  top_spillover_alert?: {
+    leader: string;
+    follower: string;
+    granger_f: number;
+    lag_corr: number;
+    signal_type: string;
+  } | null;
+  directed_lead_lag_edges?: Array<{
+    leader: string;
+    follower: string;
+    granger_f: number;
+    lag_corr: number;
+    signal_type: string;
+  }>;
+}
 
 interface MacroRibbonProps {
   macroData: MacroResponse | null;
@@ -25,6 +55,38 @@ function MacroRibbonComponent({
   const [now, setNow] = useState<number>(0);
   const prevValuesRef = useRef<Map<string, number | null>>(new Map());
   const [flashingKeys, setFlashingKeys] = useState<Record<string, "tick-up" | "tick-down">>({});
+  const [regimeData, setRegimeData] = useState<RegimeRibbonState | null>(null);
+  const [spilloverData, setSpilloverData] = useState<SpilloverRibbonState | null>(null);
+  const [showRegimePopover, setShowRegimePopover] = useState<boolean>(false);
+
+  // Fetch Live HMM Regime & Spillover Contagion HUD every 60s
+  useEffect(() => {
+    let cancelled = false;
+    const loadHud = async () => {
+      try {
+        const [rRes, sRes] = await Promise.all([
+          fetch(`${API_BASE}/regime/status`),
+          fetch(`${API_BASE}/regime/spillover`),
+        ]);
+        if (!cancelled && rRes.ok) {
+          const rJson = await rRes.json();
+          if (rJson?.active_regime) setRegimeData(rJson);
+        }
+        if (!cancelled && sRes.ok) {
+          const sJson = await sRes.json();
+          if (typeof sJson?.systemic_contagion_index === "number") setSpilloverData(sJson);
+        }
+      } catch {
+        // non-blocking
+      }
+    };
+    loadHud();
+    const timer = setInterval(loadHud, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   const isStale = lastTickAt !== null && now > 0 && now - lastTickAt > 30_000;
 
@@ -238,6 +300,98 @@ function MacroRibbonComponent({
           })}
         </div>
       </div>
+
+      {/* Live HMM Regime & Systemic Contagion HUD */}
+      {regimeData && (
+        <div className="relative h-full flex items-center border-l border-white/[0.06] bg-[#020306] z-20 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowRegimePopover((p) => !p)}
+            className="h-full flex items-center gap-1.5 px-2.5 text-[10px] font-mono whitespace-nowrap hover:bg-white/[0.04] transition-colors cursor-pointer"
+            title="Live 3-State HMM Regime & Cross-Asset Spillover Contagion — Click for breakdown"
+          >
+            <Activity className={`w-3 h-3 ${
+              regimeData.active_regime === "STRESS_DRAWDOWN"
+                ? "text-rose-400"
+                : regimeData.active_regime === "HIGH_VOL_CHOP"
+                ? "text-amber-400"
+                : "text-emerald-400"
+            }`} />
+            <span className={`px-1.5 py-0.5 rounded font-bold border ${
+              regimeData.active_regime === "STRESS_DRAWDOWN"
+                ? "bg-rose-950/70 border-rose-500/40 text-rose-300"
+                : regimeData.active_regime === "HIGH_VOL_CHOP"
+                ? "bg-amber-950/70 border-amber-500/40 text-amber-300"
+                : "bg-emerald-950/70 border-emerald-500/30 text-emerald-300"
+            }`}>
+              {regimeData.active_regime}
+            </span>
+            <span className="text-slate-400 hidden lg:inline">
+              {regimeData.active_regime === "LOW_VOL_TREND"
+                ? "100% Cap"
+                : regimeData.active_regime === "HIGH_VOL_CHOP"
+                ? "70% Cap · +0.05 Meta Hurdle"
+                : "25% Cap · Breakouts Vetoed"}
+            </span>
+            {spilloverData && (
+              <span className={`hidden md:inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded border ${
+                spilloverData.systemic_contagion_index >= 70
+                  ? "bg-rose-950/60 border-rose-500/30 text-rose-300"
+                  : spilloverData.systemic_contagion_index >= 50
+                  ? "bg-amber-950/60 border-amber-500/30 text-amber-300"
+                  : "bg-cyan-950/50 border-cyan-500/25 text-cyan-300"
+              }`}>
+                <Network className="w-2.5 h-2.5" />
+                Contagion {spilloverData.systemic_contagion_index.toFixed(0)}
+              </span>
+            )}
+          </button>
+
+          {showRegimePopover && (
+            <div className="absolute right-0 top-full mt-1 w-80 rounded-lg border border-white/10 bg-[#070b14]/95 backdrop-blur-xl shadow-2xl p-3 text-[11px] font-mono text-slate-200 z-50">
+              <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
+                <span className="font-bold text-cyan-300">HMM REGIME &amp; SPILLOVER HUD</span>
+                <button
+                  type="button"
+                  onClick={() => setShowRegimePopover(false)}
+                  className="text-slate-400 hover:text-white text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="space-y-1 mb-2">
+                <div className="text-[10px] text-slate-400 uppercase">Causal State Probabilities</div>
+                {["LOW_VOL_TREND", "HIGH_VOL_CHOP", "STRESS_DRAWDOWN"].map((k) => {
+                  const p = (regimeData.probabilities?.[k] ?? 0) * 100;
+                  return (
+                    <div key={k} className="flex items-center justify-between">
+                      <span className="text-slate-300">{k}</span>
+                      <span className="tabular-nums font-semibold">{p.toFixed(1)}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {spilloverData && (
+                <div className="border-t border-white/10 pt-2 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 uppercase">Systemic Contagion</span>
+                    <span className="font-bold text-cyan-300">
+                      {spilloverData.systemic_contagion_index.toFixed(1)} / 100
+                    </span>
+                  </div>
+                  {spilloverData.top_spillover_alert && (
+                    <div className="text-[10px] text-slate-300 bg-white/[0.03] rounded p-1.5 border border-white/[0.06]">
+                      Leader: <span className="text-amber-300 font-semibold">{spilloverData.top_spillover_alert.leader}</span> →{" "}
+                      <span className="text-cyan-300 font-semibold">{spilloverData.top_spillover_alert.follower}</span>{" "}
+                      (F={spilloverData.top_spillover_alert.granger_f.toFixed(1)}, r={spilloverData.top_spillover_alert.lag_corr.toFixed(2)})
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Supervisor Health State & Observability Trigger */}
       <button

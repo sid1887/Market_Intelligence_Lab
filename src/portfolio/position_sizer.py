@@ -88,7 +88,9 @@ class FrictionAwarePositionSizer:
         cluster_cap_pct: float = 0.40,     # 40% maximum allocation per correlation cluster
         corr_threshold: float = 0.65,      # 0.65 correlation threshold for clustering
         broker_profile: str = PROFILE_ZERO,
-        dp_charge: float = ANGEL_ONE_DP_CHARGE
+        dp_charge: float = ANGEL_ONE_DP_CHARGE,
+        use_regime_policy: bool = True,
+        regime: Optional[str] = None,
     ):
         self.db = db or DatabaseManager()
         self.max_risk_pct = float(max_risk_pct)
@@ -100,6 +102,26 @@ class FrictionAwarePositionSizer:
         self.corr_threshold = float(corr_threshold)
         self.broker_profile = broker_profile
         self.dp_charge = float(dp_charge)
+        self.use_regime_policy = bool(use_regime_policy)
+        self.regime = regime
+
+    def get_regime_optimal_policy(
+        self,
+        ticket_size: float,
+        regime: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Loads calibrated optimal execution policy for the active HMM regime & ticket size."""
+        if not self.use_regime_policy:
+            return None
+        try:
+            from src.quant.policy_optimizer import load_optimal_execution_policy
+            from src.quant.regime_hmm import load_regime_hmm_state
+
+            active_regime = regime or self.regime or load_regime_hmm_state().get("latest_regime", "HIGH_VOL_CHOP")
+            return load_optimal_execution_policy(regime=active_regime, ticket_size=ticket_size)
+        except Exception as e:
+            logger.debug(f"Regime optimal policy lookup fallback: {e}")
+            return None
 
     def compute_trailing_correlation(
         self,
@@ -265,10 +287,18 @@ class FrictionAwarePositionSizer:
 
         fee_drag_pct = round((f_win / buy_turnover) * 100.0, 2) if buy_turnover > 0 else 0.0
 
+        # Resolve effective regime-optimal thresholds if enabled
+        eff_max_fee_drag = self.max_fee_drag_pct
+        eff_min_net_rr = self.min_net_rr
+        reg_pol = self.get_regime_optimal_policy(ticket_size=buy_turnover)
+        if reg_pol:
+            eff_min_net_rr = max(eff_min_net_rr, float(reg_pol.get("min_net_rr", eff_min_net_rr)))
+            eff_max_fee_drag = float(reg_pol.get("max_fee_drag_pct", eff_max_fee_drag))
+
         # 6. Post-Friction Abstention Gates
-        if fee_drag_pct > self.max_fee_drag_pct:
+        if fee_drag_pct > eff_max_fee_drag:
             veto_reasons.append(
-                f"FEE_DRAG_EXCEEDS_THRESHOLD: Round-trip friction is {fee_drag_pct:.2f}% (exceeds {self.max_fee_drag_pct:.2f}% cap). "
+                f"FEE_DRAG_EXCEEDS_THRESHOLD: Round-trip friction is {fee_drag_pct:.2f}% (exceeds {eff_max_fee_drag:.2f}% cap). "
                 f"₹{self.dp_charge:.2f} DP charge severely penalizes this position size (₹{buy_turnover:,.2f})."
             )
 
@@ -277,9 +307,9 @@ class FrictionAwarePositionSizer:
                 f"NEGATIVE_NET_EXPECTANCY: Net reward after ₹{f_win:.2f} friction is negative (₹{net_reward:.2f})."
             )
 
-        if net_rr < self.min_net_rr:
+        if net_rr < eff_min_net_rr:
             veto_reasons.append(
-                f"POOR_NET_RR: Net R:R is {net_rr:.2f}x (required minimum is {self.min_net_rr:.2f}x). "
+                f"POOR_NET_RR: Net R:R is {net_rr:.2f}x (required minimum is {eff_min_net_rr:.2f}x). "
                 f"Gross R:R was {gross_rr:.2f}x but friction eroded payoff asymmetry."
             )
 

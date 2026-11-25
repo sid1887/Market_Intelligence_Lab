@@ -1,0 +1,350 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-11-25T13:40:31.273870+00:00",
+  "as_of_date": "2026-11-20",
+  "window_sessions": 60,
+  "estimator": "GraphicalLassoCV",
+  "systemic_contagion_index": 41.33,
+  "contagion_regime": "NORMAL_DISPERSION",
+  "nodes": [
+    "NIFTY AUTO",
+    "NIFTY BANK",
+    "NIFTY ENERGY",
+    "NIFTY FMCG",
+    "NIFTY IT",
+    "NIFTY METAL",
+    "NIFTY PHARMA",
+    "NIFTY REALTY"
+  ],
+  "sector_5d_returns_pct": {
+    "NIFTY AUTO": 3.07,
+    "NIFTY BANK": 5.9,
+    "NIFTY ENERGY": -0.21,
+    "NIFTY FMCG": 3.63,
+    "NIFTY IT": -1.91,
+    "NIFTY METAL": -2.98,
+    "NIFTY PHARMA": -0.52,
+    "NIFTY REALTY": 1.92
+  },
+  "sparse_partial_corr_edges": [
+    {
+      "source": "NIFTY ENERGY",
+      "target": "NIFTY METAL",
+      "partial_corr": 0.4439,
+      "abs_strength": 0.4439
+    },
+    {
+      "source": "NIFTY AUTO",
+      "target": "NIFTY BANK",
+      "partial_corr": 0.3373,
+      "abs_strength": 0.3373
+    },
+    {
+      "source": "NIFTY BANK",
+      "target": "NIFTY REALTY",
+      "partial_corr": 0.2893,
+      "abs_strength": 0.2893
+    },
+    {
+      "source": "NIFTY ENERGY",
+      "target": "NIFTY FMCG",
+      "partial_corr": 0.2219,
+      "abs_strength": 0.2219
+    },
+    {
+      "source": "NIFTY AUTO",
+      "target": "NIFTY METAL",
+      "partial_corr": 0.184,
+      "abs_strength": 0.184
+    },
+    {
+      "source": "NIFTY AUTO",
+      "target": "NIFTY PHARMA",
+      "partial_corr": 0.1757,
+      "abs_strength": 0.1757
+    },
+    {
+      "source": "NIFTY METAL",
+      "target": "NIFTY REALTY",
+      "partial_corr": 0.1645,
+      "abs_strength": 0.1645
+    },
+    {
+      "source": "NIFTY AUTO",
+      "target": "NIFTY FMCG",
+      "partial_corr": 0.1452,
+      "abs_strength": 0.1452
+    },
+    {
+      "source": "NIFTY AUTO",
+      "target": "NIFTY REALTY",
+      "partial_corr": 0.1361,
+      "abs_strength": 0.1361
+    },
+    {
+      "source": "NIFTY BANK",
+      "target": "NIFTY FMCG",
+      "partial_corr": 0.1288,
+      "abs_strength": 0.1288
+    },
+    {
+      "source": "NIFTY METAL",
+      "target": "NIFTY PHARMA",
+      "partial_corr": 0.1156,
+      "abs_strength": 0.1156
+    },
+    {
+      "source": "NIFTY ENERGY",
+      "target": "NIFTY REALTY",
+      "partial_corr": 0.1098,
+      "abs_strength": 0.1098
+    }
+  ],
+  "directed_lead_lag_edges": [
+    {
+      "leader": "NIFTY FMCG",
+      "follower": "NIFTY REALTY",
+      "granger_f": 4.22,
+      "lag_corr": 0.2632,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": 3.63,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY FMCG",
+      "follower": "NIFTY BANK",
+      "granger_f": 2.8,
+      "lag_corr": 0.3791,
+      "best_lag_days": 2,
+      "leader_5d_ret_pct": 3.63,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY FMCG",
+      "follower": "NIFTY AUTO",
+      "granger_f": 2.783,
+      "lag_corr": 0.2792,
+      "best_lag_days": 2,
+      "leader_5d_ret_pct": 3.63,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY AUTO",
+      "follower": "NIFTY PHARMA",
+      "granger_f": 2.234,
+      "lag_corr": 0.2372,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": 3.07,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY FMCG",
+      "follower": "NIFTY METAL",
+      "granger_f": 2.196,
+      "lag_corr": 0.2014,
+      "best_lag_days": 2,
+      "leader_5d_ret_pct": 3.63,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY ENERGY",
+      "follower": "NIFTY REALTY",
+      "granger_f": 2.168,
+      "lag_corr": 0.2746,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": -0.21,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY FMCG",
+      "follower": "NIFTY PHARMA",
+      "granger_f": 2.119,
+      "lag_corr": 0.2809,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": 3.63,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY AUTO",
+      "follower": "NIFTY BANK",
+      "granger_f": 1.681,
+      "lag_corr": 0.2649,
+      "best_lag_days": 3,
+      "leader_5d_ret_pct": 3.07,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY METAL",
+      "follower": "NIFTY REALTY",
+      "granger_f": 1.571,
+      "lag_corr": 0.2418,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": -2.98,
+      "signal_type": "NEGATIVE_SPILLOVER"
+    },
+    {
+      "leader": "NIFTY REALTY",
+      "follower": "NIFTY FMCG",
+      "granger_f": 1.293,
+      "lag_corr": 0.2356,
+      "best_lag_days": 2,
+      "leader_5d_ret_pct": 1.92,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY PHARMA",
+      "follower": "NIFTY AUTO",
+      "granger_f": 1.282,
+      "lag_corr": 0.2429,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": -0.52,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY FMCG",
+      "follower": "NIFTY IT",
+      "granger_f": 1.272,
+      "lag_corr": -0.2232,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": 3.63,
+      "signal_type": "NEGATIVE_SPILLOVER"
+    },
+    {
+      "leader": "NIFTY METAL",
+      "follower": "NIFTY PHARMA",
+      "granger_f": 1.185,
+      "lag_corr": 0.2413,
+      "best_lag_days": 1,
+      "leader_5d_ret_pct": -2.98,
+      "signal_type": "NEGATIVE_SPILLOVER"
+    },
+    {
+      "leader": "NIFTY REALTY",
+      "follower": "NIFTY BANK",
+      "granger_f": 1.1,
+      "lag_corr": 0.3193,
+      "best_lag_days": 2,
+      "leader_5d_ret_pct": 1.92,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY BANK",
+      "follower": "NIFTY AUTO",
+      "granger_f": 0.845,
+      "lag_corr": 0.2713,
+      "best_lag_days": 3,
+      "leader_5d_ret_pct": 5.9,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY PHARMA",
+      "follower": "NIFTY BANK",
+      "granger_f": 0.798,
+      "lag_corr": 0.2523,
+      "best_lag_days": 2,
+      "leader_5d_ret_pct": -0.52,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY BANK",
+      "follower": "NIFTY FMCG",
+      "granger_f": 0.472,
+      "lag_corr": 0.3199,
+      "best_lag_days": 3,
+      "leader_5d_ret_pct": 5.9,
+      "signal_type": "POSITIVE_ROTATION"
+    },
+    {
+      "leader": "NIFTY BANK",
+      "follower": "NIFTY REALTY",
+      "granger_f": 0.108,
+      "lag_corr": 0.2744,
+      "best_lag_days": 3,
+      "leader_5d_ret_pct": 5.9,
+      "signal_type": "POSITIVE_ROTATION"
+    }
+  ],
+  "top_spillover_alert": {
+    "leader": "NIFTY FMCG",
+    "follower": "NIFTY REALTY",
+    "granger_f": 4.22,
+    "lag_corr": 0.2632,
+    "best_lag_days": 1,
+    "leader_5d_ret_pct": 3.63,
+    "signal_type": "POSITIVE_ROTATION"
+  },
+  "sector_risk_penalties": {
+    "NIFTY AUTO": {
+      "ret_5d_pct": 3.07,
+      "negative_spillover_penalty": 0.0,
+      "leaders": []
+    },
+    "NIFTY BANK": {
+      "ret_5d_pct": 5.9,
+      "negative_spillover_penalty": 0.0,
+      "leaders": []
+    },
+    "NIFTY ENERGY": {
+      "ret_5d_pct": -0.21,
+      "negative_spillover_penalty": 0.0,
+      "leaders": []
+    },
+    "NIFTY FMCG": {
+      "ret_5d_pct": 3.63,
+      "negative_spillover_penalty": 0.0,
+      "leaders": []
+    },
+    "NIFTY IT": {
+      "ret_5d_pct": -1.91,
+      "negative_spillover_penalty": 0.05,
+      "leaders": [
+        "NIFTY FMCG"
+      ]
+    },
+    "NIFTY METAL": {
+      "ret_5d_pct": -2.98,
+      "negative_spillover_penalty": 0.0,
+      "leaders": []
+    },
+    "NIFTY PHARMA": {
+      "ret_5d_pct": -0.52,
+      "negative_spillover_penalty": 0.05,
+      "leaders": [
+        "NIFTY METAL"
+      ]
+    },
+    "NIFTY REALTY": {
+      "ret_5d_pct": 1.92,
+      "negative_spillover_penalty": 0.05,
+      "leaders": [
+        "NIFTY METAL"
+      ]
+    }
+  },
+  "macro_indicators": [
+    {
+      "symbol": "USD/INR",
+      "label": "USD / INR",
+      "value": 92.22,
+      "change_pct": -0.75
+    },
+    {
+      "symbol": "BRENT",
+      "label": "Brent Crude",
+      "value": 89.25,
+      "change_pct": -2.35
+    },
+    {
+      "symbol": "US10Y",
+      "label": "US 10Y Yield",
+      "value": 4.9,
+      "change_pct": null
+    },
+    {
+      "symbol": "IN10Y",
+      "label": "India 10Y G-Sec",
+      "value": 6.82,
+      "change_pct": -0.15
+    }
+  ]
+}

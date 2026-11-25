@@ -634,6 +634,10 @@ def get_screener(
                 _screener_cache_date = latest_date
                 _screener_cache_time = now_time
 
+                del df, df_clean, raw_bytes, raw_1000_bytes
+                gc.collect()
+                enforce_rss_memory_guard(threshold_mb=385.0)
+
                 if offset == 0 and limit == 1000:
                     if accepts_gzip:
                         return Response(content=raw_1000_gzip, media_type="application/json", headers={"Content-Encoding": "gzip"})
@@ -1168,6 +1172,22 @@ def get_regime_status(symbol: Optional[str] = Query(None), horizon_days: int = Q
     except Exception as e:
         logger.error(f"Error computing regime status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to compute regime status: {str(e)}")
+
+
+@app.get("/regime/spillover")
+@app.get("/api/v1/regime/spillover")
+def get_regime_spillover():
+    """
+    Returns Cross-Asset & Sector Spillover Graph (Graphical Lasso partial correlations,
+    Granger Lead -> Follower edges, and Systemic Contagion Index 0-100).
+    """
+    try:
+        from src.quant.spillover_graph import load_spillover_graph
+        data = load_spillover_graph()
+        return sanitize_for_json({"status": "ok", **data})
+    except Exception as e:
+        logger.error(f"Error loading spillover graph: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to load spillover graph: {str(e)}")
 
 
 @app.post("/news/ingest")

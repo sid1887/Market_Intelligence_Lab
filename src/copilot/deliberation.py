@@ -1481,6 +1481,24 @@ class MultiAgentDeliberationEngine:
         if avail_cap <= 0:
             avail_cap = 5000.0
 
+        # Phase 9: Cross-Asset & Sector Spillover Penalty
+        spillover_note = ""
+        spillover_mult = 1.0
+        try:
+            from src.quant.spillover_graph import get_sector_spillover_penalty
+            sp_info = get_sector_spillover_penalty(stock.get("sector"))
+            neg_pen = float(sp_info.get("negative_spillover_penalty", 0.0))
+            if neg_pen > 0:
+                spillover_mult = max(0.5, 1.0 - neg_pen)
+                leaders_str = ", ".join(sp_info.get("negative_leaders", [])[:3]) or "Sector Leaders"
+                spillover_note = (
+                    f"\n- **Sector Contagion Penalty:** `-{neg_pen * 100:.0f}%` size scale "
+                    f"(`{sp_info.get('sector_index')}` experiencing negative spillover from {leaders_str}; "
+                    f"Systemic Contagion `{sp_info.get('systemic_contagion_index', 40.0)}/100`)"
+                )
+        except Exception:
+            pass
+
         sizer_res = self.position_sizer.solve_position_size(
             capital=avail_cap,
             entry_price=price,
@@ -1489,7 +1507,7 @@ class MultiAgentDeliberationEngine:
             meta_prob=meta_prob,
             candidate_symbol=sym,
             open_positions=open_holdings,
-            custom_size_multiplier=profile.get("size_multiplier", 1.0)
+            custom_size_multiplier=float(profile.get("size_multiplier", 1.0)) * spillover_mult
         )
 
         eval_res: Dict[str, Any] = {}
@@ -1528,6 +1546,7 @@ class MultiAgentDeliberationEngine:
                 f"- **Fee Drag Breakeven:** `₹{eval_res.get('breakeven_price', price):.2f}` (`+{sizer_res.fee_drag_pct:.2f}%` gross required to cover ₹23.60 DP + statutory taxes)\n"
                 f"- **Post-Cost Net R:R:** `{sizer_res.net_rr:.2f}x` (Gross: `{sizer_res.gross_rr:.2f}x` | Hurdle: `>= 1.6x`)\n"
                 f"- **Net Upside after Friction:** `₹{sizer_res.net_reward:.2f}` · **Net Risk:** `₹{sizer_res.net_risk:.2f}`"
+                f"{spillover_note}"
             )
 
         # Final Consensus Synthesis Enforcing Hard Veto
