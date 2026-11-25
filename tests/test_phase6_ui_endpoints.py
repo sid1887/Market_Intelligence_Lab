@@ -59,7 +59,7 @@ def test_get_models_tournament_endpoint(client):
     assert "baseline" in body
     assert "candidates" in body
     assert "promotion_verdict" in body
-    assert body["promotion_verdict"] in ("CHAMPION_PROMOTED", "REJECTED_BELOW_BASELINE")
+    assert body["promotion_verdict"] in ("CHAMPION", "CHAMPION_PROMOTED", "REJECTED_BELOW_BASELINE", "REJECTED_OVERFITTING")
 
 
 def test_get_portfolio_trader_dna_endpoint(client):

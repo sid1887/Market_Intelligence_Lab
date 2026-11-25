@@ -46,6 +46,11 @@ from src.ml.features.pead_engine import (
     calculate_pead_features,
     PEAD_FEATURE_COLUMNS
 )
+from src.ml.features.alpha_v3_multimodal import (
+    FEATURE_COLUMNS_ALPHA_V3,
+    build_alpha_v3_multimodal_features,
+    filter_pit_clean_rows
+)
 from src.storage.durable_state import mark_state_dirty
 from src.storage.database import DatabaseManager
 from src.storage.compression_engine import MilzArchiveEngine, DEFAULT_ARCHIVE_PATH
@@ -243,10 +248,16 @@ class WalkForwardMLTrainer:
                         for feat in FEATURE_COLUMNS_8:
                             df[feat] = df.groupby("trading_date")[feat].rank(pct=True).fillna(0.5).astype(np.float32)
 
-                        if feature_set == "alpha_v2_flow_pead":
+                        if feature_set in ("alpha_v2_flow_pead", "alpha_v3_multimodal"):
                             df = self.enrich_flow_and_pead_features(df)
+                        if feature_set == "alpha_v3_multimodal":
+                            df = build_alpha_v3_multimodal_features(df)
 
-                        req_cols = ["forward_return"] + (FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8)
+                        target_cols = (
+                            FEATURE_COLUMNS_ALPHA_V3 if feature_set == "alpha_v3_multimodal"
+                            else (FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8)
+                        )
+                        req_cols = ["forward_return"] + target_cols
                         avail_req = [c for c in req_cols if c in df.columns]
                         df = df.dropna(subset=avail_req).reset_index(drop=True)
                         if len(df) >= 100:
@@ -341,10 +352,16 @@ class WalkForwardMLTrainer:
         for feat in FEATURE_COLUMNS_8:
             df[feat] = df.groupby("trading_date")[feat].rank(pct=True).fillna(0.5)
 
-        if feature_set == "alpha_v2_flow_pead":
+        if feature_set in ("alpha_v2_flow_pead", "alpha_v3_multimodal"):
             df = self.enrich_flow_and_pead_features(df)
+        if feature_set == "alpha_v3_multimodal":
+            df = build_alpha_v3_multimodal_features(df)
 
-        req_cols = ["forward_return"] + (FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8)
+        target_cols = (
+            FEATURE_COLUMNS_ALPHA_V3 if feature_set == "alpha_v3_multimodal"
+            else (FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8)
+        )
+        req_cols = ["forward_return"] + target_cols
         avail_req = [c for c in req_cols if c in df.columns]
         df = df.dropna(subset=avail_req).reset_index(drop=True)
         return df
@@ -970,10 +987,31 @@ class TwoStageTournamentRunner:
         self.holdout_sessions = int(holdout_sessions)
         self.summary_path = Path(summary_path)
         self.feature_set = feature_set
-        self.feature_cols = FEATURE_COLUMNS_ALPHA_V2 if feature_set == "alpha_v2_flow_pead" else FEATURE_COLUMNS_8
+        if feature_set == "alpha_v3_multimodal":
+            self.feature_cols = FEATURE_COLUMNS_ALPHA_V3
+        elif feature_set == "alpha_v2_flow_pead":
+            self.feature_cols = FEATURE_COLUMNS_ALPHA_V2
+        else:
+            self.feature_cols = FEATURE_COLUMNS_8
+
+        # Load Phase 9 regime-optimal barriers if available
+        k_u, k_l = 2.0, 1.5
+        try:
+            from src.quant.policy_optimizer import load_optimal_execution_policy
+            from src.quant.regime_hmm import load_regime_hmm_state
+            active_reg = load_regime_hmm_state().get("latest_regime", "HIGH_VOL_CHOP")
+            pol = load_optimal_execution_policy(regime=active_reg, ticket_size=self.reference_ticket)
+            if pol:
+                k_u = float(pol.get("k_u", k_u))
+                k_l = float(pol.get("k_l", k_l))
+        except Exception:
+            pass
+
         self.friction_drag_rate = get_canonical_roundtrip_friction_rate(self.reference_ticket)
         self.labeler = TripleBarrierLabeler(
             db=self.db,
+            k_upper=k_u,
+            k_lower=k_l,
             horizon_sessions=self.horizon_days,
             reference_ticket=self.reference_ticket
         )
@@ -992,14 +1030,13 @@ class TwoStageTournamentRunner:
         """
         df = df_raw.copy()
 
-        # Enforce PIT data integrity: Exclude imputed sector estimates if column present
-        if "is_sector_imputed" in df.columns:
-            df = df[df["is_sector_imputed"] != 1].copy()
-        if "data_status" in df.columns:
-            df = df[df["data_status"] != "SECTOR_ESTIMATE"].copy()
+        # Enforce PIT data integrity: Exclude SECTOR_ESTIMATE, CARRY_FORWARD_DUPLICATE, and Trader DNA
+        df = filter_pit_clean_rows(df)
+        if self.feature_set == "alpha_v3_multimodal":
+            df = build_alpha_v3_multimodal_features(df)
 
-        # Ensure features are present
-        for feat in self.feature_cols:
+        # Ensure features (and baseline columns for deterministic benchmark) are present
+        for feat in set(self.feature_cols) | set(FEATURE_COLUMNS_8):
             if feat not in df.columns:
                 df[feat] = 0.5 if feat in FEATURE_COLUMNS_8 else 0.0
 
@@ -1145,7 +1182,13 @@ class TwoStageTournamentRunner:
         y = (dev_df["label"] > 0).astype(int).values if "label" in dev_df.columns else (dev_df["forward_return"] > 0).astype(int).values
         net_returns = dev_df["net_return"].values if "net_return" in dev_df.columns else dev_df.get("forward_return", pd.Series(0.0, index=dev_df.index)).values
 
-        if self.feature_set == "alpha_v2_flow_pead":
+        if self.feature_set == "alpha_v3_multimodal":
+            candidates = [
+                {"id": "candidate_hgb_meta", "name": "HistGradientBoosting + MetaCalibrator", "type": "HGB"},
+                {"id": "candidate_gbdt_alt_meta", "name": "LightGBM / GBDT + MetaCalibrator", "type": "GBDT_ALT"},
+                {"id": "candidate_ridge_hgb_ensemble_meta", "name": "Ridge + HGB Soft-Voting Ensemble + MetaCalibrator", "type": "RIDGE_HGB_ENSEMBLE"},
+            ]
+        elif self.feature_set == "alpha_v2_flow_pead":
             candidates = [
                 {"id": "candidate_ridge_meta", "name": "RidgeClassifier + MetaCalibrator", "type": "RIDGE"},
                 {"id": "candidate_hgb_meta", "name": "HistGradientBoosting + MetaCalibrator", "type": "HGB"},
@@ -1180,6 +1223,32 @@ class TwoStageTournamentRunner:
                     m1.fit(X_train, y_train)
                     p1_train = m1.predict(X_train)
                     p1_test = m1.predict(X_test)
+                elif cand["type"] == "GBDT_ALT":
+                    m1 = None
+                    try:
+                        import lightgbm as lgb
+                        m1 = lgb.LGBMClassifier(n_estimators=50, max_depth=4, num_leaves=15, learning_rate=0.05, random_state=42, verbose=-1)
+                    except ImportError:
+                        try:
+                            import xgboost as xgb
+                            m1 = xgb.XGBClassifier(n_estimators=50, max_depth=4, learning_rate=0.05, random_state=42, eval_metric="logloss")
+                        except ImportError:
+                            m1 = GradientBoostingClassifier(n_estimators=40, max_depth=3, min_samples_leaf=10, random_state=42)
+                    m1.fit(X_train, y_train)
+                    p1_train = m1.predict(X_train)
+                    p1_test = m1.predict(X_test)
+                elif cand["type"] == "RIDGE_HGB_ENSEMBLE":
+                    m_ridge = RidgeClassifier(alpha=1.0)
+                    m_hgb = HistGradientBoostingClassifier(max_iter=40, max_leaf_nodes=15, min_samples_leaf=10, random_state=42)
+                    m_ridge.fit(X_train, y_train)
+                    m_hgb.fit(X_train, y_train)
+                    # Soft-voting combination of sigmoid(Ridge decision) and HGB probability
+                    r_tr = 1.0 / (1.0 + np.exp(-np.clip(m_ridge.decision_function(X_train), -10.0, 10.0)))
+                    r_te = 1.0 / (1.0 + np.exp(-np.clip(m_ridge.decision_function(X_test), -10.0, 10.0)))
+                    h_tr = m_hgb.predict_proba(X_train)[:, 1]
+                    h_te = m_hgb.predict_proba(X_test)[:, 1]
+                    p1_train = ((0.4 * r_tr + 0.6 * h_tr) >= 0.5).astype(int)
+                    p1_test = ((0.4 * r_te + 0.6 * h_te) >= 0.5).astype(int)
                 else:
                     m1 = ExtraTreesClassifier(n_estimators=30, max_depth=6, min_samples_leaf=10, random_state=42, n_jobs=1)
                     m1.fit(X_train, y_train)
@@ -1249,9 +1318,10 @@ class TwoStageTournamentRunner:
                 }
 
             # 5. Promotion Eligibility Gate
-            # Must beat baseline net of friction AND satisfy DSR threshold
+            # Must beat baseline net of friction AND satisfy DSR threshold (0.90 for Phase 10 multimodal)
+            dsr_min = 0.90 if self.feature_set == "alpha_v3_multimodal" else 0.50
             beats_baseline = mean_sh > baseline_net_sharpe
-            statistically_sound = dsr_metrics["dsr"] >= 0.50
+            statistically_sound = dsr_metrics["dsr"] >= dsr_min
             promotion_status = "CHAMPION" if (beats_baseline and statistically_sound) else (
                 "REJECTED_BELOW_BASELINE" if not beats_baseline else "REJECTED_OVERFITTING"
             )

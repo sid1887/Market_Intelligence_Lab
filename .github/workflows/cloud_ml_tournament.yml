@@ -44,9 +44,9 @@ jobs:
         run: |
           python scripts/cloud_worker.py --mode ml
 
-      - name: Execute Phase 3 CPCV Tournament & DSR Gating
+      - name: Execute Phase 10 Multi-Modal CPCV Tournament & DSR Gating
         run: |
-          python scripts/run_phase3_tournament.py --horizon 20 --n-splits 6 --n-test-splits 2
+          python scripts/run_phase3_tournament.py --horizon 20 --n-splits 6 --n-test-splits 2 --feature-set alpha_v3_multimodal
           python -c '
           import json
           with open("data/models/tournament_summary.json") as f:

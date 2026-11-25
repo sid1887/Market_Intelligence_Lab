@@ -78,9 +78,9 @@ def parse_args():
     parser.add_argument(
         "--feature-set",
         type=str,
-        choices=["baseline_8", "alpha_v2_flow_pead"],
-        default="alpha_v2_flow_pead",
-        help="Feature set selection for tournament: 'baseline_8' or 'alpha_v2_flow_pead' (default: alpha_v2_flow_pead)"
+        choices=["baseline_8", "alpha_v2_flow_pead", "alpha_v3_multimodal"],
+        default="alpha_v3_multimodal",
+        help="Feature set selection for tournament: 'baseline_8', 'alpha_v2_flow_pead', or 'alpha_v3_multimodal' (default: alpha_v3_multimodal)"
     )
     return parser.parse_args()
 

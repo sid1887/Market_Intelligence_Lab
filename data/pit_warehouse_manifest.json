@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-11-25T14:00:41.496600+00:00",
+  "universe_limit": 500,
+  "quarterly_statements_total": 1686,
+  "carry_forward_duplicates_flagged": 3,
+  "corporate_actions_total": 911,
+  "shareholding_records_total": 0,
+  "harvest_totals": {
+    "symbols_scanned": 500,
+    "financials": 0,
+    "corporate_actions": 0,
+    "shareholding": 0
+  },
+  "adjustment_stats": {
+    "adjusted_symbols": 0
+  }
+}
