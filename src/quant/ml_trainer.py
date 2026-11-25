@@ -952,6 +952,22 @@ class WalkForwardMLTrainer:
         return result_payload
 
 
+def compute_causal_inverse_vol_weights(
+    volatility_20d: np.ndarray,
+    target_vol: float = 0.20,
+    max_weight: float = 2.0,
+) -> np.ndarray:
+    """
+    Phase 11: Causal inverse-volatility position scaling weights:
+      w_i = min(max_weight, target_vol / max(sigma_20d_i, 0.01))
+    Uses only sigma_20d observed at or prior to decision time t.
+    """
+    vols = np.asarray(volatility_20d, dtype=np.float64)
+    vols = np.where(np.isfinite(vols) & (vols > 0), vols, target_vol)
+    safe_vols = np.maximum(vols, 0.01)
+    return np.minimum(max_weight, target_vol / safe_vols)
+
+
 class TwoStageTournamentRunner:
     """
     Two-Stage Meta-Labeling Tournament Engine with Combinatorial Purged Cross-Validation (CPCV)
@@ -1181,6 +1197,10 @@ class TwoStageTournamentRunner:
         # Directional binary target for Stage 1 (+1 if net_return > 0 else 0)
         y = (dev_df["label"] > 0).astype(int).values if "label" in dev_df.columns else (dev_df["forward_return"] > 0).astype(int).values
         net_returns = dev_df["net_return"].values if "net_return" in dev_df.columns else dev_df.get("forward_return", pd.Series(0.0, index=dev_df.index)).values
+        if "volatility_20d" in dev_df.columns and self.feature_set == "alpha_v3_multimodal":
+            inv_vol_weights = compute_causal_inverse_vol_weights(dev_df["volatility_20d"].values)
+        else:
+            inv_vol_weights = np.ones(len(dev_df), dtype=np.float64)
 
         if self.feature_set == "alpha_v3_multimodal":
             candidates = [
@@ -1204,6 +1224,7 @@ class TwoStageTournamentRunner:
         for cand in candidates:
             split_sharpes = []
             cand_test_returns = []
+            cand_unscaled_returns = []
             abstained_count = 0
             traded_count = 0
 
@@ -1280,16 +1301,19 @@ class TwoStageTournamentRunner:
                 abstained_count += int(abstained)
                 traded_count += int(traded)
 
-                # Filter returns on traded sessions
+                # Filter returns on traded sessions (apply causal inverse-vol scaling for alpha_v3_multimodal)
                 traded_mask = trade_signals == 1
                 if np.any(traded_mask):
-                    active_rets = test_rets[traded_mask]
+                    raw_active = test_rets[traded_mask]
+                    w_active = inv_vol_weights[test_idx][traded_mask]
+                    active_rets = raw_active * w_active
                     if len(active_rets) > 1 and np.std(active_rets) > 1e-6:
                         sh = float((np.mean(active_rets) / np.std(active_rets)) * math.sqrt(252.0 / max(self.horizon_days, 1)))
                     else:
                         sh = 0.0
                     split_sharpes.append(sh)
                     cand_test_returns.extend(active_rets.tolist())
+                    cand_unscaled_returns.extend(raw_active.tolist())
                 else:
                     split_sharpes.append(0.0)
 
@@ -1327,6 +1351,7 @@ class TwoStageTournamentRunner:
             )
 
             moments = self._compute_return_moments(cand_test_returns)
+            unscaled_moments = self._compute_return_moments(cand_unscaled_returns)
             cand_dict = {
                 "candidate_id": cand["id"],
                 "candidate_name": cand["name"],
@@ -1338,6 +1363,7 @@ class TwoStageTournamentRunner:
                 "abstention_rate": abstention_rate,
                 "traded_signals_count": traded_count,
                 "abstained_signals_count": abstained_count,
+                "unscaled_excess_kurtosis": unscaled_moments.get("excess_kurtosis", 0.0),
                 "promotion_status": promotion_status,
                 "dsr_metrics": dsr_metrics
             }

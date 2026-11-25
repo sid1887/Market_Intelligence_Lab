@@ -134,14 +134,17 @@ class CorporateActionsManager:
                     purpose_hash = hashlib.md5(purpose.encode("utf-8")).hexdigest()[:6]
 
                     if act_type in ("SPLIT", "BONUS", "RIGHTS"):
-                        if 0 < adj_factor < 1.0:
+                        eff_mult = adj_factor
+                        if eff_mult > 1.0 and source == "yfinance_pit":
+                            eff_mult = round(1.0 / eff_mult, 6)
+                        if 0 < eff_mult < 1.0:
                             det_action_id = f"ca_{sym}_{ex_dt.replace('-', '')}_{act_type.lower()}_{purpose_hash}"
                             self.record_action(
                                 symbol=sym,
                                 ex_date=ex_dt,
                                 action_type=act_type,
                                 ratio_from=1.0,
-                                ratio_to=round(adj_factor, 6),
+                                ratio_to=round(eff_mult, 6),
                                 record_date=rec_dt,
                                 source=source,
                                 action_id=det_action_id
@@ -150,6 +153,8 @@ class CorporateActionsManager:
 
                     elif act_type == "DIVIDEND" and include_dividends:
                         d_s = extract_cash_dividend_amount(purpose, face_val)
+                        if d_s <= 0 and adj_factor > 0 and source == "yfinance_pit":
+                            d_s = adj_factor
                         if d_s <= 0:
                             continue
 
