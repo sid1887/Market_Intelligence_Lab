@@ -337,7 +337,12 @@ class FactorScreener:
             de_expr = "COALESCE(q.debt_to_equity, qf.qf_de" + (", ff.debt_to_equity" if has_ff else "") + (", fa.calc_de" if has_fa else "") + ", NULL) AS debt_to_equity"
             opm_expr = "COALESCE(q.opm_pct, qf.qf_opm" + (", ff.operating_margin_ttm" if has_ff else "") + (", fa.calc_opm" if has_fa else "") + ", NULL) AS opm_pct"
 
-            ldeliv_cte = """
+            ldeliv_date_filter = (
+                "trading_date <= ? AND trading_date >= date(?, '-21 days') AND "
+                if effective_date
+                else ""
+            )
+            ldeliv_cte = f"""
                 ldeliv AS (
                     SELECT symbol, l_deliv_qty, l_deliv_vol
                     FROM (
@@ -346,8 +351,7 @@ class FactorScreener:
                                volume AS l_deliv_vol,
                                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) AS rn
                         FROM ohlcv_daily
-                        WHERE (? IS NULL OR (trading_date <= ? AND trading_date >= date(?, '-21 days')))
-                          AND delivery_qty > 0 AND volume > 0
+                        WHERE {ldeliv_date_filter}delivery_qty > 0 AND volume > 0
                     )
                     WHERE rn = 1
                 )
@@ -426,7 +430,7 @@ class FactorScreener:
                 {extra_where}
                 ORDER BY q.symbol ASC;
                 """
-                exact_params = [effective_date, effective_date, effective_date, effective_date]
+                exact_params = [effective_date, effective_date, effective_date] if effective_date else [effective_date]
                 if universe:
                     exact_params.extend(universe)
                 df = pd.read_sql_query(exact_sql, conn, params=exact_params)
@@ -473,7 +477,11 @@ class FactorScreener:
                 {extra_where}
                 ORDER BY q.symbol ASC;
                 """
-                fallback_params = [effective_date, effective_date, effective_date, effective_date, effective_date]
+                fallback_params = (
+                    [effective_date, effective_date, effective_date, effective_date]
+                    if effective_date
+                    else [effective_date, effective_date]
+                )
                 if universe:
                     fallback_params.extend(universe)
                 df = pd.read_sql_query(fallback_sql, conn, params=fallback_params)

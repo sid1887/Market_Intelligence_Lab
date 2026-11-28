@@ -393,7 +393,7 @@ def build_regime_feature_matrix(
 
 def train_and_export_regime_hmm(
     db_path: str = "data/market_lab.db",
-    milz_path: str = "data/bhavcopy_10y.milz",
+    milz_path: str = "data/archive/bhavcopy_10y.milz",
     output_path: str | Path = DEFAULT_HMM_STATE_PATH,
     history_tail: int = 252,
 ) -> Dict[str, Any]:

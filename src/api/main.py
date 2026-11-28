@@ -465,16 +465,11 @@ def get_supervisor_status(force_refresh: bool = False):
 
 
 def clear_screener_caches() -> None:
-    """Clears module-level screener materialized snapshot and gzip byte buffers under RSS pressure."""
-    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
+    """Clears optional large 1000-row serialized buffers under RSS pressure while keeping the core snapshot cache warm."""
+    global _screener_cached_1000_bytes, _screener_cached_1000_gzip
     with _screener_cache_lock:
-        _screener_snapshot_cache = None
-        _screener_cached_bytes = None
-        _screener_cached_gzip = None
         _screener_cached_1000_bytes = None
         _screener_cached_1000_gzip = None
-        _screener_cache_date = None
-        _screener_cache_time = 0.0
 
 
 try:
