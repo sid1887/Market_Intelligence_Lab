@@ -272,11 +272,11 @@ class TestTruthInvariants(unittest.TestCase):
                     tconn.execute("INSERT OR IGNORE INTO securities_master (symbol, company_name, is_active) VALUES ('TCS', 'TCS Ltd', 1)")
                     base_d = date(2025, 1, 1)
                     bars = [
-                        ("TCS", (base_d + timedelta(days=i)).isoformat(), 3500.0 + i * 0.5, 3520.0 + i * 0.5, 3480.0 + i * 0.5, 3510.0 + i * 0.5, 100000, 0)
+                        ("TCS", (base_d + timedelta(days=i)).isoformat(), 3500.0 + i * 0.5, 3520.0 + i * 0.5, 3480.0 + i * 0.5, 3510.0 + i * 0.5, 100000, 0, "CI_SEED", "2025-06-01T00:00:00Z")
                         for i in range(150)
                     ]
                     tconn.executemany(
-                        "INSERT INTO ohlcv_daily (symbol, trading_date, open, high, low, close, volume, is_synthetic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO ohlcv_daily (symbol, trading_date, open, high, low, close, volume, is_synthetic, source, retrieval_timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         bars,
                     )
                     tconn.commit()
