@@ -25,11 +25,13 @@ from src.quant.spillover_graph import (
 )
 
 
-def test_spillover_partial_corr_symmetry_bounds_and_causality():
+def test_spillover_partial_corr_symmetry_bounds_and_causality(tmp_path):
     """
     Verifies partial correlation matrix is symmetric, bounded in [-1, 1],
     and strictly causal up to `as_of_date` (future rows cannot alter past estimates).
     """
+    import sqlite3
+
     rng = np.random.default_rng(99)
     n_days = 120
     dates = pd.bdate_range("2025-01-01", periods=n_days).strftime("%Y-%m-%d")
@@ -48,8 +50,22 @@ def test_spillover_partial_corr_symmetry_bounds_and_causality():
     contagion = compute_systemic_contagion_index(df.iloc[:100], window=60)
     assert 0.0 <= contagion <= 100.0
 
-    # Strict PIT check on real DB: as_of_date='2025-06-30' must not include any date > '2025-06-30'
-    pit_res = build_spillover_graph(as_of_date="2025-06-30", output_path=None)
+    # Strict PIT check on hermetic SQLite DB with dates before and after 2025-06-30
+    pit_db = tmp_path / "pit_spillover.db"
+    pit_dates = pd.bdate_range("2025-03-01", periods=130).strftime("%Y-%m-%d")
+    sector_names = ["NIFTY BANK", "NIFTY IT", "NIFTY AUTO", "NIFTY PHARMA", "NIFTY METAL", "NIFTY FMCG"]
+    rows = []
+    for s_idx, sec in enumerate(sector_names):
+        px = 10000.0 + s_idx * 500.0
+        for d_str in pit_dates:
+            px *= 1.0 + float(rng.normal(0.0003, 0.011))
+            rows.append((sec, d_str, round(px, 2)))
+    with sqlite3.connect(pit_db) as conn:
+        conn.execute("CREATE TABLE index_daily (index_name TEXT, trading_date TEXT, close REAL)")
+        conn.executemany("INSERT INTO index_daily VALUES (?, ?, ?)", rows)
+        conn.commit()
+
+    pit_res = build_spillover_graph(db_path=str(pit_db), as_of_date="2025-06-30", output_path=None)
     assert pit_res["as_of_date"] <= "2025-06-30"
 
 

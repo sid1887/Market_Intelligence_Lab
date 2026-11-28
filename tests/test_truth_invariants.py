@@ -252,22 +252,54 @@ class TestTruthInvariants(unittest.TestCase):
 
         # Count forecast_audit_ledger rows before and after calling forecast logic
         from src.quant.forecasting import EconometricForecaster
-        forecaster = EconometricForecaster(self.db)
+        target_db = self.db
+        target_sym = "TCS"
+        tmp_dir = None
 
         with self.db.get_connection() as conn:
-            cnt_before = conn.execute("SELECT COUNT(*) as c FROM forecast_audit_ledger").fetchone()["c"]
+            row = conn.execute(
+                "SELECT symbol FROM ohlcv_daily WHERE COALESCE(is_synthetic, 0) = 0 "
+                "GROUP BY symbol HAVING COUNT(*) >= 126 ORDER BY (symbol = 'TCS') DESC LIMIT 1"
+            ).fetchone()
+            if row:
+                target_sym = row["symbol"]
+            else:
+                import tempfile
+                from datetime import date, timedelta
+                tmp_dir = tempfile.TemporaryDirectory()
+                target_db = DatabaseManager(os.path.join(tmp_dir.name, "test_ro.db"))
+                with target_db.get_connection() as tconn:
+                    tconn.execute("INSERT OR IGNORE INTO securities_master (symbol, company_name, is_active) VALUES ('TCS', 'TCS Ltd', 1)")
+                    base_d = date(2025, 1, 1)
+                    bars = [
+                        ("TCS", (base_d + timedelta(days=i)).isoformat(), 3500.0 + i * 0.5, 3520.0 + i * 0.5, 3480.0 + i * 0.5, 3510.0 + i * 0.5, 100000, 0)
+                        for i in range(150)
+                    ]
+                    tconn.executemany(
+                        "INSERT INTO ohlcv_daily (symbol, trading_date, open, high, low, close, volume, is_synthetic) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        bars,
+                    )
+                    tconn.commit()
 
-        # Generating a forecast must be pure projection without writes
-        forecast = forecaster.generate_forecast("TCS", horizon_days=20)
-        self.assertIn("projections", forecast)
+        try:
+            forecaster = EconometricForecaster(target_db)
+            with target_db.get_connection() as conn:
+                cnt_before = conn.execute("SELECT COUNT(*) as c FROM forecast_audit_ledger").fetchone()["c"]
 
-        with self.db.get_connection() as conn:
-            cnt_after = conn.execute("SELECT COUNT(*) as c FROM forecast_audit_ledger").fetchone()["c"]
+            # Generating a forecast must be pure projection without writes
+            forecast = forecaster.generate_forecast(target_sym, horizon_days=20)
+            self.assertIn("projections", forecast)
 
-        self.assertEqual(
-            cnt_before, cnt_after,
-            f"CQRS Violation: Forecaster inserted {cnt_after - cnt_before} rows into audit ledger on read!"
-        )
+            with target_db.get_connection() as conn:
+                cnt_after = conn.execute("SELECT COUNT(*) as c FROM forecast_audit_ledger").fetchone()["c"]
+
+            self.assertEqual(
+                cnt_before, cnt_after,
+                f"CQRS Violation: Forecaster inserted {cnt_after - cnt_before} rows into audit ledger on read!"
+            )
+        finally:
+            if tmp_dir is not None:
+                tmp_dir.cleanup()
 
     # --------------------------------------------------------------------------
     # Invariant 8: Offline LLM Safety (No Crash Without OpenAI)
