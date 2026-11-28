@@ -10,8 +10,10 @@ Exposes endpoints for:
 
 import logging
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, HTTPException, Request, Body
+from fastapi import APIRouter, HTTPException, Request, Body, Depends
 from pydantic import BaseModel, Field
+
+from src.api.routes_portfolio import verify_portfolio_mutation_auth
 
 from src.notifications.web_push import (
     get_vapid_public_key,
@@ -90,7 +92,10 @@ def register_push_subscription(payload: PushSubscriptionRequest, request: Reques
 
 
 @router.post("/push/test")
-def test_push_dispatch(payload: Optional[PushTestRequest] = None):
+def test_push_dispatch(
+    payload: Optional[PushTestRequest] = None,
+    _auth: bool = Depends(verify_portfolio_mutation_auth),
+):
     """Sends an immediate test push notification to all subscribed mobile and desktop clients."""
     req = payload or PushTestRequest()
     result = broadcast_push(
@@ -176,7 +181,10 @@ def get_symbol_catalysts(symbol: str, limit: int = 5, fallback: bool = True):
 
 
 @router.post("/catalysts/investigate")
-def investigate_catalyst(payload: CatalystInvestigateRequest):
+def investigate_catalyst(
+    payload: CatalystInvestigateRequest,
+    _auth: bool = Depends(verify_portfolio_mutation_auth),
+):
     """
     Triggers an on-demand 4-pillar causal investigation on a symbol.
     Persists to SQLite and dispatches a Web Push alert if an anomaly is confirmed.
@@ -200,7 +208,7 @@ def investigate_catalyst(payload: CatalystInvestigateRequest):
 
 
 @router.post("/catalysts/scan")
-def trigger_catalyst_scan():
+def trigger_catalyst_scan(_auth: bool = Depends(verify_portfolio_mutation_auth)):
     """Scans all watchlist and priority equities for intraday causal anomalies."""
     try:
         results = catalyst_engine.run_intraday_scan()

@@ -303,7 +303,12 @@ def compare_multi_stock(req: MultiStockCompareRequest = Body(...)):
                     r2 = daily_returns_dict.get(s2)
                     if r1 is not None and r2 is not None and len(r1) > 10 and len(r2) > 10:
                         min_l = min(len(r1), len(r2))
-                        val = float(r1.iloc[-min_l:].corr(r2.iloc[-min_l:]))
+                        a1 = r1.values[-min_l:]
+                        a2 = r2.values[-min_l:]
+                        if np.std(a1) > 1e-12 and np.std(a2) > 1e-12:
+                            val = float(np.corrcoef(a1, a2)[0, 1])
+                        else:
+                            val = 0.0
                         corr_matrix[s1][s2] = round(val if not np.isnan(val) else 0.0, 2)
                     else:
                         corr_matrix[s1][s2] = 0.50
@@ -311,13 +316,24 @@ def compare_multi_stock(req: MultiStockCompareRequest = Body(...)):
         # 6. Radar Factor Percentiles
         radar_scores: Dict[str, Dict[str, float]] = {}
         with db.get_connection() as conn:
-            cur = conn.execute(f"""
-                SELECT f.symbol, COALESCE(q.roe_pct, 15.0), f.momentum_1y, f.volatility_20d, f.trend_regime
-                FROM factors_daily f
-                LEFT JOIN quant_factors_daily q ON f.symbol = q.symbol AND f.trading_date = q.trading_date
-                WHERE f.symbol IN ({placeholders})
-                ORDER BY f.trading_date DESC
-            """, (*symbols,))
+            latest_f_row = conn.execute("SELECT MAX(trading_date) FROM factors_daily").fetchone()
+            latest_f_date = latest_f_row[0] if latest_f_row and latest_f_row[0] else None
+            if latest_f_date:
+                cur = conn.execute(f"""
+                    SELECT f.symbol, COALESCE(q.roe_pct, 15.0), f.momentum_1y, f.volatility_20d, f.trend_regime
+                    FROM factors_daily f
+                    LEFT JOIN quant_factors_daily q ON f.symbol = q.symbol AND f.trading_date = q.trading_date
+                    WHERE f.symbol IN ({placeholders}) AND f.trading_date >= date(?, '-14 days')
+                    ORDER BY f.trading_date DESC
+                """, (*symbols, latest_f_date))
+            else:
+                cur = conn.execute(f"""
+                    SELECT f.symbol, COALESCE(q.roe_pct, 15.0), f.momentum_1y, f.volatility_20d, f.trend_regime
+                    FROM factors_daily f
+                    LEFT JOIN quant_factors_daily q ON f.symbol = q.symbol AND f.trading_date = q.trading_date
+                    WHERE f.symbol IN ({placeholders})
+                    ORDER BY f.trading_date DESC
+                """, (*symbols,))
             seen_syms = set()
             for r in cur.fetchall():
                 sym = str(r[0])

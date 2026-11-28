@@ -28,9 +28,10 @@ export interface EquityCurvePoint {
 interface BacktestChartProps {
   data: EquityCurvePoint[];
   initialCapital?: number;
+  benchmarkLabel?: string;
 }
 
-export default function BacktestChart({ data, initialCapital = 500000 }: BacktestChartProps) {
+export default function BacktestChart({ data, initialCapital = 500000, benchmarkLabel = "NIFTY 50 PRI" }: BacktestChartProps) {
   const equityChartContainerRef = useRef<HTMLDivElement>(null);
   const drawdownChartContainerRef = useRef<HTMLDivElement>(null);
 
@@ -117,7 +118,7 @@ export default function BacktestChart({ data, initialCapital = 500000 }: Backtes
       color: "#64748b",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
-      title: "NIFTY 50 TRI",
+      title: benchmarkLabel,
     });
 
     // 2. Drawdown Chart with dark rose area gradient fill

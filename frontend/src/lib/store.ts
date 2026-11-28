@@ -57,7 +57,7 @@ interface MilStoreState {
 }
 
 let storeState: MilStoreState = {
-  lastScreenerRefresh: Date.now(),
+  lastScreenerRefresh: 0,
   lastWatchlistChange: null,
   lastTearsheetRefresh: null,
 };

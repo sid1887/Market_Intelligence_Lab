@@ -52,10 +52,15 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
       .slice(0, 10);
   }, [candidates, query]);
 
-  // Auto-focus input
+  // Auto-focus input & global Escape close
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 50);
-  }, []);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   // Reset cursor on query change
   useEffect(() => {

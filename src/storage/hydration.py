@@ -324,6 +324,25 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                             time.sleep(0.005)
                             if chunk_counter % 20 == 0:
                                 gc.collect()
+                if not is_streamable and isinstance(snap, dict):
+                    tourney_summary = snap.pop("tournament_summary", None)
+                    if tourney_summary:
+                        tourney_path = os.path.join(ROOT_DIR, "data", "models", "tournament_summary.json")
+                        if not os.path.exists(tourney_path):
+                            os.makedirs(os.path.dirname(tourney_path), exist_ok=True)
+                            with open(tourney_path, "w", encoding="utf-8") as f:
+                                json.dump(tourney_summary, f, indent=2)
+                            logger.info("Generated data/models/tournament_summary.json on server from snapshot.")
+
+                    macro_telemetry = snap.pop("macro_telemetry", None)
+                    if macro_telemetry:
+                        macro_path = os.path.join(ROOT_DIR, "data", "macro_telemetry.json")
+                        if not os.path.exists(macro_path):
+                            os.makedirs(os.path.dirname(macro_path), exist_ok=True)
+                            with open(macro_path, "w", encoding="utf-8") as f:
+                                json.dump(macro_telemetry, f, indent=2)
+                            logger.info("Generated data/macro_telemetry.json on server from snapshot.")
+
                 del snap
                 gc.collect()
 
@@ -347,27 +366,6 @@ def hydrate_from_snapshot(db: DatabaseManager, snapshot_path: str = SNAPSHOT_PAT
                 """)
 
             conn.commit()
-
-        if not is_streamable and "snap" in locals():
-            tourney_summary = snap.pop("tournament_summary", None)
-            if tourney_summary:
-                tourney_path = os.path.join(ROOT_DIR, "data", "models", "tournament_summary.json")
-                if not os.path.exists(tourney_path):
-                    os.makedirs(os.path.dirname(tourney_path), exist_ok=True)
-                    with open(tourney_path, "w", encoding="utf-8") as f:
-                        json.dump(tourney_summary, f, indent=2)
-                    logger.info("Generated data/models/tournament_summary.json on server from snapshot.")
-
-            macro_telemetry = snap.pop("macro_telemetry", None)
-            if macro_telemetry:
-                macro_path = os.path.join(ROOT_DIR, "data", "macro_telemetry.json")
-                if not os.path.exists(macro_path):
-                    os.makedirs(os.path.dirname(macro_path), exist_ok=True)
-                    with open(macro_path, "w", encoding="utf-8") as f:
-                        json.dump(macro_telemetry, f, indent=2)
-                    logger.info("Generated data/macro_telemetry.json on server from snapshot.")
-
-            del snap
 
         try:
             import ctypes
@@ -497,9 +495,9 @@ def hydrate_initial_cloud_database(db_path: str = "data/market_lab.db") -> Dict[
                 for w in DEFAULT_WATCHLIST_SEED:
                     conn.execute("""
                         INSERT OR IGNORE INTO user_watchlists (
-                            symbol, company_name, sector, notes, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?)
-                    """, (w["symbol"], w["company_name"], w["sector"], "Initial institutional seed", now_iso, now_iso))
+                            symbol, company_name, sector, added_date, notes, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (w["symbol"], w["company_name"], w["sector"], now_iso[:10], "Initial institutional seed", now_iso, now_iso))
                 conn.commit()
                 stats["watchlists_seeded"] = len(DEFAULT_WATCHLIST_SEED)
 

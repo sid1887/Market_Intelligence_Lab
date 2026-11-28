@@ -278,10 +278,10 @@ class GaussianRegimeHMM:
 
 def build_regime_feature_matrix(
     db_path: str = "data/market_lab.db",
-    milz_path: str = "data/bhavcopy_10y.milz",
+    milz_path: str = "data/archive/bhavcopy_10y.milz",
 ) -> pd.DataFrame:
     """
-    Constructs a strictly causal daily feature DataFrame from NIFTY 50 TRI (`index_daily`)
+    Constructs a strictly causal daily feature DataFrame from NIFTY 50 PRI (`index_daily`)
     and cross-sectional NSE breadth/dispersion (`bhavcopy_10y.milz` or `ohlcv_daily`).
     """
     import sqlite3
@@ -291,7 +291,7 @@ def build_regime_feature_matrix(
             """
             SELECT trading_date, open, high, low, close
             FROM index_daily
-            WHERE index_name = 'NIFTY 50'
+            WHERE index_name = 'NIFTY 50' AND index_type = 'PRI'
             ORDER BY trading_date ASC
             """,
             conn,

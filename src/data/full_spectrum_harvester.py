@@ -531,8 +531,7 @@ class FullSpectrumHarvester:
                             l = float(row["Low"]) if pd.notnull(row["Low"]) else min(o, c)
                             v = int(row["Volume"]) if pd.notnull(row["Volume"]) else 0
                             turnover = round(c * v, 2)
-                            # Approx 45% delivery default if unobserved
-                            deliv_qty = int(v * 0.45)
+                            deliv_qty = None
 
                             rows.append((
                                 sym, d_str, "EQ", o, h, l, c, c, None,
@@ -668,6 +667,11 @@ class FullSpectrumHarvester:
                             date_cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily WHERE symbol = ?", (s,))
                             d_row = date_cur.fetchone()
                             as_of_date = d_row[0] if (d_row and d_row[0]) else datetime.date.today().isoformat()
+                            close_row = conn.execute(
+                                "SELECT close FROM ohlcv_daily WHERE symbol = ? AND trading_date <= ? ORDER BY trading_date DESC LIMIT 1",
+                                (s, as_of_date),
+                            ).fetchone()
+                            actual_close = float(close_row[0]) if (close_row and close_row[0] is not None) else None
 
                             conn.execute("""
                                 INSERT OR REPLACE INTO fundamental_factors_daily (
@@ -676,7 +680,7 @@ class FullSpectrumHarvester:
                                     data_quality_flag, metric_applicability_flag, calculated_at
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 4, 'COMPLETE', 'STANDARD', ?)
                             """, (
-                                s, as_of_date, 100.0,
+                                s, as_of_date, actual_close,
                                 metrics.get("roe_pct"), metrics.get("opm_pct"), metrics.get("debt_to_equity"),
                                 metrics.get("ttm_pe"), metrics.get("sector") or "General", now_ts
                             ))

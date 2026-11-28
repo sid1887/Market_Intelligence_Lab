@@ -17,6 +17,7 @@ import json
 import time
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 
 from src.copilot.llm_client import (
@@ -1486,7 +1487,7 @@ class MultiAgentDeliberationEngine:
         spillover_mult = 1.0
         try:
             from src.quant.spillover_graph import get_sector_spillover_penalty
-            sp_info = get_sector_spillover_penalty(stock.get("sector"))
+            sp_info = get_sector_spillover_penalty(ctx.get("sector"))
             neg_pen = float(sp_info.get("negative_spillover_penalty", 0.0))
             if neg_pen > 0:
                 spillover_mult = max(0.5, 1.0 - neg_pen)
@@ -1595,7 +1596,9 @@ class MultiAgentDeliberationEngine:
             "can_trade": len(hard_veto_reasons) == 0,
             "hard_veto_reasons": hard_veto_reasons,
             "position_sizing": sizer_res.__dict__,
-            "coaching": eval_res
+            "coaching": eval_res,
+            "trader_dna_eval": eval_res,
+            "regime_analogs": regime_report.to_dict() if regime_report and hasattr(regime_report, "to_dict") else None,
         }
 
     async def deliberate_json(

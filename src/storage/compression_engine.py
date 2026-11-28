@@ -406,6 +406,13 @@ class MilzArchiveEngine:
             if dfs:
                 yield pd.concat(dfs, ignore_index=True)
 
+    def read_all(self, file_path: Optional[Union[str, Path]] = None) -> pd.DataFrame:
+        """Reads all symbols from the MILZ archive into a single DataFrame."""
+        chunks = list(self.iter_symbol_chunks(chunk_size=250, file_path=file_path))
+        if not chunks:
+            return pd.DataFrame(columns=["symbol"] + COLUMNS)
+        return pd.concat(chunks, ignore_index=True)
+
     def append_or_merge(
         self,
         new_df: pd.DataFrame,

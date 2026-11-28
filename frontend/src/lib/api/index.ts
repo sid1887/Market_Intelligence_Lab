@@ -24,6 +24,50 @@ export const DEFAULT_HEADERS: Record<string, string> = {
   "ngrok-skip-browser-warning": "true",
 };
 
+export function getUiAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { ...DEFAULT_HEADERS };
+  const envToken = process.env.NEXT_PUBLIC_MIL_UI_ACCESS_TOKEN;
+  if (envToken) {
+    headers["x-mil-access-token"] = envToken;
+  } else if (typeof window !== "undefined") {
+    try {
+      const localToken = window.localStorage.getItem("mil_ui_access_token");
+      if (localToken) headers["x-mil-access-token"] = localToken;
+    } catch {}
+  }
+  return headers;
+}
+
+export async function fetchWithColdStartRetry(
+  url: string,
+  init: RequestInit = {},
+  maxRetries: number = 3
+): Promise<Response> {
+  let retries = 0;
+  const mergedHeaders = {
+    ...getUiAuthHeaders(),
+    ...((init.headers as Record<string, string>) || {}),
+  };
+  while (true) {
+    const res = await fetch(url, { ...init, headers: mergedHeaders });
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && retries < maxRetries) {
+      retries++;
+      console.warn(`[MIL Cloud Client] Backend cold-start waking (${res.status}). Retrying ${retries}/${maxRetries} in 3.5s...`);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("cloud-engine-waking", { detail: { retry: retries, status: res.status } })
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+      continue;
+    }
+    if (retries > 0 && res.ok && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("cloud-engine-ready"));
+    }
+    return res;
+  }
+}
+
 export interface ApiErrorPayload {
   code: string;
   message: string;
@@ -83,10 +127,26 @@ export class RequestLifecycleManager {
 
 export const requestLifecycle = new RequestLifecycleManager();
 
-// Memory cache store for instant navigation (SWR: Stale-While-Revalidate)
+// Memory cache store for instant navigation (SWR: Stale-While-Revalidate, LRU-bounded)
 const memoryCache = new Map<string, { data: unknown; timestamp: number }>();
+const L1_MAX_ITEMS = 64;
 const CACHE_TTL_MS = 60_000; // 60 seconds fresh window (0ms perceived latency)
 const STALE_TTL_MS = 900_000; // 15 minutes stale window for background revalidation
+
+function setMemoryCache(url: string, data: unknown, timestamp: number) {
+  if (memoryCache.has(url)) {
+    memoryCache.delete(url);
+  }
+  memoryCache.set(url, { data, timestamp });
+  while (memoryCache.size > L1_MAX_ITEMS) {
+    const oldest = memoryCache.keys().next().value;
+    if (oldest) {
+      memoryCache.delete(oldest);
+    } else {
+      break;
+    }
+  }
+}
 
 // Persistent L2 sessionStorage cache configuration
 const L2_CACHE_PREFIX = "mil:swr-cache:v1:";
@@ -142,7 +202,7 @@ export function peekCachedData<T>(endpoint: string): T | null {
   if (mem) return mem.data as T;
   const l2 = getFromL2Cache<T>(url);
   if (l2) {
-    memoryCache.set(url, l2);
+    setMemoryCache(url, l2.data, l2.timestamp);
     return l2.data;
   }
   return null;
@@ -205,7 +265,7 @@ async function backgroundRevalidate(url: string, options: ApiFetchOptions) {
       if (res.ok) {
         const data = await res.json();
         const ts = Date.now();
-        memoryCache.set(url, { data, timestamp: ts });
+        setMemoryCache(url, data, ts);
         saveToL2Cache(url, data, ts);
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("mil:swr-revalidated", { detail: { url, data } }));
@@ -247,7 +307,7 @@ export async function apiFetch<T>(
     const l2 = getFromL2Cache<{ data: unknown; timestamp: number }>(url);
     if (l2) {
       entry = l2;
-      memoryCache.set(url, l2);
+      setMemoryCache(url, l2.data, l2.timestamp);
     }
   }
 
@@ -274,32 +334,12 @@ export async function apiFetch<T>(
   };
 
   const fetchPromise = (async () => {
-    let retries = 0;
-    const maxRetries = 3;
-
     while (true) {
       try {
-        const res = await fetch(url, {
+        const res = await fetchWithColdStartRetry(url, {
           ...options,
           headers,
         });
-
-        // Detect Render Cold-Start (502 Bad Gateway / 503 Service Unavailable / 504 Gateway Timeout)
-        if ((res.status === 502 || res.status === 503 || res.status === 504) && retries < maxRetries) {
-          retries++;
-          console.warn(`[MIL Cloud Client] Backend cold-start waking (${res.status}). Retrying ${retries}/${maxRetries} in 3.5s...`);
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(
-              new CustomEvent("cloud-engine-waking", { detail: { retry: retries, status: res.status } })
-            );
-          }
-          await new Promise((resolve) => setTimeout(resolve, 3500));
-          continue;
-        }
-
-        if (retries > 0 && res.ok && typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("cloud-engine-ready"));
-        }
 
         if (!res.ok) {
           let errorPayload: ApiErrorPayload;
@@ -323,7 +363,7 @@ export async function apiFetch<T>(
         const data = (await res.json()) as T;
         if (useCache) {
           const ts = Date.now();
-          memoryCache.set(url, { data, timestamp: ts });
+          setMemoryCache(url, data, ts);
           saveToL2Cache(url, data, ts);
         }
         return data;
@@ -772,9 +812,8 @@ export interface JobEventPayload {
 
 export async function submitJob(req: JobSubmissionRequest): Promise<JobSubmissionResponse> {
   const url = `${API_BASE}/jobs`;
-  const res = await fetch(url, {
+  const res = await fetchWithColdStartRetry(url, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
     body: JSON.stringify(req),
     cache: "no-store",
   });
@@ -804,9 +843,8 @@ export function getEventStreamUrl(jobId?: string): string {
 
 export async function triggerSystemIngest(): Promise<IngestResponse> {
   const url = `${API_BASE}/system/ingest`;
-  const res = await fetch(url, {
+  const res = await fetchWithColdStartRetry(url, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
     cache: "no-store",
   });
   if (!res.ok && res.status !== 202) {
@@ -1015,9 +1053,8 @@ export async function executeManualTrade(params: {
   thesisNote?: string;
 }): Promise<ManualTradeResponse> {
   const url = `${getPortfolioProxyBase()}/manual/execute`;
-  const res = await fetch(url, {
+  const res = await fetchWithColdStartRetry(url, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
     body: JSON.stringify({
       account_id: params.accountId || "paper_manual_1",
       symbol: params.symbol.toUpperCase(),
@@ -1032,7 +1069,7 @@ export async function executeManualTrade(params: {
     const errorText = await res.text();
     throw new Error(`Manual execution failed (${res.status}): ${errorText}`);
   }
-  clearMemoryCache();
+  clearMemoryCache("/portfolio");
   return (await res.json()) as ManualTradeResponse;
 }
 
@@ -1042,9 +1079,8 @@ export async function resetAccountCapital(params: {
   feeTier?: "RETAIL_MICRO" | "INSTITUTIONAL";
 }): Promise<PortfolioSummary> {
   const url = `${getPortfolioProxyBase()}/capital/reset`;
-  const res = await fetch(url, {
+  const res = await fetchWithColdStartRetry(url, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
     body: JSON.stringify({
       account_id: params.accountId,
       initial_capital: params.initialCapital,
@@ -1056,7 +1092,7 @@ export async function resetAccountCapital(params: {
     const errorText = await res.text();
     throw new Error(`Reset capital failed (${res.status}): ${errorText}`);
   }
-  clearMemoryCache();
+  clearMemoryCache("/portfolio");
   return (await res.json()) as PortfolioSummary;
 }
 

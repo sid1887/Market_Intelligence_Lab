@@ -49,15 +49,22 @@ MUTABLE_USER_TABLES: List[str] = [
     "portfolio_accounts",
     "portfolio_positions",
     "portfolio_orders",
+    "rebalance_proposals",
     "backtest_runs",
+    "backtest_equity_curve",
     "real_closed_roundtrips",
     "real_open_holdings",
     "real_capital_ledger",
     "real_dp_charges",
+    "real_trade_executions",
     "real_tradebook_audit_log",
     "user_watchlists",
+    "push_subscriptions",
     "copilot_memory_episodes",
-    "model_registry"
+    "copilot_distillation_corpus",
+    "llm_usage_telemetry",
+    "model_registry",
+    "model_horizon_deployments",
 ]
 
 DEFAULT_TRADEBOOK_ENC_PATHS = [
@@ -518,10 +525,25 @@ class DurableStateManager:
         """Alias for flush_sync() supporting dual-cloud sync."""
         return self.flush_sync()
 
+    @staticmethod
+    def _extract_bundle_exported_at(gz_data: Optional[bytes]) -> Optional[datetime.datetime]:
+        if not gz_data:
+            return None
+        try:
+            payload = json.loads(gzip.decompress(gz_data).decode("utf-8"))
+            ts = payload.get("exported_at")
+            if ts:
+                dt = datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                return dt if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc)
+        except Exception:
+            pass
+        return None
+
     def restore_on_startup(self) -> Dict[str, Any]:
         """
-        Attempts restore from Azure Blob first; if Azure is unconfigured, disabled,
-        or raises an exception, automatically fails over to the Private GitHub Repo.
+        Attempts restore from Azure Blob and Private GitHub Repo, comparing bundle
+        exported_at timestamps when both are available so stale primary backups do
+        not shadow fresher failover state.
         """
         if not self.has_any_backend:
             self._last_sync_status = "LOCAL_ONLY"
@@ -529,44 +551,58 @@ class DurableStateManager:
             return {"status": "LOCAL_ONLY", "tables": {}, "tradebook_restored": False}
 
         results: Dict[str, Any] = {"status": "LOCAL_ONLY", "tables": {}, "tradebook_restored": False, "provider": None}
-        restored_from_azure = False
+        az_gz: Optional[bytes] = None
+        az_enc: Optional[bytes] = None
+        gh_gz: Optional[bytes] = None
+        gh_enc: Optional[bytes] = None
 
-        # 1. Primary: Azure Blob Storage
+        # 1. Fetch from Primary: Azure Blob Storage
         if self.client.is_configured:
             try:
                 logger.info("[DURABLE-STATE-BOOT] Checking for durable state in Azure Blob Storage...")
-                gz_data = self.client.download_blob(CONTAINER_NAME, STATE_BLOB_NAME)
-                enc_data = self.client.download_blob(CONTAINER_NAME, TRADEBOOK_ENC_BLOB_NAME)
-                if gz_data is not None:
-                    results["tables"] = self.restore_mutable_state(gz_data)
-                    restored_from_azure = True
-                if enc_data is not None:
-                    results["tradebook_restored"] = self.restore_tradebook_enc(enc_data)
-                    restored_from_azure = True
-                if restored_from_azure:
-                    self._last_sync_status = "IN_SYNC_DUAL" if self.github_client.is_configured else "IN_SYNC_AZURE"
-                    results["status"] = self._last_sync_status
-                    results["provider"] = "azure_blob"
-                    return results
+                az_gz = self.client.download_blob(CONTAINER_NAME, STATE_BLOB_NAME)
+                az_enc = self.client.download_blob(CONTAINER_NAME, TRADEBOOK_ENC_BLOB_NAME)
             except Exception as az_err:
                 logger.warning(f"[DURABLE-STATE-BOOT] Azure restore failed ({az_err}); checking GitHub failover...")
 
-        # 2. Secondary / Cardless Failover: Private GitHub Repo
+        # 2. Fetch from Secondary / Cardless Failover: Private GitHub Repo
         if self.github_client.is_configured:
             try:
-                logger.info("[DURABLE-STATE-BOOT] Restoring durable state from Private GitHub Repo failover...")
+                logger.info("[DURABLE-STATE-BOOT] Checking for durable state in Private GitHub Repo...")
                 gh_gz = self.github_client.download_file(self.github_client.state_path)
                 gh_enc = self.github_client.download_file(self.github_client.tradebook_path)
-                if gh_gz is not None:
-                    results["tables"] = self.restore_mutable_state(gh_gz)
-                if gh_enc is not None:
-                    results["tradebook_restored"] = self.restore_tradebook_enc(gh_enc)
+            except Exception as gh_err:
+                logger.warning(f"[DURABLE-STATE-BOOT] GitHub failover restore error: {gh_err}")
+
+        az_ts = self._extract_bundle_exported_at(az_gz)
+        gh_ts = self._extract_bundle_exported_at(gh_gz)
+        use_github = False
+        if gh_gz is not None or gh_enc is not None:
+            if az_gz is None and az_enc is None:
+                use_github = True
+            elif gh_ts is not None and (az_ts is None or gh_ts > az_ts):
+                logger.info(
+                    f"[DURABLE-STATE-BOOT] GitHub backup ({gh_ts.isoformat()}) is newer than Azure ({az_ts}); selecting GitHub."
+                )
+                use_github = True
+
+        chosen_gz = gh_gz if use_github else az_gz
+        chosen_enc = gh_enc if use_github else az_enc
+        if chosen_gz is not None:
+            results["tables"] = self.restore_mutable_state(chosen_gz)
+        if chosen_enc is not None:
+            results["tradebook_restored"] = self.restore_tradebook_enc(chosen_enc)
+
+        if chosen_gz is not None or chosen_enc is not None:
+            if use_github:
                 self._last_sync_status = "IN_SYNC_GITHUB_FALLBACK"
                 results["status"] = "IN_SYNC_GITHUB_FALLBACK"
                 results["provider"] = "github_repo"
-                return results
-            except Exception as gh_err:
-                logger.warning(f"[DURABLE-STATE-BOOT] GitHub failover restore error: {gh_err}")
+            else:
+                self._last_sync_status = "IN_SYNC_DUAL" if self.github_client.is_configured else "IN_SYNC_AZURE"
+                results["status"] = self._last_sync_status
+                results["provider"] = "azure_blob"
+            return results
 
         return results
 

@@ -162,11 +162,10 @@ class CopilotMemoryStore:
 
         results: List[Dict[str, Any]] = []
         with self.db.get_connection() as conn:
-            # 1. Exact symbol match
+            # 1. Exact CSV symbol token match
             if target_syms:
-                placeholders = ",".join("?" for _ in target_syms)
-                sym_conditions = " OR ".join(f"symbols_csv LIKE ?" for _ in target_syms)
-                params = [f"%{s}%" for s in target_syms]
+                sym_conditions = " OR ".join("(',' || UPPER(symbols_csv) || ',') LIKE ?" for _ in target_syms)
+                params = [f"%,{s},%" for s in target_syms]
                 rows = conn.execute(f"""
                     SELECT id, created_at, symbols_csv, category, summary_text, outcome_status, importance_score
                     FROM copilot_memory_episodes

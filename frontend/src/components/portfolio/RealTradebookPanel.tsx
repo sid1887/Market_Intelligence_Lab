@@ -17,6 +17,7 @@ import {
   fetchTradebookSummary,
   uploadTradebookFiles,
   getTradebookExportUrl,
+  fetchWithColdStartRetry,
   TradebookSummary,
 } from "@/lib/api";
 
@@ -112,9 +113,25 @@ export function RealTradebookPanel() {
     }
   };
 
-  const handleDownloadExcel = () => {
-    const url = getTradebookExportUrl();
-    window.open(url, "_blank");
+  const handleDownloadExcel = async () => {
+    try {
+      const url = getTradebookExportUrl();
+      const res = await fetchWithColdStartRetry(url, { method: "GET" });
+      if (!res.ok) {
+        throw new Error(`Export failed (HTTP ${res.status})`);
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "MIL_Master_Trading_Record.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to download Excel export");
+    }
   };
 
   const formatInr = (val?: number) => {
@@ -171,8 +188,7 @@ export function RealTradebookPanel() {
                   const url = new URL(window.location.href);
                   url.searchParams.set("tab", "trader_dna");
                   window.history.replaceState(null, "", url.toString());
-                  window.dispatchEvent(new Event("popstate"));
-                  window.location.reload();
+                  window.dispatchEvent(new PopStateEvent("popstate"));
                 }
               }}
               className="px-3 py-2 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-xs font-mono text-cyan-300 flex items-center space-x-1.5 transition-all shadow-[0_0_12px_rgba(6,182,212,0.2)]"

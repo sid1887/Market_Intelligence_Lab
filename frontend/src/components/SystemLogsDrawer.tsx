@@ -145,10 +145,10 @@ export default function SystemLogsDrawer() {
     };
   }, [isOpen, autoTail, activeTab, fetchLogs, refreshAll]);
 
-  // Scroll to bottom when auto-tailing on new logs
+  // Scroll to top (newest logs are rendered first in reverse chronological order) when auto-tailing
   useEffect(() => {
     if (autoTail && scrollRef.current && activeTab === "logs") {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTop = 0;
     }
   }, [logs, autoTail, activeTab]);
 
@@ -330,7 +330,7 @@ export default function SystemLogsDrawer() {
                   <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2 flex-wrap">
                     <span>Verdict: <strong className="text-amber-300">{tournament?.promotion_verdict || "REJECTED_BELOW_BASELINE"}</strong></span>
                     <span>•</span>
-                    <span>DSR Hurdle: DSR &gt; 0.95 &amp; Excess Sharpe &gt; 0</span>
+                    <span>DSR Hurdle: DSR &gt;= 0.90 &amp; Excess Sharpe &gt; 0</span>
                   </div>
                 </div>
 
@@ -482,7 +482,7 @@ export default function SystemLogsDrawer() {
                       <ShieldCheck className="w-4 h-4 text-cyan-400" />
                       <span>{health?.durable_state_status || "IN_SYNC"}</span>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-mono block pt-2">Azure Blob durable state storage</span>
+                    <span className="text-[10px] text-slate-500 font-mono block pt-2">Dual-cloud durable state (Azure Blob + Private GitHub failover)</span>
                   </div>
 
                   <div className="p-4 rounded-xl bg-[#020409] border border-white/[0.08] space-y-1">

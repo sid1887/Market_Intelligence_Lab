@@ -285,12 +285,13 @@ def sync_internal_state_endpoint(
     if payload.catalysts:
         try:
             with db.get_connection() as conn:
-                existing_catalysts = set(
-                    conn.execute("""
+                existing_catalysts = {
+                    (str(r[0]), str(r[1]), str(r[2]))
+                    for r in conn.execute("""
                         SELECT symbol, SUBSTR(triggered_at, 1, 10), causal_headline
                         FROM market_catalysts
                     """).fetchall()
-                )
+                }
 
                 now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -547,7 +548,7 @@ def sync_internal_state_endpoint(
     # 3. ML Tournament Summary -> data/models/tournament_summary.json
     if payload.tournament_summary:
         try:
-            target_path = Path("data/models/tournament_summary.json")
+            target_path = Path(os.getenv("MIL_TOURNAMENT_SUMMARY_PATH", "data/models/tournament_summary.json"))
             target_path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = target_path.with_suffix(".tmp")
             with open(tmp_path, "w", encoding="utf-8") as f:

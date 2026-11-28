@@ -777,20 +777,6 @@ class UniverseExpander:
                 bars_count = len(df)
                 total_bars_added += bars_count
                 processed += 1
-
-                with self.db.get_connection() as conn:
-                    conn.execute("""
-                        UPDATE universe_backfill_status
-                        SET backfill_status = 'COMPLETED',
-                            earliest_date = ?,
-                            latest_date = ?,
-                            total_bars = ?,
-                            last_attempt_at = ?,
-                            error_msg = NULL
-                        WHERE symbol = ?
-                    """, (min_date, max_date, bars_count, now_iso, sym))
-
-                processed += 1
                 time.sleep(0.2)  # Polite pacing
 
             except Exception as e:

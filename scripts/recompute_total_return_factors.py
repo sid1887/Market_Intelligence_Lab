@@ -161,10 +161,31 @@ def run_total_return_recompute(
 
     adjusted_rows = 0
     adjusted_symbols = 0
+    persisted_rows = 0
     if not ohlcv_df.empty:
         adj_df = ca_mgr.apply_adjustments_to_ohlcv(ohlcv_df, include_dividends=True)
         adjusted_rows = len(adj_df)
         adjusted_symbols = int(adj_df["symbol"].nunique())
+
+        # Persist adj_close and adj_factor_cum back to SQLite ohlcv_daily
+        adj_close_col = adj_df["adj_close"] if "adj_close" in adj_df.columns else adj_df["close"]
+        raw_close_col = ohlcv_df["close"].replace(0, np.nan)
+        factor_col = (adj_close_col / raw_close_col).fillna(1.0)
+        updates = list(
+            zip(
+                adj_close_col.astype(float).tolist(),
+                factor_col.astype(float).tolist(),
+                adj_df["symbol"].astype(str).tolist(),
+                adj_df["trading_date"].astype(str).tolist(),
+            )
+        )
+        with db.get_connection() as conn:
+            conn.executemany(
+                "UPDATE ohlcv_daily SET adj_close = ?, adj_factor_cum = ? WHERE symbol = ? AND trading_date = ?",
+                updates,
+            )
+            conn.commit()
+        persisted_rows = len(updates)
 
         # Recompute causal alpha_v3_multimodal features on adjusted series to verify stationarity
         sample_syms = adj_df["symbol"].value_counts().head(50).index
@@ -177,6 +198,7 @@ def run_total_return_recompute(
         "synced_from_milz_archive": synced_milz,
         "total_corporate_action_adjustments": total_adj,
         "ohlcv_rows_adjusted": adjusted_rows,
+        "ohlcv_rows_persisted": persisted_rows,
         "ohlcv_symbols_adjusted": adjusted_symbols,
     }
 

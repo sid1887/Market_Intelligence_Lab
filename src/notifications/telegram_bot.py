@@ -33,18 +33,18 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "market_lab.db")
 
+from src.storage.database import DatabaseManager
+
 TELEGRAM_API_BASE = "https://api.telegram.org"
 TELEGRAM_ALLOWED_USERNAME = os.getenv("TELEGRAM_ALLOWED_USERNAME", "sidraj_1887").strip().lower().lstrip("@")
-WEB_BASE_URL = os.getenv("NEXT_PUBLIC_APP_URL", "https://market-intelligence-lab-vert.vercel.app").rstrip("/")
+WEB_BASE_URL = (os.getenv("NEXT_PUBLIC_APP_URL") or os.getenv("WEB_BASE_URL") or "https://market-intelligence-lab-vert.vercel.app").rstrip("/")
 
 _last_send_time: float = 0.0
 
 
-def _get_db() -> sqlite3.Connection:
+def _get_db():
     os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=25.0)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return DatabaseManager(DB_PATH).get_connection()
 
 
 def init_telegram_tables():
@@ -258,8 +258,9 @@ def send_telegram_alert(title: str, body: str, url: str = "/") -> bool:
     if not token:
         return False
 
-    # Extract symbol if present in title or body
-    sym_match = re.search(r"\b([A-Z0-9-]{2,12})\b", title)
+    # Extract symbol if present in title (ignore common acronyms and pure digits)
+    _STOP_TOKENS = {"BSE", "NSE", "MIL", "RVOL", "SMA", "FY", "LIVE", "ALERT", "TOP", "HIGH", "LOW", "NEWS", "SURGE", "DROP", "NIFTY", "SENSEX", "SEBI", "RBI", "IPO", "ETF", "PAT", "EPS", "ROE", "PE", "Q1", "Q2", "Q3", "Q4"}
+    sym_match = re.search(r"\b([A-Z][A-Z0-9-]{1,11})\b", title)
     sym = sym_match.group(1) if sym_match else ""
     
     clean_title = html.escape(title.strip())
@@ -268,7 +269,7 @@ def send_telegram_alert(title: str, body: str, url: str = "/") -> bool:
     # Target URL on production frontend
     if url.startswith("http"):
         full_url = url
-    elif sym and sym not in ("BSE", "NSE", "MIL", "RVOL", "SMA", "FY"):
+    elif sym and sym not in _STOP_TOKENS:
         full_url = f"{WEB_BASE_URL}/stocks/{sym}"
     else:
         clean_path = url.lstrip("/")

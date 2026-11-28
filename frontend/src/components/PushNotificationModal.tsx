@@ -75,6 +75,15 @@ export default function PushNotificationModal({
   };
 
   useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (isOpen) {
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         autoSyncPushSubscription().then((res) => {

@@ -23,16 +23,49 @@ async function proxyRequest(request: NextRequest, { params }: { params: { path?:
       "ngrok-skip-browser-warning": "true",
     };
 
-    // Inject server-side secret API key (kept strictly out of the public client browser bundle)
-    const serverApiKey =
-      process.env.MIL_API_KEY ||
-      process.env.MIL_INTERNAL_SYNC_SECRET ||
-      process.env.INTERNAL_SYNC_TOKEN;
+    // Enforce origin & optional UI session/access token before attaching server-only MIL_API_KEY.
+    // Never forward MIL_INTERNAL_SYNC_SECRET from the public browser BFF proxy.
+    const method = request.method;
+    const requiredUiToken = (process.env.MIL_UI_ACCESS_TOKEN || "").trim();
+    const isMutating = method !== "GET" && method !== "HEAD";
+    const isSensitiveTradebook = subpath.startsWith("tradebook/") || subpath.startsWith("trader-dna");
+
+    if (requiredUiToken) {
+      const providedUiToken =
+        request.headers.get("x-mil-access-token") ||
+        request.cookies.get("mil_access_token")?.value ||
+        "";
+      if (providedUiToken !== requiredUiToken) {
+        return NextResponse.json(
+          { error: "Unauthorized: Missing or invalid portfolio session token." },
+          { status: 401 }
+        );
+      }
+    } else if (process.env.NODE_ENV === "production" && (isMutating || isSensitiveTradebook)) {
+      const reqHost = request.nextUrl.host;
+      const origin = request.headers.get("origin");
+      const referer = request.headers.get("referer");
+      let sameOrigin = false;
+      try {
+        if (origin && new URL(origin).host === reqHost) sameOrigin = true;
+        else if (!origin && referer && new URL(referer).host === reqHost) sameOrigin = true;
+      } catch {
+        sameOrigin = false;
+      }
+      const clientKey = (request.headers.get("x-api-key") || "").trim();
+      const serverApiKey = (process.env.MIL_API_KEY || "").trim();
+      if (!sameOrigin && (!serverApiKey || clientKey !== serverApiKey)) {
+        return NextResponse.json(
+          { error: "Forbidden: Cross-origin unauthenticated portfolio request rejected." },
+          { status: 403 }
+        );
+      }
+    }
+
+    const serverApiKey = (process.env.MIL_API_KEY || "").trim();
     if (serverApiKey) {
       headers["X-API-Key"] = serverApiKey;
-      headers["X-Internal-Token"] = serverApiKey;
     } else {
-      // Forward client header if present
       const clientKey = request.headers.get("x-api-key");
       if (clientKey) {
         headers["X-API-Key"] = clientKey;
@@ -44,7 +77,6 @@ async function proxyRequest(request: NextRequest, { params }: { params: { path?:
       headers["Content-Type"] = contentType;
     }
 
-    const method = request.method;
     let body: ArrayBuffer | undefined = undefined;
     if (method !== "GET" && method !== "HEAD") {
       body = await request.arrayBuffer();

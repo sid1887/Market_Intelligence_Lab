@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_der_private_key
 from cryptography.hazmat.primitives.asymmetric import ec
 from src.notifications.telegram_bot import send_telegram_alert
+from src.storage.database import DatabaseManager
 
 logger = logging.getLogger("notifications.web_push")
 
@@ -34,11 +35,9 @@ _CACHED_VAPID: Optional[Vapid] = None
 _CACHED_KEYS: Optional[Dict[str, str]] = None
 
 
-def _get_db() -> sqlite3.Connection:
+def _get_db():
     os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=25.0)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return DatabaseManager(DB_PATH).get_connection()
 
 
 def init_push_tables():

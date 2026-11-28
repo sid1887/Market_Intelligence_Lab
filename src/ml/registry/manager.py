@@ -189,7 +189,7 @@ class ModelRegistryManager:
             # Prevent directory traversal
             abs_artifact_dir = os.path.abspath(self.artifact_dir)
             abs_path = os.path.abspath(path)
-            if not abs_path.startswith(abs_artifact_dir):
+            if os.path.commonpath([abs_artifact_dir, abs_path]) != abs_artifact_dir:
                 logger.error(f"Promotion rejected: artifact path '{path}' escapes artifact directory '{self.artifact_dir}'.")
                 return False
 
@@ -317,6 +317,7 @@ class ModelRegistryManager:
                 """,
                 (model_id,)
             )
+            conn.commit()
             return res.rowcount > 0
 
     def get_horizon_deployments(self) -> Dict[int, Dict[str, Any]]:

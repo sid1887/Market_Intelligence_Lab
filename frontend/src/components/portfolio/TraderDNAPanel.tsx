@@ -60,14 +60,14 @@ export function TraderDNAPanel() {
     );
   }
 
-  if (error && !profile) {
+  if (!profile) {
     return (
       <div className="p-6 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-rose-300 space-y-3">
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 text-rose-400" />
           <h3 className="text-sm font-bold">Failed to Load Trader DNA</h3>
         </div>
-        <p className="text-xs font-mono text-slate-400">{error}</p>
+        <p className="text-xs font-mono text-slate-400">{error || "Trader DNA profile unavailable."}</p>
         <button
           onClick={loadProfile}
           className="px-3 py-1.5 rounded-lg bg-rose-900/40 hover:bg-rose-900/60 border border-rose-500/40 text-xs font-mono text-white transition-colors"
@@ -78,7 +78,7 @@ export function TraderDNAPanel() {
     );
   }
 
-  const p = profile!;
+  const p = profile;
   const isCooldown = Boolean(p.cooldown_active || p.defensive_cooldown_active);
   const earlyExitAlert = p.early_exit_rate_pct > 30.0;
 

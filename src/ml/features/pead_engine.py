@@ -185,7 +185,7 @@ def calculate_pead_features(
     fin = fin.sort_values(["symbol", "period_end_date"]).reset_index(drop=True)
 
     # Compute EPS and OPM
-    fin["eps"] = pd.to_numeric(fin["eps"], errors="coerce").fillna(0.0)
+    fin["eps"] = pd.to_numeric(fin[eps_col], errors="coerce").fillna(0.0) if (eps_col and eps_col in fin.columns) else 0.0
 
     # Operating Margin
     if "operating_margin_pct" in fin.columns:

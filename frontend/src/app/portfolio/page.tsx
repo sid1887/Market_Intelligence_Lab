@@ -406,8 +406,8 @@ function PortfolioContent() {
   const cashBal = Math.max(0, summary?.cash_balance ?? 0);
   const calculateAffordable = (pct: number) => {
     const targetPool = cashBal * pct;
-    // Reserve flat ₹16 broker fee + 0.15% STT buffer
-    return Math.max(0, Math.floor((targetPool - 16) / 1.0015));
+    // Reserve ₹23.60 Angel One DP/brokerage + statutory STT/levies buffer
+    return Math.max(0, Math.floor((targetPool - 23.6) / 1.0015));
   };
   const size25 = calculateAffordable(0.25);
   const size50 = calculateAffordable(0.50);
@@ -495,13 +495,15 @@ function PortfolioContent() {
               {showSystemTelemetry ? <ChevronUp className="w-3 h-3 ml-1 text-slate-400" /> : <ChevronDown className="w-3 h-3 ml-1 text-slate-400" />}
             </button>
 
-            <button
-              onClick={() => setShowCapitalModal(true)}
-              className="px-3.5 py-2 rounded-xl bg-[#080c14]/80 border border-white/[0.08] hover:border-amber-500/40 hover:bg-amber-500/5 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-2 transition-all duration-150 active:scale-[0.98] shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
-            >
-              <Sliders className="w-3.5 h-3.5 text-amber-400" />
-              <span className="tabular-nums">Capital Seed ({formatINR(initialCapital)})</span>
-            </button>
+            {activeAccount !== "real_tradebook" && activeAccount !== "trader_dna" && (
+              <button
+                onClick={() => setShowCapitalModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-[#080c14]/80 border border-white/[0.08] hover:border-amber-500/40 hover:bg-amber-500/5 text-slate-300 hover:text-white text-xs font-mono flex items-center gap-2 transition-all duration-150 active:scale-[0.98] shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
+              >
+                <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                <span className="tabular-nums">Capital Seed ({formatINR(initialCapital)})</span>
+              </button>
+            )}
 
             <button
               onClick={() => {
@@ -515,7 +517,7 @@ function PortfolioContent() {
               <span>Refresh</span>
             </button>
 
-            {activeAccount !== "paper_manual_1" && (
+            {(activeAccount === "paper_alpha_1" || activeAccount === "paper_alpha_2") && (
               <button
                 onClick={handleExecuteRebalance}
                 disabled={executing}
@@ -728,7 +730,7 @@ function PortfolioContent() {
               title="Friction Paid"
               value={formatINR(summary?.total_friction_paid)}
               badge={summary?.fee_tier || "RETAIL_MICRO"}
-              subLabel={summary?.fee_tier === "RETAIL_MICRO" ? "12 bps + ₹15 DP" : "15 bps inst."}
+              subLabel={summary?.fee_tier === "RETAIL_MICRO" ? "Angel One + ₹23.60 DP" : "15 bps + ₹23.60 DP"}
               icon={<ShieldCheck className="w-4 h-4 text-indigo-400" />}
               delay={0.25}
             />

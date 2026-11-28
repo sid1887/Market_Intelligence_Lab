@@ -106,10 +106,11 @@ export default function CockpitPage() {
   } = usePlatformEvents();
 
   const hydrationRetryRef = useRef(0);
+  const hasLoadedOnceRef = useRef(false);
 
   // 2. Initial Screener & Watchlist Data Fetch
   const loadPageData = useCallback(async (invalidateCache: boolean = false) => {
-    if (invalidateCache || candidates.length === 0) {
+    if (invalidateCache || !hasLoadedOnceRef.current) {
       setPageLoading(true);
     }
     if (invalidateCache) {
@@ -123,6 +124,7 @@ export default function CockpitPage() {
 
       if (scrRes.status === "fulfilled") {
         const results = scrRes.value.results || [];
+        hasLoadedOnceRef.current = true;
         setCandidates(results);
         if (scrRes.value.as_of_date) {
           setAsOfDate(scrRes.value.as_of_date);
@@ -152,17 +154,35 @@ export default function CockpitPage() {
     } finally {
       setPageLoading(false);
     }
-  }, [candidates.length]);
+  }, []);
 
   // 3. Initial Load, Session-Gated Push Subscription & URL Query Parameter Initialization
   useEffect(() => {
+    let urlSym: string | null = null;
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const symParam = params.get("symbol");
+      if (symParam) {
+        urlSym = symParam.toUpperCase();
+        setSelectedSymbol(urlSym);
+        if (window.innerWidth < 1024) {
+          setIsMobileInspectorOpen(true);
+        }
+      }
+      const viewParam = params.get("view");
+      if (viewParam === "heatmap" || viewParam === "cards" || viewParam === "watchlist") {
+        setViewMode(viewParam);
+      }
+    }
+
     // Client-side cache hydration on mount (zero SSR mismatch)
     try {
       const cachedScr = peekCachedData<ScreenerResponse>("/screener?limit=1500");
       if (cachedScr?.results && cachedScr.results.length > 0) {
+        hasLoadedOnceRef.current = true;
         setCandidates(cachedScr.results);
         if (cachedScr.as_of_date) setAsOfDate(cachedScr.as_of_date);
-        setSelectedSymbol((prev) => prev || cachedScr.results[0].symbol);
+        setSelectedSymbol((prev) => urlSym || prev || cachedScr.results[0].symbol);
         setPageLoading(false);
       }
       const cachedWl = peekCachedData<WatchlistResponse>("/watchlist");
@@ -188,21 +208,6 @@ export default function CockpitPage() {
         checkPushSubscription().then((res) => {
           setIsPushSubscribed(res.isSubscribed);
         });
-      }
-    }
-
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const symParam = params.get("symbol");
-      if (symParam) {
-        setSelectedSymbol(symParam.toUpperCase());
-        if (window.innerWidth < 1024) {
-          setIsMobileInspectorOpen(true);
-        }
-      }
-      const viewParam = params.get("view");
-      if (viewParam === "heatmap" || viewParam === "cards" || viewParam === "watchlist") {
-        setViewMode(viewParam);
       }
     }
 
@@ -315,7 +320,7 @@ export default function CockpitPage() {
   }, []);
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] bg-grid-pattern relative select-none text-slate-100 font-sans">
+    <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#030508] bg-grid-pattern relative text-slate-100 font-sans">
       <ParticleField />
       {/* ──────────────── 1. TOP HEADER NAVIGATION (V8 Institutional Aesthetic) ──────────────── */}
       <header className="h-14 shrink-0 border-b border-white/[0.08] bg-[#040609] flex items-center justify-between px-3 sm:px-6 z-30 transition-all">
@@ -605,9 +610,7 @@ export default function CockpitPage() {
           candidates={candidates}
           watchlistSymbols={watchlistSymbols}
           onSelect={(sym) => {
-            setSelectedSymbol(sym);
-            setIsInspectorCollapsed(false);
-            setIsMobileInspectorOpen(true);
+            handleSelectSymbol(sym);
             setShowCommandPalette(false);
           }}
           onClose={() => setShowCommandPalette(false)}

@@ -83,7 +83,7 @@ from src.api.routes_market import (
 )
 from src.api.routes_jobs import router as jobs_router
 from src.api.routes_stream import router as stream_router
-from src.api.routes_portfolio import router as portfolio_router
+from src.api.routes_portfolio import router as portfolio_router, verify_portfolio_mutation_auth
 from src.api.routes_backtest import router as backtest_router
 from src.api.routes_push import router as push_router
 from src.api.routes_internal import router as internal_router
@@ -285,7 +285,7 @@ for o in extra_origins:
 
 cors_origin_regex = os.getenv(
     "MIL_CORS_ORIGIN_REGEX",
-    r"^https://market-intelligence-lab[-\w]*\.vercel\.app$|^https://mil-quant-backend[-\w]*\.onrender\.com$"
+    r"^https://market-intelligence(?:-lab)?[-\w]*\.vercel\.app$|^https://mil-quant-backend[-\w]*\.onrender\.com$"
 )
 
 app.add_middleware(
@@ -306,26 +306,28 @@ async def observability_tracing_middleware(request: Request, call_next):
     start_time = time.perf_counter()
     rss_before = get_current_rss_mb()
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
 
-    duration_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
-    response.headers["X-Request-ID"] = req_id
-    response.headers["X-Response-Time-Ms"] = str(duration_ms)
-    response.headers["X-Process-RSS-MB"] = str(rss_before)
+        duration_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
+        response.headers["X-Request-ID"] = req_id
+        response.headers["X-Response-Time-Ms"] = str(duration_ms)
+        response.headers["X-Process-RSS-MB"] = str(rss_before)
 
-    path = request.url.path
-    if not (path.endswith("/health") and response.status_code == 200):
-        if duration_ms > 1500 or response.status_code >= 400:
-            logger.warning(
-                f"{request.method} {path} status={response.status_code} latency={duration_ms}ms rss={rss_before}MB req_id={req_id}"
-            )
-        else:
-            logger.debug(
-                f"{request.method} {path} status={response.status_code} latency={duration_ms}ms rss={rss_before}MB req_id={req_id}"
-            )
+        path = request.url.path
+        if not (path.endswith("/health") and response.status_code == 200):
+            if duration_ms > 1500 or response.status_code >= 400:
+                logger.warning(
+                    f"{request.method} {path} status={response.status_code} latency={duration_ms}ms rss={rss_before}MB req_id={req_id}"
+                )
+            else:
+                logger.debug(
+                    f"{request.method} {path} status={response.status_code} latency={duration_ms}ms rss={rss_before}MB req_id={req_id}"
+                )
 
-    request_id_ctx.reset(token)
-    return response
+        return response
+    finally:
+        request_id_ctx.reset(token)
 
 # Mount modular market routes (status, tearsheet, history)
 app.include_router(market_router)
@@ -462,6 +464,93 @@ def get_supervisor_status(force_refresh: bool = False):
     return status
 
 
+def clear_screener_caches() -> None:
+    """Clears module-level screener materialized snapshot and gzip byte buffers under RSS pressure."""
+    global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
+    with _screener_cache_lock:
+        _screener_snapshot_cache = None
+        _screener_cached_bytes = None
+        _screener_cached_gzip = None
+        _screener_cached_1000_bytes = None
+        _screener_cached_1000_gzip = None
+        _screener_cache_date = None
+        _screener_cache_time = 0.0
+
+
+try:
+    from src.storage.cache import register_memory_guard_hook
+    register_memory_guard_hook(clear_screener_caches)
+except Exception:
+    pass
+
+
+def _serialize_screener_dataframe(df: pd.DataFrame, start_rank: int = 1) -> List[Dict[str, Any]]:
+    """Canonical screener row serializer shared across default cached and filtered queries."""
+    if df is None or df.empty:
+        return []
+    df_clean = df.where(pd.notnull(df), None)
+    results: List[Dict[str, Any]] = []
+    for rank, (_, row) in enumerate(df_clean.iterrows(), start=start_rank):
+        sym = str(row["symbol"])
+        b_score = safe_float(row.get("blended_score"), 2)
+        if b_score is None:
+            b_score = safe_float(row.get("composite_score"), 2)
+
+        target_alloc = safe_float(row.get("target_allocation_pct"), 2) or 0.0
+        drivers = row.get("horizon_drivers")
+        if not isinstance(drivers, list):
+            drivers = []
+        is_target = bool(row.get("is_rebalance_target", False))
+
+        results.append({
+            "rank": rank,
+            "symbol": sym,
+            "company_name": str(row.get("company_name", sym)),
+            "sector": str(row.get("sector", "Unclassified")),
+            "close": safe_float(row.get("close"), 2),
+            "sma_200": safe_float(row.get("sma_200"), 2),
+            "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
+            "roe_pct": safe_float(row.get("roe_pct"), 2),
+            "opm_pct": safe_float(row.get("opm_pct"), 2),
+            "excess_ret_20d": (
+                safe_float(row.get("excess_ret_20d"), 4)
+                if row.get("excess_ret_20d") is not None
+                else (safe_float(row.get("ret_20d"), 4) or 0.0)
+            ),
+            "ret_20d": (
+                safe_float(row.get("ret_20d"), 4)
+                if row.get("ret_20d") is not None
+                else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
+            ),
+            "return_20d": (
+                safe_float(row.get("ret_20d"), 4)
+                if row.get("ret_20d") is not None
+                else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
+            ),
+            "composite_score": safe_float(row.get("composite_score"), 2),
+            "blended_score": b_score,
+            "target_allocation_pct": target_alloc,
+            "horizon_drivers": drivers,
+            "is_rebalance_target": is_target,
+            "score_20d": safe_float(row.get("score_20d"), 1),
+            "score_60d": safe_float(row.get("score_60d"), 1),
+            "price_above_sma200": bool(row.get("price_above_sma200", False)),
+            "is_watchlist": bool(row.get("is_watchlist", 0)),
+            "rsi_14": safe_float(row.get("rsi_14"), 2),
+            "volatility_20d": safe_float(row.get("volatility_20d"), 4),
+            "delivery_pct": safe_float(row.get("delivery_pct"), 2),
+            "turnover_cr": safe_float(row.get("turnover_cr"), 2),
+            "distance_52w_high": safe_float(row.get("distance_52w_high"), 4),
+            "distance_52w_low": safe_float(row.get("distance_52w_low"), 4),
+            "pct_from_52w_high": (
+                max(-100.0, min(0.0, round(float(row.get("distance_52w_high")), 2)))
+                if row.get("distance_52w_high") is not None and not pd.isna(row.get("distance_52w_high"))
+                else None
+            )
+        })
+    return results
+
+
 @app.get("/screener")
 @app.get("/api/v1/screener")
 def get_screener(
@@ -481,6 +570,13 @@ def get_screener(
     Safely sanitizes all NaN / Infinity values to prevent serialization crashes.
     """
     global _screener_snapshot_cache, _screener_cached_bytes, _screener_cached_gzip, _screener_cached_1000_bytes, _screener_cached_1000_gzip, _screener_cache_date, _screener_cache_time
+    if get_hydration_status() == "HYDRATING":
+        return Response(
+            content=json.dumps({"status": "HYDRATING", "detail": "Cloud database hydration in progress; retry shortly."}).encode("utf-8"),
+            status_code=503,
+            media_type="application/json",
+            headers={"Retry-After": "2"},
+        )
     enforce_rss_memory_guard(threshold_mb=375.0)
     try:
         is_default_query = (
@@ -497,7 +593,7 @@ def get_screener(
         # Fast In-Memory Materialized View Serve (< 5ms) with Double-Checked Single-Flight Lock
         if is_default_query:
             with _screener_cache_lock:
-                now_time = datetime.datetime.now().timestamp()
+                now_time = time.monotonic()
                 if (
                     _screener_snapshot_cache is not None and
                     (now_time - _screener_cache_time < SCREENER_CACHE_TTL_SECONDS)
@@ -547,67 +643,8 @@ def get_screener(
                     limit=2500,
                     offset=0
                 )
-                df_clean = df.where(pd.notnull(df), None)
-
-                results = []
-                for rank, (_, row) in enumerate(df_clean.iterrows(), start=1):
-                    sym = str(row["symbol"])
-                    b_score = safe_float(row.get("blended_score"), 2)
-                    if b_score is None:
-                        b_score = safe_float(row.get("composite_score"), 2)
-
-                    target_alloc = safe_float(row.get("target_allocation_pct"), 2) or 0.0
-                    drivers = row.get("horizon_drivers")
-                    if not isinstance(drivers, list):
-                        drivers = []
-                    is_target = bool(row.get("is_rebalance_target", False))
-
-                    results.append({
-                        "rank": rank,
-                        "symbol": sym,
-                        "company_name": str(row.get("company_name", sym)),
-                        "sector": str(row.get("sector", "Unclassified")),
-                        "close": safe_float(row.get("close"), 2),
-                        "sma_200": safe_float(row.get("sma_200"), 2),
-                        "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
-                        "roe_pct": safe_float(row.get("roe_pct"), 2),
-                        "opm_pct": safe_float(row.get("opm_pct"), 2),
-                        "excess_ret_20d": (
-                            safe_float(row.get("excess_ret_20d"), 4)
-                            if row.get("excess_ret_20d") is not None
-                            else (safe_float(row.get("ret_20d"), 4) or 0.0)
-                        ),
-                        "ret_20d": (
-                            safe_float(row.get("ret_20d"), 4)
-                            if row.get("ret_20d") is not None
-                            else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
-                        ),
-                        "return_20d": (
-                            safe_float(row.get("ret_20d"), 4)
-                            if row.get("ret_20d") is not None
-                            else (safe_float(row.get("excess_ret_20d"), 4) or 0.0)
-                        ),
-                        "composite_score": safe_float(row.get("composite_score"), 2),
-                        "blended_score": b_score,
-                        "target_allocation_pct": target_alloc,
-                        "horizon_drivers": drivers,
-                        "is_rebalance_target": is_target,
-                        "score_20d": safe_float(row.get("score_20d"), 1),
-                        "score_60d": safe_float(row.get("score_60d"), 1),
-                        "price_above_sma200": bool(row.get("price_above_sma200", False)),
-                        "is_watchlist": bool(row.get("is_watchlist", 0)),
-                        "rsi_14": safe_float(row.get("rsi_14"), 2),
-                        "volatility_20d": safe_float(row.get("volatility_20d"), 4),
-                        "delivery_pct": safe_float(row.get("delivery_pct"), 2),
-                        "turnover_cr": safe_float(row.get("turnover_cr"), 2),
-                        "distance_52w_high": safe_float(row.get("distance_52w_high"), 4),
-                        "distance_52w_low": safe_float(row.get("distance_52w_low"), 4),
-                        "pct_from_52w_high": (
-                            max(-100.0, min(0.0, round(float(row.get("distance_52w_high")), 2)))
-                            if row.get("distance_52w_high") is not None and not pd.isna(row.get("distance_52w_high"))
-                            else None
-                        )
-                    })
+                results = _serialize_screener_dataframe(df, start_rank=1)
+                df_clean = None
 
                 payload = {
                     "trading_date": latest_date,
@@ -704,33 +741,17 @@ def get_screener(
             trading_date=latest_date,
             criteria=criteria,
             include_watchlists=include_watchlists,
-            limit=limit,
-            offset=offset
+            limit=2500,
+            offset=0
         )
-        df_clean = df.where(pd.notnull(df), None)
-        results = []
-        for rank, (_, row) in enumerate(df_clean.iterrows(), start=offset + 1):
-            sym = str(row["symbol"])
-            b_score = safe_float(row.get("blended_score"), 2) or safe_float(row.get("composite_score"), 2)
-            results.append({
-                "rank": rank,
-                "symbol": sym,
-                "company_name": str(row.get("company_name", sym)),
-                "sector": str(row.get("sector", "Unclassified")),
-                "close": safe_float(row.get("close"), 2),
-                "sma_200": safe_float(row.get("sma_200"), 2),
-                "debt_to_equity": safe_float(row.get("debt_to_equity"), 4),
-                "roe_pct": safe_float(row.get("roe_pct"), 2),
-                "opm_pct": safe_float(row.get("opm_pct"), 2),
-                "composite_score": safe_float(row.get("composite_score"), 2),
-                "blended_score": b_score,
-                "is_watchlist": bool(row.get("is_watchlist", 0)),
-            })
+        all_results = _serialize_screener_dataframe(df, start_rank=1)
+        total_candidates = len(all_results)
+        results = all_results[offset: offset + limit]
 
         return sanitize_for_json({
             "trading_date": latest_date,
             "as_of_date": latest_date,
-            "total_candidates": len(df),
+            "total_candidates": total_candidates,
             "returned_count": len(results),
             "offset": offset,
             "limit": limit,
@@ -886,6 +907,7 @@ def add_to_watchlist(
         if payload.action and payload.action.lower() == "remove":
             conn.execute("DELETE FROM user_watchlists WHERE symbol = ?", (sym,))
             conn.commit()
+            mark_state_dirty()
             return {
                 "status": "ok",
                 "message": f"{sym} removed from active user watchlist.",
@@ -1246,81 +1268,30 @@ def _format_catalyst_row(row_dict: dict) -> dict:
 
 
 @app.post("/catalysts/scan")
-@app.post("/api/v1/catalysts/scan")
-def scan_catalysts_endpoint():
-    """Trigger intraday causal anomaly scan and push alerts."""
-    try:
-        from src.tasks.catalyst_engine import catalyst_engine
-        results = catalyst_engine.run_intraday_scan(max_push_alerts=2)
-        return {"status": "ok", "count": len(results) if isinstance(results, list) else 0, "results": results}
-    except Exception as e:
-        logger.error(f"Error scanning catalysts: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+def scan_catalysts_legacy_alias(_auth: bool = Depends(verify_portfolio_mutation_auth)):
+    """Legacy non-/api/v1 alias delegating to canonical routes_push handler."""
+    from src.api.routes_push import trigger_catalyst_scan
+    return trigger_catalyst_scan(_auth=_auth)
 
 
 @app.get("/catalysts")
 @app.get("/api/v1/catalysts")
 @app.get("/catalysts/live")
-@app.get("/api/v1/catalysts/live")
-def get_live_catalysts_endpoint(
-    limit: int = Query(20, ge=1, le=100),
-    conn: sqlite3.Connection = Depends(get_db_connection)
-):
-    """Fetch recent market-wide causal catalysts."""
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
-                   pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
-                   causal_headline, causal_bullets, triggered_at
-            FROM market_catalysts
-            ORDER BY triggered_at DESC
-            LIMIT ?
-            """,
-            (limit,)
-        )
-        rows = [_format_catalyst_row(dict(r)) for r in cur.fetchall()]
-        return {"status": "ok", "count": len(rows), "catalysts": sanitize_for_json(rows)}
-    except Exception as e:
-        logger.error(f"Error fetching live catalysts: {e}", exc_info=True)
-        return {"status": "error", "count": 0, "catalysts": []}
+def get_live_catalysts_legacy_alias(limit: int = Query(20, ge=1, le=100)):
+    """Legacy /catalysts and /catalysts/live alias delegating to canonical routes_push handler."""
+    from src.api.routes_push import get_live_catalysts
+    return get_live_catalysts(limit=limit)
 
 
 @app.get("/catalysts/symbol/{symbol}")
-@app.get("/api/v1/catalysts/symbol/{symbol}")
-def get_symbol_catalysts_endpoint(
+def get_symbol_catalysts_legacy_alias(
     symbol: str,
+    limit: int = Query(5, ge=1, le=50),
     fallback: bool = Query(True),
-    conn: sqlite3.Connection = Depends(get_db_connection)
 ):
-    """Fetch catalysts for a specific symbol, optionally falling back to latest."""
-    sym = symbol.strip().upper()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id, symbol, company_name, sector, move_pct, rvol, classification,
-                   pillar1_price, pillar2_macro, pillar3_corp, pillar4_news,
-                   causal_headline, causal_bullets, triggered_at
-            FROM market_catalysts
-            WHERE symbol = ?
-            ORDER BY triggered_at DESC
-            LIMIT 10
-            """,
-            (sym,)
-        )
-        rows = [_format_catalyst_row(dict(r)) for r in cur.fetchall()]
-        latest = rows[0] if rows else None
-        return {
-            "status": "ok",
-            "symbol": sym,
-            "catalysts": sanitize_for_json(rows),
-            "latest": sanitize_for_json(latest)
-        }
-    except Exception as e:
-        logger.error(f"Error fetching catalyst for {sym}: {e}", exc_info=True)
-        return {"status": "error", "symbol": sym, "catalysts": [], "latest": None}
+    """Legacy non-/api/v1 alias honoring fallback query parameter."""
+    from src.api.routes_push import get_symbol_catalysts
+    return get_symbol_catalysts(symbol=symbol, limit=limit, fallback=fallback)
 
 
 @app.get("/api/v1/ml/forecast/{symbol}")

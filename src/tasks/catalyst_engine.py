@@ -16,12 +16,14 @@ import time
 import json
 import logging
 import sqlite3
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 
 from src.notifications.web_push import broadcast_push
+from src.storage.database import DatabaseManager
 
 logger = logging.getLogger("tasks.catalyst_engine")
 
@@ -52,11 +54,9 @@ DB_PATH = os.path.join(DATA_DIR, "market_lab.db")
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
-def _get_db() -> sqlite3.Connection:
+def _get_db():
     os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=25.0)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return DatabaseManager(DB_PATH).get_connection()
 
 
 def init_catalyst_tables():
@@ -232,7 +232,7 @@ class CausalCatalystEngine:
             # Benchmark Nifty 50 proxy
             nifty_rows = conn.execute("""
                 SELECT close FROM index_daily
-                WHERE index_name LIKE '%NIFTY 50%'
+                WHERE index_name LIKE '%NIFTY 50%' AND index_type = 'PRI'
                 ORDER BY trading_date DESC LIMIT 2
             """).fetchall()
 

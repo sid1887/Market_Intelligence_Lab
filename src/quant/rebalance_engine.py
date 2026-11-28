@@ -17,6 +17,7 @@ import pandas as pd
 from src.storage.database import DatabaseManager
 from src.ml.registry.manager import ModelRegistryManager
 from src.ml.features.builder import PITFeatureExtractor, FEATURE_COLUMNS
+from src.portfolio.fee_engine import calculate_order_charges, STATUTORY_ROUNDTRIP_RATE
 
 logger = logging.getLogger("MIL.Rebalance")
 
@@ -306,7 +307,7 @@ class RebalanceEngine:
         # ---------------------------------------------------------
         # Step 4: Greedy Residual Cash Sweeper & Two-Phase Order Generation
         # ---------------------------------------------------------
-        buy_fric_rate = 0.0012 if fee_tier == "RETAIL_MICRO" else 0.0015
+        buy_fric_rate = STATUTORY_ROUNDTRIP_RATE / 2.0
         target_shares_map: Dict[str, int] = {}
         for _, row in top_candidates.iterrows():
             sym = str(row["symbol"])
@@ -349,10 +350,7 @@ class RebalanceEngine:
                 qty = h["quantity"]
                 px = round(h["price"], 2)
                 val = round(qty * px, 2)
-                if fee_tier == "RETAIL_MICRO":
-                    fric = round((val * 0.0012) + min(5.0, val * 0.005), 2)
-                else:
-                    fric = round((val * 0.0015) + 15.0, 2)
+                fric = round(float(calculate_order_charges("SELL", val).total_charges), 2)
                 total_friction += fric
                 orders.append({
                     "action": "SELL",
@@ -415,10 +413,7 @@ class RebalanceEngine:
                     elif delta_q < 0:
                         qty_sell = abs(delta_q)
                         val = round(qty_sell * px, 2)
-                        if fee_tier == "RETAIL_MICRO":
-                            fric = round((val * 0.0012) + min(5.0, val * 0.005), 2)
-                        else:
-                            fric = round((val * 0.0015) + 15.0, 2)
+                        fric = round(float(calculate_order_charges("SELL", val).total_charges), 2)
                         total_friction += fric
                         orders.append({
                             "action": "SELL",
@@ -627,8 +622,8 @@ class RebalanceEngine:
                 nifty_row = conn.execute("""
                     SELECT (c.close / p.close) - 1.0
                     FROM index_daily c
-                    JOIN index_daily p ON c.index_name = p.index_name AND p.trading_date <= c.trading_date
-                    WHERE c.index_name = 'NIFTY 50' AND c.trading_date = ?
+                    JOIN index_daily p ON c.index_name = p.index_name AND c.index_type = p.index_type AND p.trading_date <= c.trading_date
+                    WHERE c.index_name = 'NIFTY 50' AND c.index_type = 'PRI' AND c.trading_date = ?
                     ORDER BY p.trading_date DESC LIMIT 1 OFFSET 20
                 """, (trading_date,)).fetchone()
                 if nifty_row and nifty_row[0] is not None:
@@ -696,9 +691,9 @@ class RebalanceEngine:
                     q.sma_200,
                     q.ret_20d as momentum_20d,
                     q.ret_5d as momentum_5d,
-                    0.10 as momentum_252d,
+                    NULL as momentum_252d,
                     COALESCE(q.vol_20d_annualized, 0.20) as volatility_20d,
-                    50.0 as rsi_14,
+                    NULL as rsi_14,
                     CASE WHEN q.sma_200 > 0 THEN (q.sma_50 / q.sma_200) ELSE 1.0 END as sma_ratio_50_200,
                     q.opm_pct as operating_margin,
                     q.debt_to_equity,
@@ -801,7 +796,7 @@ class RebalanceEngine:
         df["score_60d"] = np.round(s60, 1)
 
         df = df.sort_values(by="blended_score", ascending=False).reset_index(drop=True)
-        df["target_allocation_pct"] = np.where(df.index < 15, round(100.0 / 15.0, 2), 0.0)
+        df["target_allocation_pct"] = np.where(np.arange(len(df)) < 15, round(100.0 / 15.0, 2), 0.0)
 
         return df
 

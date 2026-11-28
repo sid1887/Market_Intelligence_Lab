@@ -1036,6 +1036,200 @@ def _migration_0013(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_news_published ON stock_news_articles(published_at DESC);")
 
 
+def _migration_0014(conn: sqlite3.Connection) -> None:
+    """
+    Phase C Canonical User Tables, Index Covering, and Total-Return OHLCV Column.
+    Ensures real_* tradebook tables, copilot_memory_episodes, and copilot_distillation_corpus
+    exist at cold boot so DurableStateManager can restore them cleanly without lazy skips.
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS real_capital_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_type TEXT,
+            tx_date TEXT,
+            voucher TEXT,
+            particulars TEXT,
+            debit REAL DEFAULT 0.0,
+            credit REAL DEFAULT 0.0,
+            running_balance REAL DEFAULT 0.0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS real_closed_roundtrips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            isin TEXT,
+            scrip_name TEXT,
+            qty INTEGER DEFAULT 0,
+            buy_date TEXT,
+            sell_date TEXT,
+            hold_days INTEGER DEFAULT 0,
+            avg_buy_price REAL DEFAULT 0.0,
+            buy_value REAL DEFAULT 0.0,
+            avg_sell_price REAL DEFAULT 0.0,
+            sell_value REAL DEFAULT 0.0,
+            gross_pnl REAL DEFAULT 0.0,
+            trade_charges REAL DEFAULT 0.0,
+            stt REAL DEFAULT 0.0,
+            dp_charge REAL DEFAULT 23.60,
+            net_pnl REAL DEFAULT 0.0,
+            net_return_pct REAL DEFAULT 0.0,
+            outcome TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS real_open_holdings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL UNIQUE,
+            isin TEXT,
+            scrip_name TEXT,
+            qty INTEGER DEFAULT 0,
+            avg_buy_price REAL DEFAULT 0.0,
+            buy_value REAL DEFAULT 0.0,
+            closing_rate REAL DEFAULT 0.0,
+            current_value REAL DEFAULT 0.0,
+            unrealized_pnl REAL DEFAULT 0.0,
+            unrealized_pnl_pct REAL DEFAULT 0.0,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS real_dp_charges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
+            isin TEXT,
+            tx_date TEXT,
+            dp_charge REAL DEFAULT 23.60,
+            description TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS real_trade_executions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            isin TEXT,
+            trade_date TEXT,
+            action TEXT,
+            qty INTEGER DEFAULT 0,
+            price REAL DEFAULT 0.0,
+            trade_value REAL DEFAULT 0.0,
+            charges REAL DEFAULT 0.0,
+            order_id TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS copilot_memory_episodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            primary_symbol TEXT,
+            symbols_csv TEXT,
+            user_prompt TEXT,
+            summary TEXT,
+            stance TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS copilot_distillation_corpus (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT,
+            intent TEXT,
+            prompt_text TEXT,
+            response_text TEXT,
+            model_name TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='index_daily';")
+    if cur.fetchone():
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_index_daily_name_type_date "
+            "ON index_daily(index_name, index_type, trading_date ASC);"
+        )
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ohlcv_daily';")
+    if cur.fetchone():
+        cols = {r[1] for r in conn.execute("PRAGMA table_info('ohlcv_daily')").fetchall()}
+        if "adj_close" not in cols:
+            conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN adj_close REAL;")
+        if "adj_factor_cum" not in cols:
+            conn.execute("ALTER TABLE ohlcv_daily ADD COLUMN adj_factor_cum REAL DEFAULT 1.0;")
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='forecast_audit_ledger';")
+    if cur.fetchone():
+        fcols = {r[1] for r in conn.execute("PRAGMA table_info('forecast_audit_ledger')").fetchall()}
+        if "target_evaluation_date" in fcols:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_forecast_audit_sym_eval_date ON forecast_audit_ledger(symbol, target_evaluation_date DESC);")
+
+
+def _migration_0015(conn: sqlite3.Connection) -> None:
+    """Reconciles columns and unique indexes for real_* tradebook and copilot_memory_episodes tables."""
+    def _ensure_cols(table: str, col_defs: List[Tuple[str, str]]) -> None:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info('{table}')").fetchall()}
+        if not existing:
+            return
+        for col_name, col_type in col_defs:
+            if col_name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type};")
+
+    _ensure_cols("copilot_memory_episodes", [
+        ("category", "TEXT NOT NULL DEFAULT 'THESIS'"),
+        ("summary_text", "TEXT NOT NULL DEFAULT ''"),
+        ("outcome_status", "TEXT DEFAULT 'ACTIVE'"),
+        ("importance_score", "REAL DEFAULT 1.0"),
+    ])
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_symbols ON copilot_memory_episodes(symbols_csv);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_created ON copilot_memory_episodes(created_at DESC);")
+
+    _ensure_cols("real_trade_executions", [
+        ("trade_id", "TEXT"),
+        ("scrip_name", "TEXT"),
+        ("side", "TEXT"),
+        ("brokerage", "REAL DEFAULT 0.0"),
+        ("gst", "REAL DEFAULT 0.0"),
+        ("stt", "REAL DEFAULT 0.0"),
+        ("sebi_tax", "REAL DEFAULT 0.0"),
+        ("exchange_charges", "REAL DEFAULT 0.0"),
+        ("stamp_duty", "REAL DEFAULT 0.0"),
+        ("total_charges", "REAL DEFAULT 0.0"),
+        ("segment", "TEXT DEFAULT 'EQ'"),
+        ("exchange", "TEXT DEFAULT 'NSE'"),
+    ])
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_real_trade_exec_uniq "
+        "ON real_trade_executions(order_id, trade_id, symbol, side, trade_date, qty, price);"
+    )
+
+    _ensure_cols("real_open_holdings", [
+        ("charges", "REAL DEFAULT 0.0"),
+        ("stt", "REAL DEFAULT 0.0"),
+    ])
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_real_roundtrips_uniq "
+        "ON real_closed_roundtrips(isin, symbol, buy_date, sell_date, qty, avg_buy_price, avg_sell_price);"
+    )
+
+    _ensure_cols("real_dp_charges", [
+        ("scrip_name", "TEXT"),
+        ("charge_date", "TEXT"),
+        ("qty_sold", "INTEGER DEFAULT 0"),
+        ("cdsl_charge", "REAL DEFAULT 3.50"),
+        ("angelone_charge", "REAL DEFAULT 16.50"),
+        ("gst", "REAL DEFAULT 3.60"),
+        ("total_charge", "REAL DEFAULT 23.60"),
+    ])
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_real_dp_uniq "
+        "ON real_dp_charges(isin, charge_date, qty_sold, total_charge);"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_real_cap_ledger_uniq "
+        "ON real_capital_ledger(transaction_type, tx_date, voucher, credit, debit);"
+    )
+
+
 ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0001_baseline_schema", _migration_0001),
     ("0002_truth_layer_invariants", _migration_0002),
@@ -1050,6 +1244,8 @@ ALL_MIGRATIONS: List[Tuple[str, Callable[[sqlite3.Connection], None]]] = [
     ("0011_corporate_actions_and_backfill_checkpoints", _migration_0011),
     ("0012_v8_dynamic_capital_and_telemetry", _migration_0012),
     ("0013_index_optimization_and_covering_indexes", _migration_0013),
+    ("0014_canonical_user_and_tr_schema", _migration_0014),
+    ("0015_reconcile_canonical_user_tables", _migration_0015),
 ]
 
 

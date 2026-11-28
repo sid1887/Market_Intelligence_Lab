@@ -42,11 +42,8 @@ jobs:
           INTERNAL_SYNC_TOKEN: ${{ secrets.MIL_INTERNAL_SYNC_SECRET || secrets.INTERNAL_SYNC_TOKEN }}
           PYTHONUNBUFFERED: "1"
         run: |
-          python scripts/cloud_worker.py --mode ml
-
-      - name: Execute Phase 10 Multi-Modal CPCV Tournament & DSR Gating
-        run: |
           python scripts/run_phase3_tournament.py --horizon 20 --n-splits 6 --n-test-splits 2 --feature-set alpha_v3_multimodal
+          python scripts/cloud_worker.py --mode ml
           python -c '
           import json
           with open("data/models/tournament_summary.json") as f:
@@ -54,7 +51,7 @@ jobs:
           verdict = data.get("promotion_verdict", "UNKNOWN")
           print(f"[CI-GATE] Model Promotion Verdict: {verdict}")
           if verdict == "REJECTED_BELOW_BASELINE":
-              print("[CI-GATE] Machine candidates failed to exceed 0.4322 Net Sharpe baseline. Safe fallback to Deterministic Quality-Momentum baseline enforced.")
+              print("[CI-GATE] Machine candidates failed to exceed baseline Net Sharpe. Safe fallback to Deterministic Quality-Momentum baseline enforced.")
           '
 
       - name: Run Production Container Memory & Runtime Benchmark
@@ -75,5 +72,5 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/archive/bhavcopy_10y.milz data/cloud_seed_snapshot.json.gz data/models/tournament_summary.json data/models/precomputed_forecasts.json data/benchmark_results.json data/models/*.joblib data/models/*.pkl models/registry/*.pkl models/registry/*.joblib 2>/dev/null || true
+          git add data/models/tournament_summary.json data/models/precomputed_forecasts.json 2>/dev/null || true
           git diff --staged --quiet || (git commit -m "chore(data): autonomous EOD market & ML snapshot sync [skip ci]" && git push)

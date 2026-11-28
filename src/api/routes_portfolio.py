@@ -307,7 +307,10 @@ def execute_rebalance_flow(req: RebalanceExecuteRequest = Body(...)):
 # =========================================================================
 
 @router.post("/tradebook/upload")
-async def upload_angelone_tradebook(files: List[UploadFile] = File(...)):
+async def upload_angelone_tradebook(
+    files: List[UploadFile] = File(...),
+    _auth: bool = Depends(verify_portfolio_mutation_auth),
+):
     """
     Ingests one or more Angel One Excel files directly from RAM (io.BytesIO).
     Strict Zero-PII: ignores all top rows above section headers, deduplicates fills,
@@ -368,7 +371,7 @@ async def upload_angelone_tradebook(files: List[UploadFile] = File(...)):
 
 
 @router.get("/tradebook/summary")
-def get_angelone_tradebook_summary():
+def get_angelone_tradebook_summary(_auth: bool = Depends(verify_portfolio_mutation_auth)):
     """
     Returns zero-PII tradebook metrics, closed round-trips with ₹23.60 DP reconciliation,
     open demat holdings with live LTP, and scrip attribution.
@@ -385,7 +388,7 @@ def get_angelone_tradebook_summary():
 
 
 @router.get("/tradebook/export")
-def export_master_tradebook_excel():
+def export_master_tradebook_excel(_auth: bool = Depends(verify_portfolio_mutation_auth)):
     """
     Decrypts master_tradebook.enc in RAM and streams MIL_Master_Trading_Record.xlsx.
     Guaranteed zero PII, 5 institutional tabs, and full DP friction reconciliation.
@@ -411,7 +414,7 @@ def export_master_tradebook_excel():
 
 
 @router.get("/trader-dna")
-def get_trader_dna_profile():
+def get_trader_dna_profile(_auth: bool = Depends(verify_portfolio_mutation_auth)):
     """
     Returns live Trader DNA behavioral discipline scorecard, consecutive loss streak,
     cooldown status, hold horizon comparison, and Angel One ₹23.60 DP fee friction audit.

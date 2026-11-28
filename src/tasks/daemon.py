@@ -292,14 +292,14 @@ class AutonomousPlatformDaemon:
         state_dict = self.supervisor.get_state()
         
         with self.db.get_connection() as conn:
-            # Fast index-backed lookup for latest settled session
-            cur = conn.execute("SELECT MAX(trading_date) FROM ohlcv_daily WHERE data_status = 'final_settled';")
-            row = cur.fetchone()
-            latest_settled = row[0] if row and row[0] else None
+            # Fast index-backed lookup for latest settled session (avoids 2.9M-row scan on data_status)
+            cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily;")
+            r_q = cur.fetchone()
+            latest_settled = r_q[0] if r_q and r_q[0] else None
             if not latest_settled:
-                cur = conn.execute("SELECT MAX(trading_date) FROM quant_factors_daily;")
-                r_q = cur.fetchone()
-                latest_settled = r_q[0] if r_q and r_q[0] else "2026-11-05"
+                cur = conn.execute("SELECT MAX(trading_date) FROM ohlcv_daily;")
+                row = cur.fetchone()
+                latest_settled = row[0] if row and row[0] else "2026-11-05"
 
             # Universe completeness
             cur = conn.execute("""

@@ -33,6 +33,7 @@ import {
   requestLifecycle,
   API_BASE,
   DEFAULT_HEADERS,
+  fetchWithColdStartRetry,
   apiFetch,
   peekCachedData,
   clearMemoryCache,
@@ -279,7 +280,7 @@ export default function StockTearsheetPage() {
       setError(null);
       setNotFound(false);
 
-      const res = await fetch(`${API_BASE}/stocks/${symbol}/tearsheet`, {
+      const res = await fetchWithColdStartRetry(`${API_BASE}/stocks/${symbol}/tearsheet`, {
         headers: DEFAULT_HEADERS,
         signal,
         cache: "no-store",
@@ -1010,7 +1011,12 @@ export default function StockTearsheetPage() {
                       </span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-900/80 rounded-full overflow-hidden border border-white/[0.06]">
-                      <div className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full w-3/4 shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
+                      <div
+                        className="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full shadow-[0_0_8px_rgba(6,182,212,0.6)] transition-all duration-300"
+                        style={{
+                          width: `${Math.min(100, Math.max(12, 50 + ((data.ml_forecast?.predicted_excess_return ?? 0) * 1000)))}%`,
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -1030,7 +1036,16 @@ export default function StockTearsheetPage() {
                       </span>
                     </div>
                     <div className="h-1.5 w-full bg-slate-900/80 rounded-full overflow-hidden border border-white/[0.06]">
-                      <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full w-2/3 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                      <div
+                        className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.6)] transition-all duration-300"
+                        style={{
+                          width: `${
+                            data.technicals.sma_200 && data.latest_ohlcv.close > data.technicals.sma_200
+                              ? Math.min(100, Math.max(35, 65 + (((data.latest_ohlcv.close - data.technicals.sma_200) / data.technicals.sma_200) * 100)))
+                              : 30
+                          }%`,
+                        }}
+                      />
                     </div>
                   </div>
 

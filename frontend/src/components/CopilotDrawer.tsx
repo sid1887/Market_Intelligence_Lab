@@ -29,6 +29,7 @@ import {
 import { RobustSSEParser, ServerSentEvent } from "@/lib/sseParser";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useBackButtonClose } from "@/hooks/useBackButtonClose";
+import { getApiBase, fetchWithColdStartRetry } from "@/lib/api";
 import { milEvents } from "@/lib/store";
 import { Database, Gauge, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -212,7 +213,7 @@ interface DeliberationState {
   decisionResult?: CopilotDecisionResult;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+const API_BASE = getApiBase();
 
 function ThinkingDots() {
   return (
@@ -925,7 +926,7 @@ export default function CopilotDrawer({
     let lastTokenUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null = null;
 
     try {
-      const response = await fetch(`${API_BASE}/copilot/stream`, {
+      const response = await fetchWithColdStartRetry(`${API_BASE}/copilot/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -57,8 +57,13 @@ def test_internal_export_state_fundamentals(monkeypatch):
     assert isinstance(data["latest_fundamentals"], list)
 
 
-def test_internal_sync_downstream_orchestration(monkeypatch):
+def test_internal_sync_downstream_orchestration(monkeypatch, tmp_path):
     monkeypatch.setenv("INTERNAL_SYNC_TOKEN", "test-secret-token")
+    monkeypatch.setenv("MIL_TOURNAMENT_SUMMARY_PATH", str(tmp_path / "tournament_summary.json"))
+    iso_db = DatabaseManager(str(tmp_path / "test_internal_sync.db"))
+    monkeypatch.setattr("src.api.routes_internal.DatabaseManager", lambda *a, **kw: iso_db)
+    monkeypatch.setattr("src.api.routes_internal.update_precomputed_forecasts", lambda mf: len(mf or {}))
+    monkeypatch.setattr("src.storage.durable_state.mark_state_dirty", lambda *a, **kw: None)
     client = TestClient(app)
 
     today_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")

@@ -313,7 +313,7 @@ class PortfolioBacktester:
         - Regime-gated dynamic cash allocation driven by universe market breadth B(t).
         - Daily risk-free cash yield accrual at cash_hurdle_rate (repo rate).
         - SELL-before-BUY ordering with capital recycling.
-        - Statutory friction (15 bps on buy, 15 bps + ₹15 DP on sell) if apply_friction=True.
+        - Statutory friction (15 bps on buy, 15 bps + ₹23.60 DP on sell) if apply_friction=True.
         - Strict cash solvency clamp (floor division against total friction-adjusted cost).
         - Continuous Mark-to-Market NAV valuation.
         """

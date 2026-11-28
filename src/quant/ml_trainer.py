@@ -197,9 +197,8 @@ class WalkForwardMLTrainer:
                         chunk_df["trading_date"] = chunk_df["trading_date"].astype(str)
                         chunk_df["close"] = chunk_df["close"].astype(np.float32)
                         chunk_df["forward_close"] = chunk_df.groupby("symbol")["close"].shift(-horizon_days)
-                        raw_fwd = (chunk_df["forward_close"] / chunk_df["close"]) - 1.0
-                        bench_fwd = raw_fwd.groupby(chunk_df["trading_date"]).transform("median")
-                        chunk_df["forward_return"] = (raw_fwd - bench_fwd) - friction_drag  # Exact Angel One delivery fee drag
+                        chunk_df["raw_fwd"] = (chunk_df["forward_close"] / chunk_df["close"]) - 1.0
+                        chunk_df["forward_return"] = chunk_df["raw_fwd"]
 
                         # Fast returns
                         chunk_df["ret_1d"] = chunk_df.groupby("symbol")["close"].pct_change(1).fillna(0.0)
@@ -231,6 +230,9 @@ class WalkForwardMLTrainer:
                         df = pd.concat(chunk_dfs, ignore_index=True)
                         del chunk_dfs
                         gc.collect()
+
+                        bench_fwd = df["raw_fwd"].groupby(df["trading_date"]).transform("median")
+                        df["forward_return"] = (df["raw_fwd"] - bench_fwd) - friction_drag  # Full-universe excess return net of Angel One fee drag
 
                         safe_vol = np.maximum(df["volatility_20d"], 0.05)
                         df["tactical_20d"] = df["ret_20d"] / safe_vol
@@ -924,10 +926,10 @@ class WalkForwardMLTrainer:
         attributions = []
         if champ_20d and champ_20d["feature_weights_json"]:
             w_20d = json.loads(champ_20d["feature_weights_json"])
-            for feat_name, w_val in sorted(w_20d.items(), key=lambda x: x[1], reverse=True):
-                if w_val > 0.01:
+            for feat_name, w_val in sorted(w_20d.items(), key=lambda x: abs(x[1]), reverse=True):
+                if abs(w_val) > 0.01:
                     raw_v = f_raw.get(feat_name, 0.0)
-                    sig = "Bullish" if raw_v > 0 else "Bearish"
+                    sig = "Bullish" if (w_val * raw_v) > 0 else "Bearish"
                     attributions.append({
                         "feature": feat_name,
                         "weight_pct": round(w_val * 100.0, 1),
@@ -935,12 +937,24 @@ class WalkForwardMLTrainer:
                         "signal": sig
                     })
 
+        champ_20d_dict = dict(champ_20d) if champ_20d else {}
+        champ_name = (
+            str(champ_20d_dict.get("model_family"))
+            if champ_20d_dict.get("model_family")
+            else "Deterministic Baseline (Momentum+LowVol+PIT)"
+        )
+        champ_ic = (
+            round(float(champ_20d_dict["oos_rank_ic_mean"]), 4)
+            if champ_20d_dict.get("oos_rank_ic_mean") is not None
+            else 0.0
+        )
+
         result_payload = {
             "symbol": sym,
             "as_of_date": row["trading_date"],
             "current_price": close,
-            "champion_model": "ElasticNet (20D)",
-            "overall_rank_ic": 0.0350,
+            "champion_model": champ_name,
+            "overall_rank_ic": champ_ic,
             "conviction_score": conviction_score,
             "conviction_tier": tier,
             "forecasts": forecasts,
@@ -959,10 +973,14 @@ def compute_causal_inverse_vol_weights(
 ) -> np.ndarray:
     """
     Phase 11: Causal inverse-volatility position scaling weights:
-      w_i = min(max_weight, target_vol / max(sigma_20d_i, 0.01))
+      w_i = min(max_weight, target_vol / max(sigma_20d_ann_i, 0.01))
     Uses only sigma_20d observed at or prior to decision time t.
+    Normalizes daily vol inputs (< 0.08 median) to annualized vol before scaling.
     """
     vols = np.asarray(volatility_20d, dtype=np.float64)
+    finite_pos = vols[np.isfinite(vols) & (vols > 0)]
+    if len(finite_pos) > 0 and float(np.median(finite_pos)) < 0.08:
+        vols = vols * math.sqrt(252.0)
     vols = np.where(np.isfinite(vols) & (vols > 0), vols, target_vol)
     safe_vols = np.maximum(vols, 0.01)
     return np.minimum(max_weight, target_vol / safe_vols)
@@ -1181,6 +1199,87 @@ class TwoStageTournamentRunner:
             "p95_return": round(float(np.percentile(arr, 95)), 6)
         }
 
+    @staticmethod
+    def _build_stage1_estimator(cand_type: str):
+        if cand_type == "RIDGE":
+            return RidgeClassifier(alpha=1.0)
+        if cand_type == "HGB":
+            return HistGradientBoostingClassifier(max_iter=40, max_leaf_nodes=15, min_samples_leaf=10, random_state=42)
+        if cand_type == "GBDT_ALT":
+            try:
+                import lightgbm as lgb
+                return lgb.LGBMClassifier(n_estimators=50, max_depth=4, num_leaves=15, learning_rate=0.05, random_state=42, verbose=-1)
+            except ImportError:
+                try:
+                    import xgboost as xgb
+                    return xgb.XGBClassifier(n_estimators=50, max_depth=4, learning_rate=0.05, random_state=42, eval_metric="logloss")
+                except ImportError:
+                    return GradientBoostingClassifier(n_estimators=40, max_depth=3, min_samples_leaf=10, random_state=42)
+        if cand_type == "RIDGE_HGB_ENSEMBLE":
+            return ("RIDGE_HGB_ENSEMBLE", RidgeClassifier(alpha=1.0), HistGradientBoostingClassifier(max_iter=40, max_leaf_nodes=15, min_samples_leaf=10, random_state=42))
+        return ExtraTreesClassifier(n_estimators=30, max_depth=6, min_samples_leaf=10, random_state=42, n_jobs=1)
+
+    @classmethod
+    def _fit_and_predict_stage1(cls, cand_type: str, X_train: np.ndarray, y_train: np.ndarray, X_eval: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Fits Stage-1 estimator on (X_train, y_train) and returns (oof_train_preds, eval_preds)."""
+        from sklearn.model_selection import StratifiedKFold
+
+        def _predict_binary(est, X_mat: np.ndarray) -> np.ndarray:
+            if isinstance(est, tuple) and est[0] == "RIDGE_HGB_ENSEMBLE":
+                _, m_r, m_h = est
+                r_p = 1.0 / (1.0 + np.exp(-np.clip(m_r.decision_function(X_mat), -10.0, 10.0)))
+                h_p = m_h.predict_proba(X_mat)[:, 1]
+                return ((0.4 * r_p + 0.6 * h_p) >= 0.5).astype(int)
+            return est.predict(X_mat)
+
+        def _fit_est(est, Xt: np.ndarray, yt: np.ndarray):
+            if isinstance(est, tuple) and est[0] == "RIDGE_HGB_ENSEMBLE":
+                _, m_r, m_h = est
+                m_r.fit(Xt, yt)
+                m_h.fit(Xt, yt)
+            else:
+                est.fit(Xt, yt)
+
+        # Out-of-fold Stage-1 predictions on X_train to prevent in-sample leakage into Stage-2 MetaCalibrator
+        p1_oof = np.zeros(len(X_train), dtype=int)
+        if len(np.unique(y_train)) >= 2 and min(np.sum(y_train == 0), np.sum(y_train == 1)) >= 3:
+            skf = StratifiedKFold(n_splits=3, shuffle=False)
+            for tr_i, val_i in skf.split(X_train, y_train):
+                fold_est = cls._build_stage1_estimator(cand_type)
+                _fit_est(fold_est, X_train[tr_i], y_train[tr_i])
+                p1_oof[val_i] = _predict_binary(fold_est, X_train[val_i])
+        else:
+            full_est_fallback = cls._build_stage1_estimator(cand_type)
+            _fit_est(full_est_fallback, X_train, y_train)
+            p1_oof = _predict_binary(full_est_fallback, X_train)
+
+        full_est = cls._build_stage1_estimator(cand_type)
+        _fit_est(full_est, X_train, y_train)
+        p1_eval = _predict_binary(full_est, X_eval)
+        return p1_oof, p1_eval
+
+    def _fit_and_predict_two_stage(
+        self,
+        cand_type: str,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_eval: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Runs Stage-1 (OOF) + Stage-2 MetaCalibrator and returns (p1_eval, probs_eval)."""
+        p1_oof, p1_eval = self._fit_and_predict_stage1(cand_type, X_train, y_train, X_eval)
+        y_meta_train = ((y_train == 1) & (p1_oof == 1)).astype(int)
+        X_meta_train = np.hstack([X_train, p1_oof.reshape(-1, 1)])
+        X_meta_eval = np.hstack([X_eval, p1_eval.reshape(-1, 1)])
+
+        if np.sum(y_meta_train) >= 5 and np.sum(1 - y_meta_train) >= 5:
+            meta_base = HistGradientBoostingClassifier(max_iter=30, max_leaf_nodes=10, random_state=42)
+            meta_cal = CalibratedClassifierCV(estimator=meta_base, method="sigmoid", cv=3)
+            meta_cal.fit(X_meta_train, y_meta_train)
+            probs_eval = meta_cal.predict_proba(X_meta_eval)[:, 1]
+        else:
+            probs_eval = np.full(len(X_eval), 0.50)
+        return p1_eval, probs_eval
+
     def train_and_evaluate_candidates(
         self,
         dev_df: pd.DataFrame,
@@ -1233,64 +1332,8 @@ class TwoStageTournamentRunner:
                 X_test = X[test_idx]
                 test_rets = net_returns[test_idx]
 
-                # 1. Stage 1: Directional Classifier
-                if cand["type"] == "RIDGE":
-                    m1 = RidgeClassifier(alpha=1.0)
-                    m1.fit(X_train, y_train)
-                    p1_train = m1.predict(X_train)
-                    p1_test = m1.predict(X_test)
-                elif cand["type"] == "HGB":
-                    m1 = HistGradientBoostingClassifier(max_iter=40, max_leaf_nodes=15, min_samples_leaf=10, random_state=42)
-                    m1.fit(X_train, y_train)
-                    p1_train = m1.predict(X_train)
-                    p1_test = m1.predict(X_test)
-                elif cand["type"] == "GBDT_ALT":
-                    m1 = None
-                    try:
-                        import lightgbm as lgb
-                        m1 = lgb.LGBMClassifier(n_estimators=50, max_depth=4, num_leaves=15, learning_rate=0.05, random_state=42, verbose=-1)
-                    except ImportError:
-                        try:
-                            import xgboost as xgb
-                            m1 = xgb.XGBClassifier(n_estimators=50, max_depth=4, learning_rate=0.05, random_state=42, eval_metric="logloss")
-                        except ImportError:
-                            m1 = GradientBoostingClassifier(n_estimators=40, max_depth=3, min_samples_leaf=10, random_state=42)
-                    m1.fit(X_train, y_train)
-                    p1_train = m1.predict(X_train)
-                    p1_test = m1.predict(X_test)
-                elif cand["type"] == "RIDGE_HGB_ENSEMBLE":
-                    m_ridge = RidgeClassifier(alpha=1.0)
-                    m_hgb = HistGradientBoostingClassifier(max_iter=40, max_leaf_nodes=15, min_samples_leaf=10, random_state=42)
-                    m_ridge.fit(X_train, y_train)
-                    m_hgb.fit(X_train, y_train)
-                    # Soft-voting combination of sigmoid(Ridge decision) and HGB probability
-                    r_tr = 1.0 / (1.0 + np.exp(-np.clip(m_ridge.decision_function(X_train), -10.0, 10.0)))
-                    r_te = 1.0 / (1.0 + np.exp(-np.clip(m_ridge.decision_function(X_test), -10.0, 10.0)))
-                    h_tr = m_hgb.predict_proba(X_train)[:, 1]
-                    h_te = m_hgb.predict_proba(X_test)[:, 1]
-                    p1_train = ((0.4 * r_tr + 0.6 * h_tr) >= 0.5).astype(int)
-                    p1_test = ((0.4 * r_te + 0.6 * h_te) >= 0.5).astype(int)
-                else:
-                    m1 = ExtraTreesClassifier(n_estimators=30, max_depth=6, min_samples_leaf=10, random_state=42, n_jobs=1)
-                    m1.fit(X_train, y_train)
-                    p1_train = m1.predict(X_train)
-                    p1_test = m1.predict(X_test)
-
-                # 2. Stage 2: Meta-Label Calibrator
-                # Meta target: 1 if Stage 1 trade was correct & profitable, 0 otherwise
-                y_meta_train = ((y_train == 1) & (p1_train == 1)).astype(int)
-
-                # Feature matrix for Stage 2: X + Stage 1 signal
-                X_meta_train = np.hstack([X_train, p1_train.reshape(-1, 1)])
-                X_meta_test = np.hstack([X_test, p1_test.reshape(-1, 1)])
-
-                if np.sum(y_meta_train) >= 5 and np.sum(1 - y_meta_train) >= 5:
-                    meta_base = HistGradientBoostingClassifier(max_iter=30, max_leaf_nodes=10, random_state=42)
-                    meta_cal = CalibratedClassifierCV(estimator=meta_base, method="sigmoid", cv=3)
-                    meta_cal.fit(X_meta_train, y_meta_train)
-                    probs_test = meta_cal.predict_proba(X_meta_test)[:, 1]
-                else:
-                    probs_test = np.full(len(X_test), 0.50)
+                # 1 & 2. Stage 1 (Out-of-Fold) + Stage 2 Meta-Label Calibrator
+                p1_test, probs_test = self._fit_and_predict_two_stage(cand["type"], X_train, y_train, X_test)
 
                 # 3. Decision Gating with Abstention
                 # If meta probability < min_meta_prob, output ABSTAIN
@@ -1409,10 +1452,39 @@ class TwoStageTournamentRunner:
         # Determine winner
         best_cand = max(candidates_res, key=lambda c: c["cpcv_mean_sharpe"])
 
-        # 3. Final Holdout Evaluation
+        # 3. Final Chronological Holdout Evaluation (real out-of-sample fit on dev_df -> eval on holdout_df)
         holdout_sharpe = 0.0
-        if not holdout_df.empty:
-            holdout_sharpe = round(best_cand["cpcv_mean_sharpe"] * 0.9, 4)
+        if not holdout_df.empty and len(holdout_df) >= 2:
+            feature_cols = [c for c in self.feature_cols if c in dev_df.columns and c in holdout_df.columns]
+            if feature_cols:
+                X_dev = dev_df[feature_cols].values
+                y_dev = (dev_df["label"] > 0).astype(int).values if "label" in dev_df.columns else (dev_df["forward_return"] > 0).astype(int).values
+                X_hold = holdout_df[feature_cols].values
+                hold_rets = (
+                    holdout_df["net_return"].values
+                    if "net_return" in holdout_df.columns
+                    else holdout_df.get("forward_return", pd.Series(0.0, index=holdout_df.index)).values
+                )
+                cand_type_map = {
+                    "HistGradientBoosting + MetaCalibrator": "HGB",
+                    "LightGBM / GBDT + MetaCalibrator": "GBDT_ALT",
+                    "Ridge + HGB Soft-Voting Ensemble + MetaCalibrator": "RIDGE_HGB_ENSEMBLE",
+                    "RidgeClassifier + MetaCalibrator": "RIDGE",
+                    "ExtraTreesClassifier + MetaCalibrator": "EXTRA_TREES",
+                }
+                best_type = cand_type_map.get(best_cand.get("candidate_name", ""), "HGB")
+                p1_hold, probs_hold = self._fit_and_predict_two_stage(best_type, X_dev, y_dev, X_hold)
+                hold_mask = (p1_hold == 1) & (probs_hold >= self.min_meta_prob)
+                if np.any(hold_mask):
+                    active_hold = hold_rets[hold_mask]
+                    if "volatility_20d" in holdout_df.columns and self.feature_set == "alpha_v3_multimodal":
+                        w_hold = compute_causal_inverse_vol_weights(holdout_df["volatility_20d"].values)[hold_mask]
+                        active_hold = active_hold * w_hold
+                    if len(active_hold) > 1 and np.std(active_hold) > 1e-6:
+                        holdout_sharpe = round(
+                            float((np.mean(active_hold) / np.std(active_hold)) * math.sqrt(252.0 / max(self.horizon_days, 1))),
+                            4,
+                        )
 
         now_iso = datetime.now(timezone.utc).isoformat()
         run_id = f"run_phase7_{self.horizon_days}d_{uuid.uuid4().hex[:8]}"
@@ -1471,6 +1543,8 @@ class TwoStageTournamentRunner:
 
         try:
             with self.db.get_connection() as conn:
+                # Registry validation_ic: use candidate rank IC / DSR proxy rather than hardcoded 0.035
+                reg_ic = float(champ.get("rank_ic", champ.get("dsr_metrics", {}).get("estimated_sharpe", 0.0)))
                 conn.execute("""
                     INSERT OR REPLACE INTO model_registry (
                         model_id, model_name, model_version, task_type, status,
@@ -1488,7 +1562,7 @@ class TwoStageTournamentRunner:
                     "2026-11-20",
                     json.dumps(summary, default=str),
                     now_iso,
-                    0.035,
+                    round(reg_ic, 4),
                     champ["cpcv_mean_sharpe"],
                     self.horizon_days
                 ))

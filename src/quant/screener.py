@@ -339,11 +339,17 @@ class FactorScreener:
 
             ldeliv_cte = """
                 ldeliv AS (
-                    SELECT symbol, delivery_qty AS l_deliv_qty, volume AS l_deliv_vol
-                    FROM ohlcv_daily
-                    WHERE delivery_qty > 0 AND volume > 0
-                    GROUP BY symbol
-                    HAVING trading_date = MAX(trading_date)
+                    SELECT symbol, l_deliv_qty, l_deliv_vol
+                    FROM (
+                        SELECT symbol,
+                               delivery_qty AS l_deliv_qty,
+                               volume AS l_deliv_vol,
+                               ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY trading_date DESC) AS rn
+                        FROM ohlcv_daily
+                        WHERE (? IS NULL OR (trading_date <= ? AND trading_date >= date(?, '-21 days')))
+                          AND delivery_qty > 0 AND volume > 0
+                    )
+                    WHERE rn = 1
                 )
             """
 
@@ -420,7 +426,7 @@ class FactorScreener:
                 {extra_where}
                 ORDER BY q.symbol ASC;
                 """
-                exact_params = [effective_date]
+                exact_params = [effective_date, effective_date, effective_date, effective_date]
                 if universe:
                     exact_params.extend(universe)
                 df = pd.read_sql_query(exact_sql, conn, params=exact_params)
@@ -467,7 +473,7 @@ class FactorScreener:
                 {extra_where}
                 ORDER BY q.symbol ASC;
                 """
-                fallback_params = [effective_date, effective_date]
+                fallback_params = [effective_date, effective_date, effective_date, effective_date, effective_date]
                 if universe:
                     fallback_params.extend(universe)
                 df = pd.read_sql_query(fallback_sql, conn, params=fallback_params)

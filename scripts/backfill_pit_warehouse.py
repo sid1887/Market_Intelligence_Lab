@@ -143,8 +143,8 @@ def backfill_symbol_yfinance(
                     conn.execute("""
                         INSERT OR IGNORE INTO corporate_actions (
                             symbol, action_type, ex_date, effective_date, purpose,
-                            adjustment_factor, source, retrieval_timestamp
-                        ) VALUES (?, 'DIVIDEND', ?, ?, ?, ?, 'yfinance_pit', ?)
+                            adjustment_factor, adjustment_ratio, source, retrieval_timestamp
+                        ) VALUES (?, 'DIVIDEND', ?, ?, ?, 1.0, ?, 'yfinance_pit', ?)
                     """, (symbol, ex_dt, ex_dt, f"Cash Dividend Rs {float(amt):.2f}", float(amt), now_iso))
                     counts["corporate_actions"] += 1
     except Exception as e:
@@ -178,9 +178,8 @@ def backfill_symbol_yfinance(
             prom_pct = 0.0
             for idx_lbl, row_vals in mh.iterrows():
                 lbl = str(idx_lbl).lower()
-                val = float(row_vals.iloc[0]) * 100.0 if pd.notna(row_vals.iloc[0]) else 0.0
-                if val > 100.0:
-                    val = val / 100.0
+                raw_val = float(row_vals.iloc[0]) if pd.notna(row_vals.iloc[0]) else 0.0
+                val = raw_val * 100.0 if 0.0 <= raw_val <= 1.0 else raw_val
                 if "insider" in lbl:
                     prom_pct = round(val, 2)
                 elif "institution" in lbl:

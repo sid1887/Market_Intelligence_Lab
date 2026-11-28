@@ -36,7 +36,7 @@ jobs:
 
       - name: Run Core Test Suites
         run: |
-          PYTHONPATH=. python -m pytest tests/test_portfolio_backtester.py tests/test_milestone_b6_3_api.py tests/test_log_engine.py -v
+          PYTHONPATH=. python -m pytest tests/test_truth_invariants.py tests/test_point_in_time_ttm.py tests/test_fee_engine.py tests/test_portfolio_backtester.py tests/test_milestone_b6_3_api.py tests/test_log_engine.py tests/test_phase5_hardening.py tests/test_phase6_ui_endpoints.py tests/test_phase7_flow_and_pead.py tests/test_phase8_hmm_and_conformal.py tests/test_phase9_spillover_and_policy.py tests/test_phase10_multimodal_alpha.py tests/test_phase11_tr_and_nse_quarterly.py tests/test_phase12_dual_cloud_state.py tests/test_tradebook_engine.py tests/test_durable_jobs_and_streaming.py tests/test_web_push_sync.py tests/test_telegram_bot.py -v
 
   frontend-quality:
     name: Next.js 14 Production Build Verification
@@ -58,8 +58,10 @@ jobs:
         working-directory: frontend
         run: npm install
 
-      - name: Build Next.js Production Bundle
+      - name: TypeScript Type Check & Next.js Production Build
         working-directory: frontend
         env:
           NEXT_TELEMETRY_DISABLED: "1"
-        run: npm run build
+        run: |
+          npx tsc --noEmit
+          npm run build

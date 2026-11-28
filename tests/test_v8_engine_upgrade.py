@@ -201,7 +201,7 @@ def test_universe_expander_status_and_tracking(db):
     assert status["target_depth_years"] == 15
 
 
-def test_walk_forward_ml_trainer_tournament_and_telemetry(db):
+def test_walk_forward_ml_trainer_tournament_and_telemetry(db, tmp_path):
     """
     Verifies that WalkForwardMLTrainer:
     1. Extracts multi-asset panel features
@@ -209,7 +209,7 @@ def test_walk_forward_ml_trainer_tournament_and_telemetry(db):
     3. Persists authentic out-of-sample metrics to ml_training_runs
     4. Updates tournament_summary.json with champion feature weights
     """
-    trainer = WalkForwardMLTrainer(db=db, summary_path="data/models/tournament_summary.json")
+    trainer = WalkForwardMLTrainer(db=db, summary_path=str(tmp_path / "tournament_summary.json"))
 
     # Run tournament across 20D horizon
     results = trainer.run_training_tournament(horizons=[20])

@@ -70,6 +70,43 @@ class CombinatorialPurgedCV:
         if n_samples < self.n_splits * (self.horizon_days + 5):
             raise ValueError(f"Sample size ({n_samples}) is too small for {self.n_splits} purged splits.")
 
+        # Date-based purging/embargoing when DataFrame has trading_date or explicit groups are provided
+        date_labels = None
+        if groups is not None and len(groups) == n_samples:
+            date_labels = np.asarray(groups).astype(str)
+        elif isinstance(X, pd.DataFrame) and "trading_date" in X.columns:
+            date_labels = X["trading_date"].astype(str).to_numpy()
+
+        if date_labels is not None:
+            unique_dates = np.array(sorted(set(date_labels)))
+            n_dates = len(unique_dates)
+            if n_dates >= self.n_splits * 2:
+                date_to_pos = {d: idx for idx, d in enumerate(unique_dates)}
+                row_date_pos = np.array([date_to_pos[d] for d in date_labels], dtype=int)
+                date_bounds = np.linspace(0, n_dates, self.n_splits + 1, dtype=int)
+                date_blocks = [np.arange(date_bounds[i], date_bounds[i + 1]) for i in range(self.n_splits)]
+
+                for test_group_ids in itertools.combinations(range(self.n_splits), self.n_test_splits):
+                    test_group_set = set(test_group_ids)
+                    test_date_mask = np.zeros(n_dates, dtype=bool)
+                    for gid in test_group_ids:
+                        test_date_mask[date_blocks[gid]] = True
+
+                    drop_date_mask = test_date_mask.copy()
+                    for gid in test_group_ids:
+                        t_start = int(date_bounds[gid])
+                        t_end = int(date_bounds[gid + 1])
+                        p_start = max(0, t_start - self.horizon_days)
+                        e_end = min(n_dates, t_end + self.embargo_days)
+                        drop_date_mask[p_start:t_start] = True
+                        drop_date_mask[t_end:e_end] = True
+
+                    test_indices = np.where(test_date_mask[row_date_pos])[0]
+                    train_indices = np.where(~drop_date_mask[row_date_pos])[0]
+                    assert len(np.intersect1d(train_indices, test_indices)) == 0, "Purging invariant failure: Overlapping train/test indices!"
+                    yield train_indices, test_indices
+                return
+
         indices = np.arange(n_samples)
 
         # Divide into N contiguous chronological blocks
@@ -131,6 +168,15 @@ class CombinatorialPurgedCV:
         """
         if df.empty or len(df) <= holdout_sessions:
             raise ValueError(f"Insufficient samples ({len(df)}) for holdout window ({holdout_sessions}).")
+
+        if "trading_date" in df.columns:
+            unique_dates = sorted(df["trading_date"].astype(str).unique())
+            if len(unique_dates) > holdout_sessions + 10:
+                cutoff_date = unique_dates[-holdout_sessions]
+                dev_df = df[df["trading_date"].astype(str) < cutoff_date].copy().reset_index(drop=True)
+                holdout_df = df[df["trading_date"].astype(str) >= cutoff_date].copy().reset_index(drop=True)
+                if not dev_df.empty and not holdout_df.empty:
+                    return dev_df, holdout_df
 
         dev_df = df.iloc[:-holdout_sessions].copy().reset_index(drop=True)
         holdout_df = df.iloc[-holdout_sessions:].copy().reset_index(drop=True)

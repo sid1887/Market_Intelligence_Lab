@@ -137,7 +137,7 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
                 cur = conn.execute("""
                     SELECT trading_date, open, high, low, close, volume
                     FROM (
-                        SELECT trading_date, open, high, low, close, volume
+                        SELECT trading_date, open, high, low, close, COALESCE(adj_close, close) AS adj_close, volume
                         FROM ohlcv_daily
                         WHERE symbol = ? AND is_synthetic = 0 AND series = 'EQ'
                         ORDER BY trading_date DESC
@@ -147,7 +147,7 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
                 """, (symbol, recent_bars))
             else:
                 cur = conn.execute("""
-                    SELECT trading_date, open, high, low, close, volume
+                    SELECT trading_date, open, high, low, close, COALESCE(adj_close, close) AS adj_close, volume
                     FROM ohlcv_daily
                     WHERE symbol = ? AND is_synthetic = 0 AND series = 'EQ'
                     ORDER BY trading_date ASC
@@ -156,33 +156,36 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
             if len(rows) < 2:
                 continue
 
-            df = pd.DataFrame(rows, columns=["trading_date", "open", "high", "low", "close", "volume"])
+            df = pd.DataFrame(rows, columns=["trading_date", "open", "high", "low", "close", "adj_close", "volume"])
             df["close"] = pd.to_numeric(df["close"], errors="coerce")
+            df["adj_close"] = pd.to_numeric(df["adj_close"], errors="coerce").fillna(df["close"])
             df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0)
             df = df.dropna(subset=["close"]).reset_index(drop=True)
             if len(df) == 0:
                 continue
 
-            # Vectorized returns
-            df["ret_1d"] = df["close"].pct_change()
-            df["ret_5d"] = df["close"].pct_change(5)
-            df["ret_20d"] = df["close"].pct_change(20)
-            df["ret_60d"] = df["close"].pct_change(60)
-            df["momentum_1y"] = df["close"].pct_change(252)
+            # Vectorized returns & indicators on dividend/split-adjusted price (adj_close)
+            px = df["adj_close"]
+            df["ret_1d"] = px.pct_change()
+            df["ret_5d"] = px.pct_change(5)
+            df["ret_20d"] = px.pct_change(20)
+            df["ret_60d"] = px.pct_change(60)
+            df["momentum_1y"] = px.pct_change(252)
 
             # Vectorized Moving Averages
-            df["sma_20"] = df["close"].rolling(20, min_periods=20).mean()
-            df["sma_50"] = df["close"].rolling(50, min_periods=50).mean()
-            df["sma_200"] = df["close"].rolling(200, min_periods=200).mean()
+            df["sma_20"] = px.rolling(20, min_periods=20).mean()
+            df["sma_50"] = px.rolling(50, min_periods=50).mean()
+            df["sma_200"] = px.rolling(200, min_periods=200).mean()
 
             # Vectorized 20-day Annualized Volatility
             df["volatility_20d"] = df["ret_1d"].rolling(20, min_periods=20).std() * math.sqrt(252.0)
 
             # Vectorized RSI-14
-            df["rsi_14"] = compute_rsi_series(df["close"], 14)
+            df["rsi_14"] = compute_rsi_series(px, 14)
 
             t_dates = df["trading_date"].tolist()
             closes = df["close"].tolist()
+            adj_closes = df["adj_close"].tolist()
             volumes = df["volume"].tolist()
             ret_1ds = df["ret_1d"].tolist()
             ret_5ds = df["ret_5d"].tolist()
@@ -198,11 +201,12 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
                 idx = i + 1
                 t_date = str(t_dates[i])
                 c_val = round(float(closes[i]), 2)
+                adj_c_val = round(float(adj_closes[i]), 2)
                 vol_val = int(volumes[i])
                 burn_in = 1 if idx >= 200 else 0
                 s200 = sma_200s[i]
                 sma_200_val = round(float(s200), 2) if (s200 is not None and not pd.isna(s200)) else None
-                trend_regime = "BULLISH" if sma_200_val and c_val > sma_200_val else "BEARISH"
+                trend_regime = "BULLISH" if sma_200_val and adj_c_val > sma_200_val else "BEARISH"
                 vol_ann = round(float(vol_anns[i]), 4) if (vol_anns[i] is not None and not pd.isna(vol_anns[i])) else None
 
                 r1 = ret_1ds[i]
@@ -223,7 +227,7 @@ def _compute_symbol_factors_chunk(args: Tuple[str, List[str], Optional[int]]) ->
                 mom_val = round(float(m1y), 4) if (m1y is not None and not pd.isna(m1y)) else None
 
                 records_factors.append((
-                    symbol, t_date, c_val, c_val, vol_val, vol_val,
+                    symbol, t_date, c_val, adj_c_val, vol_val, vol_val,
                     idx, burn_in, ret_1d, ret_5d, ret_20d, ret_20d,
                     sma_20, sma_50, sma_200_val, vol_ann, vol_ann,
                     rsi_val, mom_val,
@@ -251,7 +255,7 @@ class VectorizedFactorCalculator:
         """Computes technical factors for a single symbol and upserts to database."""
         with self.db.get_connection() as conn:
             cur = conn.execute("""
-                SELECT trading_date, open, high, low, close, volume
+                SELECT trading_date, open, high, low, close, COALESCE(adj_close, close) AS adj_close, volume
                 FROM ohlcv_daily
                 WHERE symbol = ? AND is_synthetic = 0 AND series = 'EQ'
                 ORDER BY trading_date ASC
@@ -263,29 +267,31 @@ class VectorizedFactorCalculator:
 
         df = pd.DataFrame([dict(r) for r in rows])
         df["close"] = pd.to_numeric(df["close"], errors="coerce")
+        df["adj_close"] = pd.to_numeric(df["adj_close"], errors="coerce").fillna(df["close"])
         df["volume"] = pd.to_numeric(df["volume"], errors="coerce").fillna(0)
         df = df.dropna(subset=["close"]).reset_index(drop=True)
 
         if len(df) == 0:
             return 0
 
-        # Vectorized returns
-        df["ret_1d"] = df["close"].pct_change()
-        df["ret_5d"] = df["close"].pct_change(5)
-        df["ret_20d"] = df["close"].pct_change(20)
-        df["ret_60d"] = df["close"].pct_change(60)
-        df["momentum_1y"] = df["close"].pct_change(252)
+        # Vectorized returns & indicators on dividend/split-adjusted price (adj_close)
+        px = df["adj_close"]
+        df["ret_1d"] = px.pct_change()
+        df["ret_5d"] = px.pct_change(5)
+        df["ret_20d"] = px.pct_change(20)
+        df["ret_60d"] = px.pct_change(60)
+        df["momentum_1y"] = px.pct_change(252)
 
         # Vectorized Moving Averages
-        df["sma_20"] = df["close"].rolling(20, min_periods=20).mean()
-        df["sma_50"] = df["close"].rolling(50, min_periods=50).mean()
-        df["sma_200"] = df["close"].rolling(200, min_periods=200).mean()
+        df["sma_20"] = px.rolling(20, min_periods=20).mean()
+        df["sma_50"] = px.rolling(50, min_periods=50).mean()
+        df["sma_200"] = px.rolling(200, min_periods=200).mean()
 
         # Vectorized 20-day Annualized Volatility
         df["volatility_20d"] = df["ret_1d"].rolling(20, min_periods=20).std() * math.sqrt(252.0)
 
         # Vectorized RSI-14
-        df["rsi_14"] = compute_rsi_series(df["close"], 14)
+        df["rsi_14"] = compute_rsi_series(px, 14)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         records_factors = []
@@ -295,10 +301,11 @@ class VectorizedFactorCalculator:
         for i, (_, r) in enumerate(df.iterrows(), start=1):
             t_date = str(r["trading_date"])
             c_val = round(float(r["close"]), 2)
+            adj_c_val = round(float(r["adj_close"]), 2)
             vol_val = int(r["volume"])
             burn_in = 1 if i >= 200 else 0
             sma_200_val = round(float(r["sma_200"]), 2) if pd.notna(r["sma_200"]) else None
-            trend_regime = "BULLISH" if sma_200_val and c_val > sma_200_val else "BEARISH"
+            trend_regime = "BULLISH" if sma_200_val and adj_c_val > sma_200_val else "BEARISH"
             vol_ann = round(float(r["volatility_20d"]), 4) if pd.notna(r["volatility_20d"]) else None
 
             ret_1d = round(float(r["ret_1d"]), 4) if pd.notna(r["ret_1d"]) else None
@@ -314,7 +321,7 @@ class VectorizedFactorCalculator:
                 symbol,
                 t_date,
                 c_val,
-                c_val,
+                adj_c_val,
                 vol_val,
                 vol_val,
                 i,
@@ -359,6 +366,7 @@ class VectorizedFactorCalculator:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(symbol, trading_date) DO UPDATE SET
                     close = excluded.close,
+                    adj_close = excluded.adj_close,
                     sessions_available = excluded.sessions_available,
                     burn_in_complete = excluded.burn_in_complete,
                     ret_1d = excluded.ret_1d,

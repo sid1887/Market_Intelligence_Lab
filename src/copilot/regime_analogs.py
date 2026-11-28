@@ -75,11 +75,11 @@ class PITMarketRegimeAnalogEngine:
     ) -> pd.DataFrame:
         """Loads historical daily closes for benchmark symbol strictly <= as_of_date."""
         with self.db.get_connection() as conn:
-            # 1. Check index_daily first (official NIFTY 50 TRI/PRI time-series)
+            # 1. Check index_daily first (official NIFTY 50 PRI time-series)
             df = pd.read_sql_query("""
                 SELECT trading_date, open, high, low, close, volume
                 FROM index_daily
-                WHERE index_name IN (?, 'NIFTY 50', 'NIFTY50', 'NIFTY') AND trading_date <= ?
+                WHERE index_name IN (?, 'NIFTY 50', 'NIFTY50', 'NIFTY') AND index_type = 'PRI' AND trading_date <= ?
                 ORDER BY trading_date ASC
             """, conn, params=(self.benchmark_symbol, as_of_date))
 

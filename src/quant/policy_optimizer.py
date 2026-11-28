@@ -197,7 +197,7 @@ def evaluate_policy_grid_for_regime(
 
 def run_policy_optimization(
     db_path: str = "data/market_lab.db",
-    milz_path: str = "data/bhavcopy_10y.milz",
+    milz_path: str = "data/archive/bhavcopy_10y.milz",
     hmm_state_path: str | Path = DEFAULT_HMM_STATE_PATH,
     output_path: str | Path = DEFAULT_POLICY_PATH,
     n_paths: int = 100000,

@@ -15,15 +15,21 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
 from src.storage.database import DatabaseManager
+from src.portfolio.fee_engine import (
+    calculate_order_charges,
+    ANGEL_ONE_DP_CHARGE,
+    STT_RATE as CANONICAL_STT_RATE,
+    STATUTORY_ROUNDTRIP_RATE,
+)
 
 logger = logging.getLogger("MIL.ExecutionEngine")
 
 # Indian Statutory Delivery Friction Parameters (Delivery Equity)
-STT_RATE = 0.0010                # 0.10% Securities Transaction Tax on both BUY & SELL
+STT_RATE = CANONICAL_STT_RATE    # 0.10% Securities Transaction Tax on both BUY & SELL
 EXCHANGE_TURNOVER_AND_SLIP = 0.0005  # 0.05% Exchange + SEBI turnover fees + slippage penalty
 BUY_FRICTION_RATE = STT_RATE + EXCHANGE_TURNOVER_AND_SLIP    # 0.0015 (15 bps)
 SELL_FRICTION_RATE = STT_RATE + EXCHANGE_TURNOVER_AND_SLIP   # 0.0015 (15 bps)
-FLAT_SELL_DP_CHARGE = 15.34       # Flat ₹15.34 Depository Participant charge per SELL leg (CDSL ₹13 + 18% GST)
+FLAT_SELL_DP_CHARGE = ANGEL_ONE_DP_CHARGE  # Flat ₹23.60 Angel One / CDSL DP charge per SELL leg
 
 
 _accounts_initialized_paths: set = set()
@@ -88,26 +94,13 @@ class PaperTradingEngine:
 
     def _calculate_friction(self, action: str, order_value: float, fee_tier: str = "RETAIL_MICRO") -> float:
         """
-        Computes statutory and exchange friction based on account fee tier.
-        RETAIL_MICRO: 12 bps (0.0012) + flat/capped DP fee min(5.0, 0.5% order_val) on SELLs.
-        INSTITUTIONAL: 15 bps (0.0015) + flat ₹15.00 DP fee on SELLs.
+        Computes statutory and exchange friction via canonical Angel One fee_engine
+        (STT + NSE txn + SEBI + Stamp Duty + GST + ₹23.60 CDSL DP charge on SELLs).
         """
         if order_value <= 0:
             return 0.0
-
-        if fee_tier == "RETAIL_MICRO":
-            base_rate = 0.0012  # 12 bps
-            base_friction = order_value * base_rate
-            if action.upper() == "SELL":
-                dp_fee = min(5.0, round(order_value * 0.005, 2))
-                return round(base_friction + dp_fee, 2)
-            return round(base_friction, 2)
-        else:
-            base_rate = 0.0015  # 15 bps
-            base_friction = order_value * base_rate
-            if action.upper() == "SELL":
-                return round(base_friction + FLAT_SELL_DP_CHARGE, 2)
-            return round(base_friction, 2)
+        charges = calculate_order_charges(action, order_value)
+        return round(float(charges.total_charges), 2)
 
     def _get_latest_price(self, symbol: str) -> Optional[float]:
         """Fetches the latest official EOD close price for a symbol."""

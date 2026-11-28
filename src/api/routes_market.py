@@ -1362,7 +1362,7 @@ def get_stock_disclosures(
         if len(disclosures) == 0:
             cur.execute(
                 """
-                SELECT id, title, published_at, source_url
+                SELECT id, title, published_at, article_url AS source_url
                 FROM equity_news_feed
                 WHERE symbol = ? AND (title LIKE '%Announcement%' OR title LIKE '%Board%' OR title LIKE '%Result%' OR title LIKE '%Dividend%')
                 ORDER BY published_at DESC LIMIT ?

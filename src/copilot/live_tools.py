@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from typing import Dict, Any, List, Optional, Tuple
 
 from src.storage.database import DatabaseManager
+from src.storage.cache import register_memory_guard_hook
 
 logger = logging.getLogger("MIL.CopilotLiveTools")
 
@@ -34,8 +35,27 @@ _WEB_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 
 QUOTE_TTL_SEC = 60.0
 WEB_TTL_SEC = 300.0
+_MAX_CACHE_ENTRIES = 128
 HARD_TIMEOUT_SEC = 2.5
 DEFAULT_ANGEL_ONE_DP_CHARGE = 23.60
+
+
+def clear_live_tools_caches() -> None:
+    """Clears copilot live quote/web TTL caches under RSS pressure."""
+    _QUOTE_CACHE.clear()
+    _WEB_CACHE.clear()
+
+
+register_memory_guard_hook(clear_live_tools_caches)
+
+
+def _prune_cache(cache: Dict[str, Tuple[float, Any]], ttl_sec: float, now: float) -> None:
+    expired = [k for k, (ts, _) in cache.items() if now - ts >= ttl_sec]
+    for k in expired:
+        cache.pop(k, None)
+    if len(cache) >= _MAX_CACHE_ENTRIES:
+        oldest_key = min(cache.items(), key=lambda item: item[1][0])[0]
+        cache.pop(oldest_key, None)
 
 
 def fetch_live_intraday_quote(
@@ -248,6 +268,7 @@ def fetch_live_intraday_quote(
             logger.debug(f"[LIVE-FUSION] DB fusion error for {clean_sym}: {e}")
 
     result = {**raw_quote, **fusion}
+    _prune_cache(_QUOTE_CACHE, QUOTE_TTL_SEC, now)
     _QUOTE_CACHE[clean_sym] = (now, result)
     return result
 
@@ -345,5 +366,6 @@ def search_live_web_catalysts(
     except Exception as e:
         logger.debug(f"[LIVE-WEB] Web catalyst search timed out or failed for {clean_sym}: {e}")
 
+    _prune_cache(_WEB_CACHE, WEB_TTL_SEC, now)
     _WEB_CACHE[cache_key] = (now, catalysts)
     return catalysts

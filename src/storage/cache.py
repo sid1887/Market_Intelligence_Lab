@@ -36,6 +36,15 @@ def get_current_process_rss_mb() -> float:
         return 0.0
 
 
+_MEMORY_GUARD_HOOKS: list = []
+
+
+def register_memory_guard_hook(hook_fn) -> None:
+    """Registers an external cache-eviction callback invoked when RSS exceeds threshold."""
+    if callable(hook_fn) and hook_fn not in _MEMORY_GUARD_HOOKS:
+        _MEMORY_GUARD_HOOKS.append(hook_fn)
+
+
 def enforce_rss_memory_guard(threshold_mb: float = 375.0) -> Dict[str, Any]:
     """
     Checks process RSS memory against threshold. If exceeded, triggers emergency cache
@@ -46,6 +55,11 @@ def enforce_rss_memory_guard(threshold_mb: float = 375.0) -> Dict[str, Any]:
     if rss >= threshold_mb:
         logger.warning(f"[MEMORY-GUARD] Process RSS ({rss:.1f} MB) >= {threshold_mb:.1f} MB! Evicting LRU caches.")
         app_cache.clear()
+        for hook in list(_MEMORY_GUARD_HOOKS):
+            try:
+                hook()
+            except Exception:
+                pass
         gc.collect()
         try:
             import ctypes

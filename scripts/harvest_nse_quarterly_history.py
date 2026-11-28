@@ -270,15 +270,27 @@ def run_nse_quarterly_harvest(
                             continue
                         conn.execute(
                             """
-                            INSERT OR IGNORE INTO financial_statements_quarterly (
-                                symbol, period_end_date, filing_date, source_url, is_audited,
-                                revenue, ebitda, net_profit, eps, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO financial_statements_quarterly (
+                                symbol, period_end_date, filing_date, published_at_ist, reporting_basis,
+                                source_url, is_audited, revenue, ebitda, net_profit, eps, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(symbol, period_end_date) DO UPDATE SET
+                                filing_date = excluded.filing_date,
+                                published_at_ist = COALESCE(excluded.published_at_ist, financial_statements_quarterly.published_at_ist),
+                                reporting_basis = COALESCE(excluded.reporting_basis, financial_statements_quarterly.reporting_basis),
+                                source_url = excluded.source_url,
+                                is_audited = excluded.is_audited,
+                                revenue = COALESCE(excluded.revenue, financial_statements_quarterly.revenue),
+                                ebitda = COALESCE(excluded.ebitda, financial_statements_quarterly.ebitda),
+                                net_profit = COALESCE(excluded.net_profit, financial_statements_quarterly.net_profit),
+                                eps = COALESCE(excluded.eps, financial_statements_quarterly.eps)
                             """,
                             (
                                 sym,
                                 q["period_end_date"],
                                 q["filing_date"],
+                                q.get("published_at_ist"),
+                                q.get("reporting_basis"),
                                 f"{NSE_FIN_RESULTS_URL}?index=equities&symbol={sym}",
                                 q["is_audited"],
                                 q["revenue"],

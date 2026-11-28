@@ -9,12 +9,14 @@ High-throughput, zero-external-dependency logging subsystem:
 
 import os
 import json
+import queue
 import logging
 import sqlite3
 import datetime
+import threading
 from collections import deque
 from contextvars import ContextVar
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 # Context variable for correlation request IDs across async boundaries
 request_id_ctx: ContextVar[Optional[str]] = ContextVar("request_id_ctx", default=None)
@@ -46,10 +48,48 @@ class HealthCheckFilter(logging.Filter):
         return True
 
 
+_LOG_SQLITE_QUEUE: "queue.SimpleQueue[Tuple[str, Tuple[Any, ...]]]" = queue.SimpleQueue()
+_LOG_WORKER_STARTED = False
+_LOG_WORKER_LOCK = threading.Lock()
+
+
+def _sqlite_log_worker() -> None:
+    while True:
+        item = _LOG_SQLITE_QUEUE.get()
+        db_path, row_tuple = item
+        try:
+            if db_path and os.path.exists(db_path):
+                conn = sqlite3.connect(db_path, timeout=5.0)
+                with conn:
+                    conn.execute(
+                        """
+                        INSERT INTO system_telemetry_logs (timestamp, level, source, logger_name, message, request_id, meta_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        row_tuple,
+                    )
+                conn.close()
+        except Exception:
+            pass
+
+
+def _enqueue_sqlite_log(db_path: Optional[str], row_tuple: Tuple[Any, ...]) -> None:
+    global _LOG_WORKER_STARTED
+    if not db_path or not os.path.exists(db_path):
+        return
+    if not _LOG_WORKER_STARTED:
+        with _LOG_WORKER_LOCK:
+            if not _LOG_WORKER_STARTED:
+                t = threading.Thread(target=_sqlite_log_worker, name="mil-log-sqlite-writer", daemon=True)
+                t.start()
+                _LOG_WORKER_STARTED = True
+    _LOG_SQLITE_QUEUE.put((db_path, row_tuple))
+
+
 class RingBufferLogHandler(logging.Handler):
     """
-    In-memory FIFO buffer for live telemetry inspection with optional SQLite write
-    for warnings and errors.
+    In-memory FIFO buffer for live telemetry inspection with optional non-blocking
+    SQLite write for warnings and errors.
     """
     def __init__(self, buffer: deque, db_path: Optional[str] = None):
         super().__init__()
@@ -75,38 +115,29 @@ class RingBufferLogHandler(logging.Handler):
             }
             self.buffer.append(entry)
 
-            # Persist WARNING, ERROR, CRITICAL to SQLite capped table
+            # Persist WARNING, ERROR, CRITICAL to SQLite capped table asynchronously
             if record.levelno >= logging.WARNING and self.db_path and os.path.exists(self.db_path):
                 self._persist_to_sqlite(entry)
         except Exception:
             self.handleError(record)
 
     def _persist_to_sqlite(self, entry: Dict[str, Any]) -> None:
-        try:
-            conn = sqlite3.connect(self.db_path, timeout=5.0)
-            with conn:
-                conn.execute(
-                    """
-                    INSERT INTO system_telemetry_logs (timestamp, level, source, logger_name, message, request_id, meta_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        entry["timestamp"],
-                        entry["level"],
-                        entry["source"],
-                        entry["logger"],
-                        entry["message"],
-                        entry["request_id"],
-                        json.dumps({
-                            "module": entry["module"],
-                            "funcName": entry["funcName"],
-                            "lineNo": entry["lineNo"]
-                        })
-                    )
-                )
-            conn.close()
-        except Exception:
-            pass
+        _enqueue_sqlite_log(
+            self.db_path,
+            (
+                entry["timestamp"],
+                entry["level"],
+                entry["source"],
+                entry["logger"],
+                entry["message"],
+                entry["request_id"],
+                json.dumps({
+                    "module": entry["module"],
+                    "funcName": entry["funcName"],
+                    "lineNo": entry["lineNo"]
+                }),
+            ),
+        )
 
 
 class UnifiedLogEngine:
@@ -234,27 +265,18 @@ class UnifiedLogEngine:
         self.buffer.append(entry)
 
         if lvl in ("WARNING", "ERROR", "CRITICAL") and self.db_path and os.path.exists(self.db_path):
-            try:
-                conn = sqlite3.connect(self.db_path, timeout=5.0)
-                with conn:
-                    conn.execute(
-                        """
-                        INSERT INTO system_telemetry_logs (timestamp, level, source, logger_name, message, request_id, meta_json)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            now_iso,
-                            lvl,
-                            "client",
-                            "client.frontend",
-                            message,
-                            entry["request_id"],
-                            json.dumps(meta or {})
-                        )
-                    )
-                conn.close()
-            except Exception:
-                pass
+            _enqueue_sqlite_log(
+                self.db_path,
+                (
+                    now_iso,
+                    lvl,
+                    "client",
+                    "client.frontend",
+                    message,
+                    entry["request_id"],
+                    json.dumps(meta or {}),
+                ),
+            )
 
 
 log_engine = UnifiedLogEngine.get_instance()

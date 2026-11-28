@@ -700,11 +700,12 @@ class DatabaseManager:
             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         );
         """
+        val_summary_str = validation_summary if isinstance(validation_summary, str) else json.dumps(validation_summary)
         with self.get_connection() as conn:
             cursor = conn.execute(sql, (
                 source, endpoint, symbol, date_range_start, date_range_end,
                 records_retrieved, records_accepted, records_rejected,
-                json.dumps(validation_summary), raw_payload_path, status, created_at
+                val_summary_str, raw_payload_path, status, created_at
             ))
             return cursor.lastrowid
 
@@ -2192,7 +2193,7 @@ class DatabaseManager:
 
     def get_model_accuracy_metrics(self) -> Dict[str, Any]:
         """Calculates aggregate realization accuracy metrics for forecasts and catalysts."""
-        with self.db_get_connection() if hasattr(self, "db_get_connection") else self.get_connection() as conn:
+        with self.get_connection() as conn:
             # 1. Forecast containment and error metrics
             cur = conn.execute(
                 """

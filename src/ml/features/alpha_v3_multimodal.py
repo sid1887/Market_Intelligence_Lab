@@ -211,7 +211,8 @@ def build_alpha_v3_multimodal_features(
     out["quality_x_pead"] = np.clip((out["roce_ttm"] / 25.0) * out["pead_reaction_score"], -10.0, 10.0)
     out["inst_flow_x_clv"] = np.clip(out["fii_dii_delta_qoq"] * (2.0 * out["clv_1d"] - 1.0), -10.0, 10.0)
 
-    # Causal Phase 8 HMM Regime Conditioning
+    # Causal Phase 8 HMM Regime Conditioning (never leak 2026 latest_probabilities backward)
+    neutral_probs = {"LOW_VOL_TREND": 0.34, "STRESS_DRAWDOWN": 0.33}
     if hmm_history_map is None:
         hmm_history_map = {}
         try:
@@ -219,33 +220,31 @@ def build_alpha_v3_multimodal_features(
             hmm_state = load_regime_hmm_state()
             for item in hmm_state.get("recent_history", []):
                 hmm_history_map[str(item.get("trading_date"))] = item.get("probabilities", {})
-            default_probs = hmm_state.get("latest_probabilities", {"LOW_VOL_TREND": 0.34, "STRESS_DRAWDOWN": 0.33})
         except Exception:
-            default_probs = {"LOW_VOL_TREND": 0.34, "STRESS_DRAWDOWN": 0.33}
-    else:
-        default_probs = {"LOW_VOL_TREND": 0.34, "STRESS_DRAWDOWN": 0.33}
+            pass
 
     out["hmm_p_low_vol_trend"] = [
-        float(hmm_history_map.get(d, default_probs).get("LOW_VOL_TREND", 0.34))
+        float(hmm_history_map.get(d, neutral_probs).get("LOW_VOL_TREND", 0.34))
         for d in out["trading_date"]
     ]
     out["hmm_p_stress_drawdown"] = [
-        float(hmm_history_map.get(d, default_probs).get("STRESS_DRAWDOWN", 0.33))
+        float(hmm_history_map.get(d, neutral_probs).get("STRESS_DRAWDOWN", 0.33))
         for d in out["trading_date"]
     ]
 
-    # Causal Phase 9 Sector Granger Spillover Penalty
+    # Causal Phase 9 Sector Granger Spillover Penalty (apply live snapshot only in live/single-session scoring)
+    is_live_scoring = out["trading_date"].nunique() <= 5
     if spillover_penalty_map is None:
         spillover_penalty_map = {}
-        try:
-            from src.quant.spillover_graph import get_sector_spillover_penalty
-            if "sector" in out.columns:
+        if is_live_scoring and "sector" in out.columns:
+            try:
+                from src.quant.spillover_graph import get_sector_spillover_penalty
                 for sec in out["sector"].dropna().unique():
                     spillover_penalty_map[str(sec)] = float(
                         get_sector_spillover_penalty(str(sec)).get("negative_spillover_penalty", 0.0)
                     )
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     if "sector" in out.columns:
         out["sector_spillover_penalty"] = out["sector"].astype(str).map(spillover_penalty_map).fillna(0.0)

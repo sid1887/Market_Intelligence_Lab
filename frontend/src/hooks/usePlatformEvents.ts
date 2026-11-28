@@ -113,8 +113,14 @@ export function usePlatformEvents() {
                 setLastIngestTimestamp(supRes.value.last_ingestion_timestamp);
               }
             }
-            setIsConnected(true);
-            setError(null);
+            const anyFulfilled = macroRes.status === "fulfilled" || supRes.status === "fulfilled";
+            if (anyFulfilled) {
+              setIsConnected(true);
+              setError(null);
+            } else {
+              setIsConnected(false);
+              setError("Telemetry polling unreachable");
+            }
           }
         );
       };
